@@ -2274,7 +2274,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
 
     const responseJson = /** @type {string} */ (
       /** @type {unknown} */ (
-        fetch("https://api.anthropic.com/v1/messages", JSON.parse(options))
+        fetch("https://api.anthropic.com/v1/messages", options)
       )
     );
     const response = JSON.parse(responseJson);
