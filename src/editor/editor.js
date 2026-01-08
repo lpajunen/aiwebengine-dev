@@ -1,4 +1,4 @@
-/// <reference path="../../assets/aiwebengine-priv.d.ts" />
+/// <reference path="../../types/aiwebengine-priv.d.ts" />
 
 // Simple aiwebengine Editor script
 // This script provides basic editor functionality

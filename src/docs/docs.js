@@ -1,4 +1,4 @@
-/// <reference path="../../assets/aiwebengine-priv.d.ts" />
+/// <reference path="../../types/aiwebengine-priv.d.ts" />
 
 /**
  * Documentation Feature Script
