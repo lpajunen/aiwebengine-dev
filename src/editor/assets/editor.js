@@ -361,42 +361,106 @@ class AIWebEngineEditor {
       require(["vs/editor/editor.main"], () => {
         // Configure TypeScript compiler options for JSX/TSX support
         monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-          target: monaco.languages.typescript.ScriptTarget.ESNext,
+          target: monaco.languages.typescript.ScriptTarget.ES2020,
           allowNonTsExtensions: true,
           moduleResolution:
             monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-          module: monaco.languages.typescript.ModuleKind.CommonJS,
+          module: monaco.languages.typescript.ModuleKind.ESNext,
           noEmit: true,
           esModuleInterop: true,
           jsx: monaco.languages.typescript.JsxEmit.React,
           reactNamespace: "React",
           allowJs: true,
-          typeRoots: ["node_modules/@types"],
+          checkJs: false,
+          allowSyntheticDefaultImports: true,
+          lib: ["ES2020", "DOM"],
+          strict: false,
+          noImplicitAny: false,
+          strictNullChecks: false,
+          noUnusedLocals: false,
+          noUnusedParameters: false,
         });
 
         monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-          target: monaco.languages.typescript.ScriptTarget.ESNext,
+          target: monaco.languages.typescript.ScriptTarget.ES2020,
           allowNonTsExtensions: true,
           moduleResolution:
             monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-          module: monaco.languages.typescript.ModuleKind.CommonJS,
+          module: monaco.languages.typescript.ModuleKind.ESNext,
           noEmit: true,
           esModuleInterop: true,
           jsx: monaco.languages.typescript.JsxEmit.React,
           reactNamespace: "React",
           allowJs: true,
-          typeRoots: ["node_modules/@types"],
+          checkJs: false,
+          allowSyntheticDefaultImports: true,
+          lib: ["ES2020", "DOM"],
+          strict: false,
+          noImplicitAny: false,
+          strictNullChecks: false,
+          noUnusedLocals: false,
+          noUnusedParameters: false,
+          skipLibCheck: true,
         });
 
-        // Disable diagnostics that might be too strict for the engine environment
+        // Add extra libraries for better IntelliSense (optional, can help with globals)
+        const libSource = `
+declare var console: Console;
+declare var routeRegistry: any;
+declare var require: any;
+declare var exports: any;
+declare var module: any;
+`;
+        monaco.languages.typescript.javascriptDefaults.addExtraLib(
+          libSource,
+          "ts:filename/globals.d.ts",
+        );
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          libSource,
+          "ts:filename/globals.d.ts",
+        );
+
+        // Configure diagnostics to be more lenient for the engine environment
         monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
           noSemanticValidation: false,
           noSyntaxValidation: false,
+          diagnosticCodesToIgnore: [
+            1308, // 'await' expressions are only allowed at the top level of a file
+            2304, // Cannot find name
+            2307, // Cannot find module
+            2322, // Type 'x' is not assignable to type 'y'
+            2339, // Property does not exist on type
+            2345, // Argument of type 'x' is not assignable to parameter of type 'y'
+            2532, // Object is possibly 'undefined'
+            2554, // Expected N arguments, but got M
+            2580, // Cannot find name 'require'
+            2686, // 'React' refers to a UMD global
+            2693, // 'React' only refers to a type, but is being used as a value here
+            6133, // Variable is declared but never used
+            7016, // Could not find a declaration file for module
+            7027, // Unreachable code detected
+          ],
         });
 
         monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
           noSemanticValidation: false,
           noSyntaxValidation: false,
+          diagnosticCodesToIgnore: [
+            1308, // 'await' expressions are only allowed at the top level of a file
+            2304, // Cannot find name
+            2307, // Cannot find module
+            2322, // Type 'x' is not assignable to type 'y'
+            2339, // Property does not exist on type
+            2345, // Argument of type 'x' is not assignable to parameter of type 'y'
+            2532, // Object is possibly 'undefined'
+            2554, // Expected N arguments, but got M
+            2580, // Cannot find name 'require'
+            2686, // 'React' refers to a UMD global
+            2693, // 'React' only refers to a type, but is being used as a value here
+            6133, // Variable is declared but never used
+            7016, // Could not find a declaration file for module
+            7027, // Unreachable code detected
+          ],
         });
 
         // @ts-ignore - monaco is global from AMD module
@@ -612,12 +676,31 @@ class AIWebEngineEditor {
 
       if (this.monacoEditor) {
         console.log("[Editor] Setting Monaco editor value...");
-        this.monacoEditor.setValue(content);
 
         // Set the correct language based on file extension
         const language = this.getScriptLanguage(scriptName);
-        monaco.editor.setModelLanguage(this.monacoEditor.getModel(), language);
-        console.log("[Editor] Set language to:", language);
+        console.log(
+          "[Editor] Detected language:",
+          language,
+          "for file:",
+          scriptName,
+        );
+
+        // Get current model
+        const currentModel = this.monacoEditor.getModel();
+
+        // Create a new model with the correct language and URI
+        // This helps Monaco properly recognize TypeScript files
+        const uri = monaco.Uri.parse(`file:///${scriptName}`);
+        const newModel = monaco.editor.createModel(content, language, uri);
+
+        // Dispose old model and set new one
+        if (currentModel) {
+          currentModel.dispose();
+        }
+        this.monacoEditor.setModel(newModel);
+
+        console.log("[Editor] Created new model with language:", language);
 
         this.updateSaveButton();
       } else {
