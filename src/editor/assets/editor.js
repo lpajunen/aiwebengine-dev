@@ -359,6 +359,46 @@ class AIWebEngineEditor {
 
       // @ts-ignore - AMD require is loaded via script tag
       require(["vs/editor/editor.main"], () => {
+        // Configure TypeScript compiler options for JSX/TSX support
+        monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+          target: monaco.languages.typescript.ScriptTarget.ESNext,
+          allowNonTsExtensions: true,
+          moduleResolution:
+            monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+          module: monaco.languages.typescript.ModuleKind.CommonJS,
+          noEmit: true,
+          esModuleInterop: true,
+          jsx: monaco.languages.typescript.JsxEmit.React,
+          reactNamespace: "React",
+          allowJs: true,
+          typeRoots: ["node_modules/@types"],
+        });
+
+        monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+          target: monaco.languages.typescript.ScriptTarget.ESNext,
+          allowNonTsExtensions: true,
+          moduleResolution:
+            monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+          module: monaco.languages.typescript.ModuleKind.CommonJS,
+          noEmit: true,
+          esModuleInterop: true,
+          jsx: monaco.languages.typescript.JsxEmit.React,
+          reactNamespace: "React",
+          allowJs: true,
+          typeRoots: ["node_modules/@types"],
+        });
+
+        // Disable diagnostics that might be too strict for the engine environment
+        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+        });
+
+        monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false,
+        });
+
         // @ts-ignore - monaco is global from AMD module
         // Script editor
         this.monacoEditor = monaco.editor.create(
@@ -540,6 +580,22 @@ class AIWebEngineEditor {
   }
 
   /**
+   * Get Monaco language mode from script name
+   * @param {string} scriptName
+   * @returns {string}
+   */
+  getScriptLanguage(scriptName) {
+    const ext = scriptName.substring(scriptName.lastIndexOf(".")).toLowerCase();
+    const languageMap = {
+      ".js": "javascript",
+      ".jsx": "javascript",
+      ".ts": "typescript",
+      ".tsx": "typescript",
+    };
+    return languageMap[ext] || "javascript";
+  }
+
+  /**
    * @param {string} scriptName
    */
   async loadScript(scriptName) {
@@ -557,6 +613,12 @@ class AIWebEngineEditor {
       if (this.monacoEditor) {
         console.log("[Editor] Setting Monaco editor value...");
         this.monacoEditor.setValue(content);
+
+        // Set the correct language based on file extension
+        const language = this.getScriptLanguage(scriptName);
+        monaco.editor.setModelLanguage(this.monacoEditor.getModel(), language);
+        console.log("[Editor] Set language to:", language);
+
         this.updateSaveButton();
       } else {
         console.error("[Editor] Monaco editor not available!");
@@ -1026,7 +1088,9 @@ function init(context) {
       ".md",
       ".txt",
       ".js",
+      ".jsx",
       ".ts",
+      ".tsx",
       ".xml",
       ".csv",
       ".yaml",
@@ -1055,7 +1119,9 @@ function init(context) {
       ".md": "markdown",
       ".txt": "plaintext",
       ".js": "javascript",
+      ".jsx": "javascript",
       ".ts": "typescript",
+      ".tsx": "typescript",
       ".xml": "xml",
       ".yaml": "yaml",
       ".yml": "yaml",
