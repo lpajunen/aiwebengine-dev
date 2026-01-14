@@ -1,4 +1,4 @@
-.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login install outdated format
+.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login install outdated format lint
 
 # Server host configuration (can be overridden via environment variable)
 SERVER_HOST ?= https://softagen.com
@@ -36,3 +36,7 @@ outdated:
 format:
 	./node_modules/.bin/prettier --write "**/*.js" "**/*.ts" "**/*.json" "**/*.md"
 	@echo "✓ JavaScript files formatted"
+
+lint:
+	npm run lint
+	@echo "✓ Markdown files linted"
