@@ -42,6 +42,7 @@ AI Web Engine is a platform for building AI-powered web applications with JavaSc
    ```
 
 3. Configure your environment:
+
    ```bash
    cp .env.example .env
    # Edit .env to configure your server settings

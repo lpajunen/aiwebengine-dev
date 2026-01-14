@@ -6,11 +6,14 @@ Thank you for your interest in contributing! This project is experimental and we
 
 1. Fork the repository on GitHub
 2. Clone your fork locally:
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/aiwebengine-dev.git
    cd aiwebengine-dev
    ```
+
 3. Set up your development environment:
+
    ```bash
    npm install
    cp .env.example .env
@@ -94,6 +97,7 @@ We welcome all kinds of contributions:
 - Use meaningful variable and function names
 - Add JSDoc comments for functions when helpful
 - Run `prettier` to format code:
+
   ```bash
   make format
   # or
