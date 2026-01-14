@@ -4,3 +4,4 @@ schemas/schema.json
 schemas/token.json
 node_modules/
 .env
+.vscode/mcp.json

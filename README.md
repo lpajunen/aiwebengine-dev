@@ -27,12 +27,14 @@ AI Web Engine is a platform for building AI-powered web applications with JavaSc
 ## Installation
 
 1. Clone this repository:
+
    ```bash
    git clone https://github.com/lpajunen/aiwebengine-dev.git
    cd aiwebengine-dev
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    # or

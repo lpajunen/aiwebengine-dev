@@ -4,10 +4,10 @@
 
 This project is currently experimental and under active development. Security updates will be applied to the latest version.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
-| < Latest| :x:                |
+| Version  | Supported          |
+| -------- | ------------------ |
+| Latest   | :white_check_mark: |
+| < Latest | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -81,6 +81,7 @@ When using this toolkit:
 ## Security Updates
 
 Security updates will be announced via:
+
 - GitHub Releases
 - Repository Security Advisories
 - Commit messages tagged with `[SECURITY]`
@@ -88,6 +89,7 @@ Security updates will be announced via:
 ## Questions?
 
 If you have security-related questions that don't involve a vulnerability:
+
 - Open a [Discussion](https://github.com/lpajunen/aiwebengine-dev/discussions)
 - Contact: lpajunen@gmail.com
 

@@ -43,6 +43,7 @@ We welcome all kinds of contributions:
 ### Submitting Changes
 
 1. Create a new branch for your work:
+
    ```bash
    git checkout -b feature/your-feature-name
    # or
@@ -56,6 +57,7 @@ We welcome all kinds of contributions:
    - Update documentation if needed
 
 3. Test your changes:
+
    ```bash
    npm run fetch-types
    npm run fetch-graphql-schema
@@ -63,14 +65,17 @@ We welcome all kinds of contributions:
    ```
 
 4. Commit your changes:
+
    ```bash
    git add .
    git commit -m "Brief description of your changes"
    ```
+
    - Use clear commit messages
    - Reference issue numbers if applicable (e.g., "Fix #123")
 
 5. Push to your fork:
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -106,6 +111,7 @@ We welcome all kinds of contributions:
 ## Environment Variables
 
 When adding new features that require configuration:
+
 - Add variables to `.env.example` with documentation
 - Use sensible defaults in the code
 - Document the variable in README.md
