@@ -207,7 +207,7 @@ mcpRegistry.registerPrompt(
 ### 1. List Available Prompts
 
 ```bash
-curl -X POST https://softagen.com/mcp \
+curl -X POST https://example.com/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -243,7 +243,7 @@ curl -X POST https://softagen.com/mcp \
 ### 2. Get Prompt with Arguments
 
 ```bash
-curl -X POST https://softagen.com/mcp \
+curl -X POST https://example.com/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -289,7 +289,7 @@ curl -X POST https://softagen.com/mcp \
 ### 3. Test Completions
 
 ```bash
-curl -X POST https://softagen.com/mcp \
+curl -X POST https://example.com/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -332,7 +332,7 @@ Configure `.vscode/mcp.json`:
 {
   "mcpServers": {
     "aiwebengine": {
-      "url": "https://softagen.com/mcp"
+      "url": "https://example.com/mcp"
     }
   }
 }
