@@ -571,6 +571,7 @@ If developing locally with VS Code:
 
 1. Create a `README.md` in your scripts directory explaining the aiwebengine APIs
 2. Use Copilot with inline comments:
+
    ```javascript
    // Create a handler that returns a list of users as JSON
    function usersHandler(req) {

@@ -346,19 +346,19 @@ Add to `Makefile`:
 
 # Deploy a single script
 deploy:
-	@deployer --uri "http://localhost:8080/$(PATH)" --file "$(FILE)" --watch false
+    @deployer --uri "http://localhost:8080/$(PATH)" --file "$(FILE)" --watch false
 
 # Deploy and watch
 watch:
-	@deployer --uri "http://localhost:8080/$(PATH)" --file "$(FILE)"
+    @deployer --uri "http://localhost:8080/$(PATH)" --file "$(FILE)"
 
 # Deploy all scripts
 deploy-all:
-	@./deploy.sh
+    @./deploy.sh
 
 # Deploy to production
 deploy-prod:
-	@deployer --server "$(PROD_SERVER)" --uri "$(URI)" --file "$(FILE)" --watch false
+    @deployer --server "$(PROD_SERVER)" --uri "$(URI)" --file "$(FILE)" --watch false
 ```
 
 **Usage:**

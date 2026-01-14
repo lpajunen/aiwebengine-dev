@@ -120,9 +120,11 @@ https://your-domain.com/editor
 #### Method 2: AI Generation
 
 1. Type in AI Assistant panel:
+
    ```
    Create a REST API for managing todo items with CRUD operations
    ```
+
 2. Click **"Ask AI"**
 3. Review generated code in preview
 4. Click **"Preview & Create"**

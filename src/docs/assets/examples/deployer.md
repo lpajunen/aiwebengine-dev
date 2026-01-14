@@ -140,11 +140,11 @@ You can add a task to your VS Code workspace for easy deployment:
 ```makefile
 .PHONY: deploy-blog
 deploy-blog:
-	cargo run --bin deployer --uri "https://example.com/blog" --file "scripts/example_scripts/blog.js"
+    cargo run --bin deployer --uri "https://example.com/blog" --file "scripts/example_scripts/blog.js"
 
 .PHONY: watch-script
 watch-script:
-	cargo run --bin deployer --uri "$(URI)" --file "$(FILE)"
+    cargo run --bin deployer --uri "$(URI)" --file "$(FILE)"
 ```
 
 ## Troubleshooting

@@ -86,6 +86,7 @@ assets/
 
 2. Upload via editor
 3. Use in your scripts:
+
    ```javascript
    function pageHandler(req) {
      return {
