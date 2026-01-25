@@ -6,6 +6,7 @@
     "fetch-openapi": "mkdir -p apis && curl ${SERVER_HOST:-https://softagen.com}/engine/openapi.json -o apis/openapi.json && echo '✓ OpenAPI description downloaded to apis/openapi.json'",
     "fetch-graphql-schema": "mkdir -p schemas && node scripts/fetch-graphql-schema.js && echo '✓ GraphQL schema downloaded to schemas/schema.json'",
     "oauth-login": "node scripts/oauth_pkce_token.js",
+    "upload-editor": "node scripts/upload-editor.js",
     "install": "npm install && echo '✓ Dependencies installed'",
     "outdated": "npm outdated || echo '✓ Checked for outdated packages'",
     "format": "prettier --write \"**/*.js\" \"**/*.ts\" \"**/*.json\" \"**/*.md\" && echo '✓ JavaScript files formatted'",

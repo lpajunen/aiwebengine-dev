@@ -1,5 +1,7 @@
 /// <reference path="../../types/aiwebengine-priv.d.ts" />
 
+// huuhaa
+
 // Simple aiwebengine Editor script
 // This script provides basic editor functionality
 
@@ -1773,6 +1775,238 @@ function apiListRoutes(context) {
   }
 }
 
+// Tool definitions for AI Assistant
+function getAIAssistantTools() {
+  return [
+    {
+      name: "explain_only",
+      description:
+        "Provide an explanation or answer without performing any operations. Use this when the user is asking questions or needs information rather than code changes.",
+      input_schema: {
+        type: "object",
+        properties: {
+          explanation: {
+            type: "string",
+            description:
+              "The detailed explanation or answer to provide to the user",
+          },
+        },
+        required: ["explanation"],
+      },
+    },
+    {
+      name: "create_script",
+      description:
+        "Create a new JavaScript script file. Scripts are server-side code that handle HTTP requests using the routeRegistry API.",
+      input_schema: {
+        type: "object",
+        properties: {
+          script_name: {
+            type: "string",
+            description: "The name of the script file (e.g., 'hello-world.js')",
+          },
+          code: {
+            type: "string",
+            description:
+              "The complete JavaScript code for the script, including init() function",
+          },
+          message: {
+            type: "string",
+            description: "A brief explanation of what this script does",
+          },
+        },
+        required: ["script_name", "code", "message"],
+      },
+    },
+    {
+      name: "edit_script",
+      description:
+        "Modify an existing JavaScript script file. REQUIRES USER CONFIRMATION before execution.",
+      input_schema: {
+        type: "object",
+        properties: {
+          script_name: {
+            type: "string",
+            description: "The name of the script file to edit",
+          },
+          original_code: {
+            type: "string",
+            description: "The original code section being replaced",
+          },
+          code: {
+            type: "string",
+            description: "The new complete JavaScript code for the script",
+          },
+          message: {
+            type: "string",
+            description: "A brief explanation of what changes were made",
+          },
+        },
+        required: ["script_name", "original_code", "code", "message"],
+      },
+    },
+    {
+      name: "delete_script",
+      description:
+        "Delete an existing JavaScript script file. REQUIRES USER CONFIRMATION before execution.",
+      input_schema: {
+        type: "object",
+        properties: {
+          script_name: {
+            type: "string",
+            description: "The name of the script file to delete",
+          },
+          message: {
+            type: "string",
+            description:
+              "A brief explanation of why this script should be deleted",
+          },
+        },
+        required: ["script_name", "message"],
+      },
+    },
+    {
+      name: "create_asset",
+      description:
+        "Create a new asset file (CSS, SVG, HTML, JSON, etc.). Assets are static files served to clients.",
+      input_schema: {
+        type: "object",
+        properties: {
+          asset_path: {
+            type: "string",
+            description:
+              "The path for the asset file (e.g., '/styles/main.css', '/icons/logo.svg')",
+          },
+          code: {
+            type: "string",
+            description: "The complete content for the asset file",
+          },
+          message: {
+            type: "string",
+            description: "A brief explanation of what this asset is for",
+          },
+        },
+        required: ["asset_path", "code", "message"],
+      },
+    },
+    {
+      name: "edit_asset",
+      description:
+        "Modify an existing asset file. REQUIRES USER CONFIRMATION before execution.",
+      input_schema: {
+        type: "object",
+        properties: {
+          asset_path: {
+            type: "string",
+            description: "The path of the asset file to edit",
+          },
+          original_code: {
+            type: "string",
+            description: "The original content section being replaced",
+          },
+          code: {
+            type: "string",
+            description: "The new complete content for the asset file",
+          },
+          message: {
+            type: "string",
+            description: "A brief explanation of what changes were made",
+          },
+        },
+        required: ["asset_path", "original_code", "code", "message"],
+      },
+    },
+    {
+      name: "delete_asset",
+      description:
+        "Delete an existing asset file. REQUIRES USER CONFIRMATION before execution.",
+      input_schema: {
+        type: "object",
+        properties: {
+          asset_path: {
+            type: "string",
+            description: "The path of the asset file to delete",
+          },
+          message: {
+            type: "string",
+            description:
+              "A brief explanation of why this asset should be deleted",
+          },
+        },
+        required: ["asset_path", "message"],
+      },
+    },
+  ];
+}
+
+// Check if a tool requires user confirmation
+function toolRequiresConfirmation(toolName) {
+  return [
+    "edit_script",
+    "delete_script",
+    "edit_asset",
+    "delete_asset",
+  ].includes(toolName);
+}
+
+// Execute a tool and return the result
+function executeAITool(toolName, toolInput) {
+  try {
+    switch (toolName) {
+      case "explain_only":
+        return { success: true, message: toolInput.explanation };
+
+      case "create_script":
+        // Tool execution is handled by client after confirmation/preview
+        return {
+          success: true,
+          message: `Script '${toolInput.script_name}' ready to create`,
+          requires_client_action: true,
+        };
+
+      case "edit_script":
+        return {
+          success: true,
+          message: `Script '${toolInput.script_name}' ready to edit`,
+          requires_client_action: true,
+        };
+
+      case "delete_script":
+        return {
+          success: true,
+          message: `Script '${toolInput.script_name}' ready to delete`,
+          requires_client_action: true,
+        };
+
+      case "create_asset":
+        return {
+          success: true,
+          message: `Asset '${toolInput.asset_path}' ready to create`,
+          requires_client_action: true,
+        };
+
+      case "edit_asset":
+        return {
+          success: true,
+          message: `Asset '${toolInput.asset_path}' ready to edit`,
+          requires_client_action: true,
+        };
+
+      case "delete_asset":
+        return {
+          success: true,
+          message: `Asset '${toolInput.asset_path}' ready to delete`,
+          requires_client_action: true,
+        };
+
+      default:
+        return { success: false, error: `Unknown tool: ${toolName}` };
+    }
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
 // API: AI Assistant prompt handler
 function apiAIAssistant(context) {
   const req = getRequest(context);
@@ -2397,6 +2631,225 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
   }
 }
 
+// API: AI Assistant with tool calling support
+function apiAIAssistantWithTools(context) {
+  const req = getRequest(context);
+  const body = JSON.parse(req.body || "{}");
+
+  const sessionId = body.sessionId || "";
+  const messages = body.messages || [];
+  const currentScript = body.currentScript || null;
+  const currentAsset = body.currentAsset || null;
+  const maxTurns = 10;
+
+  console.log(
+    `AI Assistant (Tools): Session ${sessionId}, ${messages.length} messages`,
+  );
+
+  // Check turn limit
+  const userMessageCount = messages.filter((m) => m.role === "user").length;
+  if (userMessageCount >= maxTurns) {
+    return {
+      status: 429,
+      body: JSON.stringify({
+        success: false,
+        error: `Turn limit reached (${maxTurns} turns per session)`,
+      }),
+      contentType: "application/json",
+    };
+  }
+
+  // Check if Anthropic API key is configured
+  if (!secretStorage.exists("anthropic_api_key")) {
+    return {
+      status: 400,
+      body: JSON.stringify({
+        success: false,
+        error: "Anthropic API key not configured",
+      }),
+      contentType: "application/json",
+    };
+  }
+
+  // Build system prompt with API documentation (simplified version)
+  const systemPrompt = `You are an AI assistant helping users create and modify server-side JavaScript scripts and assets for the AIWebEngine platform.
+
+AVAILABLE TOOLS:
+- explain_only: Provide explanations without performing operations
+- create_script: Create new JavaScript script files
+- edit_script: Modify existing scripts (requires user confirmation)
+- delete_script: Delete scripts (requires user confirmation)
+- create_asset: Create new asset files (CSS, SVG, HTML, etc.)
+- edit_asset: Modify existing assets (requires user confirmation)
+- delete_asset: Delete assets (requires user confirmation)
+
+IMPORTANT CONCEPTS:
+1. Scripts are SERVER-SIDE JavaScript that handle HTTP requests
+2. Use routeRegistry.registerRoute() to map URLs to handler functions
+3. Always include init() function that registers at least one route
+4. Use Response builders: ResponseBuilder.json(), ResponseBuilder.html(), etc.
+5. Assets are static files (CSS, SVG, HTML, JSON) served to clients
+6. Asset paths must start with / (e.g., "/styles/main.css")
+
+CURRENT CONTEXT:`;
+
+  let contextInfo = "";
+  if (currentScript) {
+    contextInfo += `\nCurrent Script: ${currentScript}`;
+  }
+  if (currentAsset) {
+    contextInfo += `\nCurrent Asset: ${currentAsset}`;
+  }
+
+  // Add available scripts/assets
+  try {
+    const scriptsJson = scriptStorage.listScripts
+      ? scriptStorage.listScripts()
+      : "[]";
+    const scripts = JSON.parse(scriptsJson).map((m) => m.uri);
+    if (scripts.length > 0) {
+      contextInfo += `\nAvailable Scripts: ${scripts.join(", ")}`;
+    }
+  } catch (e) {
+    console.log("Could not list scripts: " + e);
+  }
+
+  try {
+    const assetsJson = assetStorage.listAssets
+      ? assetStorage.listAssets()
+      : "[]";
+    const assets = JSON.parse(assetsJson).map((a) => a.name);
+    if (assets.length > 0) {
+      contextInfo += `\nAvailable Assets: ${assets.join(", ")}`;
+    }
+  } catch (e) {
+    console.log("Could not list assets: " + e);
+  }
+
+  const fullSystemPrompt = systemPrompt + contextInfo;
+
+  try {
+    // Make request to Anthropic API with tools
+    const options = JSON.stringify({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": "{{secret:anthropic_api_key}}",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-haiku-20241022",
+        max_tokens: 8192,
+        system: fullSystemPrompt,
+        messages: messages,
+        tools: getAIAssistantTools(),
+      }),
+    });
+
+    const responseJson = /** @type {string} */ (
+      /** @type {unknown} */ (
+        fetch("https://api.anthropic.com/v1/messages", options)
+      )
+    );
+    const response = JSON.parse(responseJson);
+
+    if (response.ok) {
+      const data = JSON.parse(response.body);
+
+      console.log(`AI Assistant (Tools): Stop reason: ${data.stop_reason}`);
+
+      // Process response content blocks
+      const textBlocks = [];
+      const toolUseBlocks = [];
+
+      for (let i = 0; i < data.content.length; i++) {
+        const block = data.content[i];
+        if (block.type === "text") {
+          textBlocks.push(block.text);
+        } else if (block.type === "tool_use") {
+          toolUseBlocks.push(block);
+        }
+      }
+
+      // If there are tool uses, process them
+      let toolResults = [];
+      let needsConfirmation = false;
+
+      for (let i = 0; i < toolUseBlocks.length; i++) {
+        const toolUse = toolUseBlocks[i];
+        const toolName = toolUse.name;
+        const toolInput = toolUse.input;
+
+        console.log(`AI Assistant (Tools): Tool requested: ${toolName}`);
+
+        // Check if this tool requires confirmation
+        if (toolRequiresConfirmation(toolName)) {
+          needsConfirmation = true;
+          toolResults.push({
+            tool_use_id: toolUse.id,
+            tool_name: toolName,
+            tool_input: toolInput,
+            requires_confirmation: true,
+          });
+        } else {
+          // Execute non-destructive tools immediately
+          const result = executeAITool(toolName, toolInput);
+          toolResults.push({
+            tool_use_id: toolUse.id,
+            tool_name: toolName,
+            tool_input: toolInput,
+            result: result,
+          });
+        }
+      }
+
+      return {
+        status: 200,
+        body: JSON.stringify({
+          success: true,
+          text: textBlocks.join("\n"),
+          tool_uses: toolResults,
+          needs_confirmation: needsConfirmation,
+          stop_reason: data.stop_reason,
+          model: data.model,
+          usage: data.usage,
+        }),
+        contentType: "application/json",
+      };
+    } else {
+      console.log(
+        `AI Assistant (Tools): API error - Status: ${response.status}`,
+      );
+      let errorMessage = "API request failed";
+      try {
+        const errorData = JSON.parse(response.body);
+        errorMessage =
+          errorData.error?.message || errorData.message || errorMessage;
+      } catch (e) {}
+
+      return {
+        status: response.status,
+        body: JSON.stringify({
+          success: false,
+          error: errorMessage,
+        }),
+        contentType: "application/json",
+      };
+    }
+  } catch (error) {
+    console.log(`AI Assistant (Tools): Error - ${error}`);
+    return {
+      status: 500,
+      body: JSON.stringify({
+        success: false,
+        error: "Internal error",
+        message: String(error),
+      }),
+      contentType: "application/json",
+    };
+  }
+}
+
 // Initialization function
 function init(context) {
   console.log("Initializing editor.js at " + new Date().toISOString());
@@ -2436,6 +2889,11 @@ function init(context) {
   routeRegistry.registerRoute("/api/assets/*", "apiDeleteAsset", "DELETE");
   routeRegistry.registerRoute("/api/routes", "apiListRoutes", "GET");
   routeRegistry.registerRoute("/api/ai-assistant", "apiAIAssistant", "POST");
+  routeRegistry.registerRoute(
+    "/api/ai-assistant/tools",
+    "apiAIAssistantWithTools",
+    "POST",
+  );
   console.log("Editor endpoints registered");
   return { success: true };
 }

@@ -46,6 +46,13 @@ class AIWebEngineEditor {
     this.currentFilter = "all";
     this.scriptsData = [];
     this.currentUserId = null;
+
+    // AI Assistant session management
+    /** @type {{id: string, turnCount: number, messages: any[], maxTurns: number} | null} */
+    this.currentAISession = null;
+    /** @type {{toolName: string, toolInput: any, toolUseId: string} | null} */
+    this.pendingToolExecution = null;
+
     this.init();
   }
 
@@ -1913,6 +1920,58 @@ function init(context) {
   }
 
   // AI Assistant Methods
+
+  /**
+   * Initialize or reset AI session
+   */
+  initAISession() {
+    this.currentAISession = {
+      id: crypto.randomUUID(),
+      turnCount: 0,
+      messages: [],
+      maxTurns: 10,
+    };
+    this.pendingToolExecution = null;
+    console.log(`AI Session initialized: ${this.currentAISession.id}`);
+  }
+
+  /**
+   * Add message to current session
+   * @param {string} role - "user" or "assistant"
+   * @param {any} content - Message content
+   */
+  addMessageToSession(role, content) {
+    if (!this.currentAISession) {
+      this.initAISession();
+    }
+
+    if (this.currentAISession) {
+      this.currentAISession.messages.push({ role, content });
+
+      if (role === "user") {
+        this.currentAISession.turnCount++;
+      }
+    }
+  }
+
+  /**
+   * Check if turn limit is reached
+   * @returns {boolean}
+   */
+  isTurnLimitReached() {
+    if (!this.currentAISession) return false;
+    return this.currentAISession.turnCount >= this.currentAISession.maxTurns;
+  }
+
+  /**
+   * Get turn counter display text
+   * @returns {string}
+   */
+  getTurnCounterText() {
+    if (!this.currentAISession) return "";
+    return `Turn ${this.currentAISession.turnCount}/${this.currentAISession.maxTurns}`;
+  }
+
   toggleAIAssistant() {
     const aiAssistant = document.querySelector(".ai-assistant");
     const toggleBtn = document.getElementById("toggle-ai-assistant");
@@ -1929,6 +1988,378 @@ function init(context) {
   }
 
   async submitAIPrompt() {
+    const promptInput = /** @type {HTMLInputElement | null} */ (
+      document.getElementById("ai-prompt")
+    );
+    const responseDiv = document.getElementById("ai-response");
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (
+      document.getElementById("submit-prompt-btn")
+    );
+
+    if (!promptInput || !responseDiv || !submitBtn) return;
+
+    const prompt = promptInput.value.trim();
+
+    if (!prompt) {
+      this.showStatus("Please enter a prompt", "error");
+      return;
+    }
+
+    // Initialize session if needed
+    if (!this.currentAISession) {
+      this.initAISession();
+    }
+
+    // Check turn limit
+    if (this.isTurnLimitReached()) {
+      this.showStatus("Turn limit reached. Start a new session.", "error");
+      responseDiv.innerHTML = `
+        <div class="ai-response-content">
+          <p style="color: var(--warning-color);"><strong>Turn Limit Reached</strong></p>
+          <p>You've reached the maximum of ${this.currentAISession?.maxTurns} turns in this conversation.</p>
+          <button class="btn btn-primary" onclick="window.editor.startNewAISession()">Start New Session</button>
+        </div>
+      `;
+      return;
+    }
+
+    // Clear input and disable button
+    promptInput.value = "";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Processing...";
+
+    // Show loading state
+    responseDiv.innerHTML =
+      '<p class="ai-placeholder">🤖 Processing your request...</p>';
+    responseDiv.classList.add("loading");
+
+    try {
+      await this.sendAIPromptWithTools(prompt);
+    } catch (error) {
+      const err = /** @type {Error} */ (error);
+      responseDiv.classList.remove("loading");
+      responseDiv.innerHTML = `
+        <p style="color: var(--danger-color);">
+          <strong>Error:</strong> ${this.escapeHtml(err.message)}
+        </p>
+      `;
+      this.showStatus("Failed to get AI response", "error");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit";
+    }
+  }
+
+  /**
+   * Send prompt using the new tool calling API
+   * @param {string} userPrompt
+   */
+  async sendAIPromptWithTools(userPrompt) {
+    const responseDiv = document.getElementById("ai-response");
+    if (!responseDiv || !this.currentAISession) return;
+
+    // Include current context in the user message
+    let contextualContent = userPrompt;
+    if (this.currentScript && this.monacoEditor) {
+      const content = this.monacoEditor.getValue();
+      contextualContent += `\n\nCurrent Script: ${this.currentScript}\n\`\`\`javascript\n${content}\n\`\`\``;
+    } else if (
+      this.currentAsset &&
+      this.monacoAssetEditor &&
+      this.isTextAsset(this.currentAsset)
+    ) {
+      const content = this.monacoAssetEditor.getValue();
+      contextualContent += `\n\nCurrent Asset: ${this.currentAsset}\n\`\`\`\n${content}\n\`\`\``;
+    }
+
+    // Add user message to session
+    this.addMessageToSession("user", contextualContent);
+
+    // Call the API
+    const response = await fetch("/api/ai-assistant/tools", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: this.currentAISession.id,
+        messages: this.currentAISession.messages,
+        currentScript: this.currentScript,
+        currentAsset: this.currentAsset,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Add assistant response to session
+    const assistantContent = [];
+    if (data.text) {
+      assistantContent.push({ type: "text", text: data.text });
+    }
+    if (data.tool_uses) {
+      for (const toolUse of data.tool_uses) {
+        assistantContent.push({
+          type: "tool_use",
+          id: toolUse.tool_use_id,
+          name: toolUse.tool_name,
+          input: toolUse.tool_input,
+        });
+      }
+    }
+    this.addMessageToSession("assistant", assistantContent);
+
+    // Display the response
+    responseDiv.classList.remove("loading");
+
+    if (
+      data.needs_confirmation &&
+      data.tool_uses &&
+      data.tool_uses.length > 0
+    ) {
+      // Show tool confirmation UI
+      await this.showToolConfirmation(data.tool_uses[0], data.text);
+    } else if (data.tool_uses && data.tool_uses.length > 0) {
+      // Tool was executed, continue conversation if needed
+      await this.handleToolExecution(data.tool_uses[0]);
+    } else {
+      // Just text response
+      this.displayAIMessage(data.text, userPrompt);
+    }
+
+    this.showStatus("AI response received", "success");
+  }
+
+  /**
+   * Show tool confirmation modal
+   * @param {{tool_use_id: string, tool_name: string, tool_input: any, requires_confirmation: boolean}} toolUse
+   * @param {string} aiText
+   */
+  async showToolConfirmation(toolUse, aiText) {
+    const responseDiv = document.getElementById("ai-response");
+    if (!responseDiv) return;
+
+    const { tool_name, tool_input, tool_use_id } = toolUse;
+
+    // Store for later execution
+    this.pendingToolExecution = {
+      toolName: tool_name,
+      toolInput: tool_input,
+      toolUseId: tool_use_id,
+    };
+
+    let html = `
+      <div class="ai-response-content">
+        <p><strong>🛠️ Tool Request:</strong> ${tool_name.replace(/_/g, " ").toUpperCase()}</p>
+        ${aiText ? `<p>${this.escapeHtml(aiText)}</p>` : ""}
+        <hr style="border-color: var(--border-color); margin: 10px 0;">
+    `;
+
+    // Show tool details based on type
+    if (tool_name === "edit_script" || tool_name === "create_script") {
+      html += `
+        <p><strong>Script:</strong> <code>${this.escapeHtml(tool_input.script_name)}</code></p>
+        <p><strong>Message:</strong> ${this.escapeHtml(tool_input.message)}</p>
+        <div class="ai-code-preview">
+          <pre><code>${this.escapeHtml(tool_input.code.substring(0, 300))}${tool_input.code.length > 300 ? "..." : ""}</code></pre>
+        </div>
+        <div class="ai-action-buttons">
+          <button class="btn btn-primary" onclick="window.editor.approveToolExecution()">Preview & Approve</button>
+          <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+        </div>
+      `;
+    } else if (tool_name === "delete_script") {
+      html += `
+        <p><strong>Script:</strong> <code>${this.escapeHtml(tool_input.script_name)}</code></p>
+        <p><strong>Message:</strong> ${this.escapeHtml(tool_input.message)}</p>
+        <div class="ai-action-buttons">
+          <button class="btn btn-danger" onclick="window.editor.approveToolExecution()">Confirm Delete</button>
+          <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+        </div>
+      `;
+    } else if (tool_name === "edit_asset" || tool_name === "create_asset") {
+      html += `
+        <p><strong>Asset:</strong> <code>${this.escapeHtml(tool_input.asset_path)}</code></p>
+        <p><strong>Message:</strong> ${this.escapeHtml(tool_input.message)}</p>
+        <div class="ai-code-preview">
+          <pre><code>${this.escapeHtml(tool_input.code.substring(0, 300))}${tool_input.code.length > 300 ? "..." : ""}</code></pre>
+        </div>
+        <div class="ai-action-buttons">
+          <button class="btn btn-primary" onclick="window.editor.approveToolExecution()">Preview & Approve</button>
+          <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+        </div>
+      `;
+    } else if (tool_name === "delete_asset") {
+      html += `
+        <p><strong>Asset:</strong> <code>${this.escapeHtml(tool_input.asset_path)}</code></p>
+        <p><strong>Message:</strong> ${this.escapeHtml(tool_input.message)}</p>
+        <div class="ai-action-buttons">
+          <button class="btn btn-danger" onclick="window.editor.approveToolExecution()">Confirm Delete</button>
+          <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+        </div>
+      `;
+    }
+
+    html += `
+        <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+          ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+        </p>
+      </div>
+    `;
+
+    responseDiv.innerHTML = html;
+  }
+
+  /**
+   * Approve and execute pending tool
+   */
+  async approveToolExecution() {
+    if (!this.pendingToolExecution) return;
+
+    const { toolName, toolInput } = this.pendingToolExecution;
+
+    // Use existing UI flow for preview/confirmation
+    if (toolName === "create_script") {
+      await this.showDiffModal(
+        toolInput.script_name,
+        "",
+        toolInput.code,
+        toolInput.message,
+        "create",
+        "script",
+      );
+    } else if (toolName === "edit_script") {
+      await this.showDiffModal(
+        toolInput.script_name,
+        toolInput.original_code || "",
+        toolInput.code,
+        toolInput.message,
+        "edit",
+        "script",
+      );
+    } else if (toolName === "delete_script") {
+      this.confirmDeleteScript(toolInput.script_name, toolInput.message);
+    } else if (toolName === "create_asset") {
+      await this.showDiffModal(
+        toolInput.asset_path,
+        "",
+        toolInput.code,
+        toolInput.message,
+        "create",
+        "asset",
+      );
+    } else if (toolName === "edit_asset") {
+      await this.showDiffModal(
+        toolInput.asset_path,
+        toolInput.original_code || "",
+        toolInput.code,
+        toolInput.message,
+        "edit",
+        "asset",
+      );
+    } else if (toolName === "delete_asset") {
+      this.confirmDeleteAsset(toolInput.asset_path, toolInput.message);
+    }
+
+    this.pendingToolExecution = null;
+  }
+
+  /**
+   * Reject pending tool execution
+   */
+  rejectToolExecution() {
+    if (!this.pendingToolExecution || !this.currentAISession) return;
+
+    const { toolUseId } = this.pendingToolExecution;
+
+    // Add tool result with cancellation message
+    this.currentAISession.messages.push({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: toolUseId,
+          content: "User cancelled the operation",
+        },
+      ],
+    });
+
+    this.pendingToolExecution = null;
+
+    const responseDiv = document.getElementById("ai-response");
+    if (responseDiv) {
+      responseDiv.innerHTML = `
+        <div class="ai-response-content">
+          <p>Operation cancelled. You can ask me to do something else.</p>
+        </div>
+      `;
+    }
+
+    this.showStatus("Operation cancelled", "info");
+  }
+
+  /**
+   * Handle tool execution (for non-confirmation tools)
+   * @param {{tool_use_id: string, tool_name: string, tool_input: any, result: any}} toolExecution
+   */
+  async handleToolExecution(toolExecution) {
+    // For now, just display the result
+    const responseDiv = document.getElementById("ai-response");
+    if (!responseDiv) return;
+
+    responseDiv.innerHTML = `
+      <div class="ai-response-content">
+        <p><strong>Tool Executed:</strong> ${toolExecution.tool_name}</p>
+        <p>${this.escapeHtml(toolExecution.result.message || "Tool executed successfully")}</p>
+        <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+          ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+        </p>
+      </div>
+    `;
+  }
+
+  /**
+   * Display a simple AI message
+   * @param {string} text
+   * @param {string} userPrompt
+   */
+  displayAIMessage(text, userPrompt) {
+    const responseDiv = document.getElementById("ai-response");
+    if (!responseDiv) return;
+
+    responseDiv.innerHTML = `
+      <div class="ai-response-content">
+        <p><strong>You asked:</strong> ${this.escapeHtml(userPrompt)}</p>
+        <hr style="border-color: var(--border-color); margin: 10px 0;">
+        <div class="ai-response-text">${this.escapeHtml(text)}</div>
+        <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+          ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+        </p>
+      </div>
+    `;
+  }
+
+  /**
+   * Start a new AI session
+   */
+  startNewAISession() {
+    this.initAISession();
+    const responseDiv = document.getElementById("ai-response");
+    if (responseDiv) {
+      responseDiv.innerHTML = `
+        <div class="ai-response-content">
+          <p style="color: var(--success-color);">✓ New session started</p>
+          <p>Ask me anything about creating or modifying scripts and assets.</p>
+        </div>
+      `;
+    }
+    this.showStatus("New AI session started", "success");
+  }
+
+  async submitAIPromptOld() {
     const promptInput = /** @type {HTMLInputElement | null} */ (
       document.getElementById("ai-prompt")
     );

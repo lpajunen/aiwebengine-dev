@@ -1,4 +1,4 @@
-.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login install outdated format lint
+.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login upload-editor install outdated format lint
 
 # Server host configuration (can be overridden via environment variable)
 export SERVER_HOST ?= https://softagen.com
@@ -18,6 +18,9 @@ fetch-graphql-schema:
 
 oauth-login:
 	npm run oauth-login
+
+upload-editor:
+	npm run upload-editor
 
 install:
 	npm run install
