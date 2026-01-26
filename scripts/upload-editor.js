@@ -114,9 +114,13 @@ function getMimeType(filename) {
 
 /**
  * Upload an asset file
+ * Note: Assets are stored by name (e.g., "editor.css") in the new system.
+ * The API accepts publicPath for backwards compatibility, but it converts
+ * it to an asset name. Assets must be registered to HTTP paths using
+ * routeRegistry.registerAssetRoute() in the script's init() function.
  * @param {string} token
- * @param {string} assetName
- * @param {string} assetPath
+ * @param {string} assetName - The asset name (e.g., "editor.css")
+ * @param {string} assetPath - Local file path to read
  */
 async function uploadAsset(token, assetName, assetPath) {
   const content = await fs.promises.readFile(assetPath);
@@ -132,7 +136,7 @@ async function uploadAsset(token, assetName, assetPath) {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      publicPath: `/${assetName}`,
+      publicPath: `/${assetName}`, // API converts this to asset name (removes leading slash)
       mimetype: mimetype,
       content: base64Content,
     }),

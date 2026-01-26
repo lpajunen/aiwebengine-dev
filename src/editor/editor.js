@@ -1,7 +1,5 @@
 /// <reference path="../../types/aiwebengine-priv.d.ts" />
 
-// huuhaa
-
 // Simple aiwebengine Editor script
 // This script provides basic editor functionality
 
@@ -1584,7 +1582,10 @@ function apiSaveAsset(context) {
       };
     }
 
-    // Extract asset name from path (remove leading slash)
+    // NEW ASSET SYSTEM: Assets are stored by name (not by HTTP path)
+    // The publicPath from the request is converted to an asset name
+    // by removing the leading slash. Assets should be registered to
+    // HTTP paths using routeRegistry.registerAssetRoute() in init()
     let assetName = publicPath;
     if (assetName.startsWith("/")) {
       assetName = assetName.substring(1);
@@ -1604,15 +1605,17 @@ function apiSaveAsset(context) {
 
       if (scriptUri && typeof assetStorage.upsertAssetForUri === "function") {
         // Use privileged upsertAssetForUri for cross-script access
+        // New API: (scriptUri, assetName, contentBase64, mimetype)
         result = assetStorage.upsertAssetForUri(
           scriptUri,
           assetName,
-          mimetype,
           content,
+          mimetype,
         );
       } else if (typeof assetStorage.upsertAsset === "function") {
         // Fall back to current script's asset
-        result = assetStorage.upsertAsset(assetName, mimetype, content);
+        // New API: (assetName, contentBase64, mimetype)
+        result = assetStorage.upsertAsset(assetName, content, mimetype);
       } else {
         return {
           status: 500,
@@ -1868,14 +1871,14 @@ function getAIAssistantTools() {
     {
       name: "create_asset",
       description:
-        "Create a new asset file (CSS, SVG, HTML, JSON, etc.). Assets are static files served to clients.",
+        "Create a new asset file (CSS, SVG, HTML, JSON, etc.). Assets are static files served to clients. Note: Assets are stored by name (e.g., 'logo.svg', 'main.css') and must be registered to HTTP paths using routeRegistry.registerAssetRoute().",
       input_schema: {
         type: "object",
         properties: {
           asset_path: {
             type: "string",
             description:
-              "The path for the asset file (e.g., '/styles/main.css', '/icons/logo.svg')",
+              "The asset name (e.g., 'main.css', 'logo.svg'). Do not include path separators. The asset will be registered to an HTTP path in the script's init() function.",
           },
           code: {
             type: "string",
@@ -1892,13 +1895,14 @@ function getAIAssistantTools() {
     {
       name: "edit_asset",
       description:
-        "Modify an existing asset file. REQUIRES USER CONFIRMATION before execution.",
+        "Modify an existing asset file. REQUIRES USER CONFIRMATION before execution. Note: Assets are stored by name (e.g., 'logo.svg', 'main.css') not by HTTP path.",
       input_schema: {
         type: "object",
         properties: {
           asset_path: {
             type: "string",
-            description: "The path of the asset file to edit",
+            description:
+              "The asset name (e.g., 'main.css', 'logo.svg'). This is the name used to store the asset, not the HTTP path.",
           },
           original_code: {
             type: "string",
@@ -1919,13 +1923,14 @@ function getAIAssistantTools() {
     {
       name: "delete_asset",
       description:
-        "Delete an existing asset file. REQUIRES USER CONFIRMATION before execution.",
+        "Delete an existing asset file. REQUIRES USER CONFIRMATION before execution. Note: Assets are stored by name (e.g., 'logo.svg', 'main.css') not by HTTP path.",
       input_schema: {
         type: "object",
         properties: {
           asset_path: {
             type: "string",
-            description: "The path of the asset file to delete",
+            description:
+              "The asset name (e.g., 'main.css', 'logo.svg'). This is the name used to store the asset, not the HTTP path.",
           },
           message: {
             type: "string",
@@ -2688,8 +2693,10 @@ IMPORTANT CONCEPTS:
 2. Use routeRegistry.registerRoute() to map URLs to handler functions
 3. Always include init() function that registers at least one route
 4. Use Response builders: ResponseBuilder.json(), ResponseBuilder.html(), etc.
-5. Assets are static files (CSS, SVG, HTML, JSON) served to clients
-6. Asset paths must start with / (e.g., "/styles/main.css")
+5. Assets are stored by NAME (e.g., "logo.svg", "main.css") not by HTTP path
+6. Assets must be registered to HTTP paths using routeRegistry.registerAssetRoute(path, assetName)
+7. Same asset can be served at multiple HTTP paths via multiple registrations
+8. Asset names should NOT include path separators (no / in names)
 
 CURRENT CONTEXT:`;
 
