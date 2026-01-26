@@ -129,14 +129,15 @@ async function uploadAsset(token, assetName, assetPath) {
 
   console.log(`Uploading asset ${assetName} (${content.length} bytes)...`);
 
-  const response = await fetch(`${serverHost}/api/assets`, {
+  const scriptUri = encodeURIComponent("https://example.com/editor");
+  const response = await fetch(`${serverHost}/assets?script=${scriptUri}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      publicPath: `/${assetName}`, // API converts this to asset name (removes leading slash)
+      asset: assetName, // Asset name without leading slash
       mimetype: mimetype,
       content: base64Content,
     }),

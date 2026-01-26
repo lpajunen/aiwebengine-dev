@@ -2095,6 +2095,9 @@ function init(context) {
 
     const data = await response.json();
 
+    console.log("AI Response data:", data);
+    console.log("data.tool_uses:", data.tool_uses);
+
     // Add assistant response to session
     const assistantContent = [];
     if (data.text) {
@@ -2115,17 +2118,23 @@ function init(context) {
     // Display the response
     responseDiv.classList.remove("loading");
 
+    console.log("data.needs_confirmation:", data.needs_confirmation);
+    console.log("Checking tool_uses length:", data.tool_uses?.length);
+
     if (
       data.needs_confirmation &&
       data.tool_uses &&
       data.tool_uses.length > 0
     ) {
+      console.log("Taking showToolConfirmation path");
       // Show tool confirmation UI
       await this.showToolConfirmation(data.tool_uses[0], data.text);
     } else if (data.tool_uses && data.tool_uses.length > 0) {
+      console.log("Taking handleToolExecution path with:", data.tool_uses[0]);
       // Tool was executed, continue conversation if needed
       await this.handleToolExecution(data.tool_uses[0]);
     } else {
+      console.log("Taking displayAIMessage path");
       // Just text response
       this.displayAIMessage(data.text, userPrompt);
     }
@@ -2306,10 +2315,77 @@ function init(context) {
    * @param {{tool_use_id: string, tool_name: string, tool_input: any, result: any}} toolExecution
    */
   async handleToolExecution(toolExecution) {
-    // For now, just display the result
     const responseDiv = document.getElementById("ai-response");
     if (!responseDiv) return;
 
+    // Debug logging
+    console.log("handleToolExecution called with:", toolExecution);
+    console.log("toolExecution.result:", toolExecution.result);
+    console.log("requires_client_action:", toolExecution.result?.requires_client_action);
+
+    // Check if tool result requires client action (diff preview, etc.)
+    if (toolExecution.result && toolExecution.result.requires_client_action) {
+      // Store the tool execution for approval flow
+      this.pendingToolExecution = {
+        toolName: toolExecution.tool_name,
+        toolInput: toolExecution.tool_input,
+        toolUseId: toolExecution.tool_use_id,
+      };
+
+      // Show the appropriate UI based on tool type
+      const { tool_name, tool_input } = toolExecution;
+
+      if (tool_name === "create_script" || tool_name === "edit_script") {
+        // Show preview button for script operations
+        responseDiv.innerHTML = `
+          <div class="ai-response-content">
+            <p><strong>✓ Ready:</strong> ${this.escapeHtml(toolExecution.result.message)}</p>
+            <div class="ai-action-buttons">
+              <button class="btn btn-primary" onclick="window.editor.approveToolExecution()">Preview & Apply</button>
+              <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+              ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+            </p>
+          </div>
+        `;
+      } else if (tool_name === "create_asset" || tool_name === "edit_asset") {
+        // Show preview button for asset operations
+        responseDiv.innerHTML = `
+          <div class="ai-response-content">
+            <p><strong>✓ Ready:</strong> ${this.escapeHtml(toolExecution.result.message)}</p>
+            <div class="ai-action-buttons">
+              <button class="btn btn-primary" onclick="window.editor.approveToolExecution()">Preview & Apply</button>
+              <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+              ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+            </p>
+          </div>
+        `;
+      } else if (
+        tool_name === "delete_script" ||
+        tool_name === "delete_asset"
+      ) {
+        // Show confirmation for delete operations
+        responseDiv.innerHTML = `
+          <div class="ai-response-content">
+            <p><strong>⚠️ Confirm:</strong> ${this.escapeHtml(toolExecution.result.message)}</p>
+            <div class="ai-action-buttons">
+              <button class="btn btn-danger" onclick="window.editor.approveToolExecution()">Confirm Delete</button>
+              <button class="btn btn-secondary" onclick="window.editor.rejectToolExecution()">Cancel</button>
+            </div>
+            <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+              ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+            </p>
+          </div>
+        `;
+      }
+
+      return;
+    }
+
+    // For tools without client action requirement, just display the result
     responseDiv.innerHTML = `
       <div class="ai-response-content">
         <p><strong>Tool Executed:</strong> ${toolExecution.tool_name}</p>
@@ -2340,6 +2416,108 @@ function init(context) {
         </p>
       </div>
     `;
+  }
+
+  /**
+   * Continue AI conversation after tool execution
+   * Sends the current message history back to get the AI's next response
+   */
+  async continueAIConversation() {
+    if (!this.currentAISession) return;
+
+    const responseDiv = document.getElementById("ai-response");
+    if (responseDiv) {
+      responseDiv.innerHTML = `
+        <div class="ai-response-content loading">
+          <p>Processing...</p>
+        </div>
+      `;
+    }
+
+    try {
+      const response = await fetch("/api/ai-assistant/tools", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sessionId: this.currentAISession.id,
+          messages: this.currentAISession.messages,
+          currentScript: this.currentScript,
+          currentAsset: this.currentAsset,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `HTTP error! status: ${response.status}, body: ${errorText}`,
+        );
+      }
+
+      const data = await response.json();
+
+      // Add assistant response to session
+      const assistantContent = [];
+      if (data.text) {
+        assistantContent.push({ type: "text", text: data.text });
+      }
+      if (data.tool_uses) {
+        for (const toolUse of data.tool_uses) {
+          assistantContent.push({
+            type: "tool_use",
+            id: toolUse.tool_use_id,
+            name: toolUse.tool_name,
+            input: toolUse.tool_input,
+          });
+        }
+      }
+      this.addMessageToSession("assistant", assistantContent);
+
+      // Display the response
+      if (responseDiv) {
+        responseDiv.classList.remove("loading");
+      }
+
+      if (
+        data.needs_confirmation &&
+        data.tool_uses &&
+        data.tool_uses.length > 0
+      ) {
+        // Show tool confirmation UI
+        await this.showToolConfirmation(data.tool_uses[0], data.text);
+      } else if (data.tool_uses && data.tool_uses.length > 0) {
+        // Tool was executed, handle it
+        await this.handleToolExecution(data.tool_uses[0]);
+      } else if (data.text) {
+        // Just text response
+        if (responseDiv) {
+          responseDiv.innerHTML = `
+            <div class="ai-response-content">
+              <div class="ai-response-text">${this.escapeHtml(data.text)}</div>
+              <p style="color: var(--text-muted); font-size: 11px; margin-top: 10px;">
+                ${this.getTurnCounterText()} • ${new Date().toLocaleString()}
+              </p>
+            </div>
+          `;
+        }
+      }
+
+      this.showStatus("AI response received", "success");
+    } catch (error) {
+      const err = /** @type {Error} */ (error);
+      console.error("Error continuing AI conversation:", err);
+      this.showStatus(`Error: ${err.message}`, "error");
+
+      if (responseDiv) {
+        responseDiv.innerHTML = `
+          <div class="ai-response-content">
+            <p style="color: var(--error-color);">Error: ${this.escapeHtml(err.message)}</p>
+            <p>You can try asking something else or start a new session.</p>
+          </div>
+        `;
+      }
+    }
   }
 
   /**
@@ -2883,9 +3061,52 @@ function init(context) {
       }
 
       this.closeDiffModal();
+
+      // If this was triggered by an AI tool execution, send the result back
+      if (this.pendingToolExecution && this.currentAISession) {
+        const { toolUseId } = this.pendingToolExecution;
+
+        // Add tool result to session
+        this.currentAISession.messages.push({
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content: `Successfully ${action === "create" ? "created" : "updated"} ${contentType === "asset" ? "asset" : "script"}: ${name}`,
+            },
+          ],
+        });
+
+        this.pendingToolExecution = null;
+
+        // Continue the AI conversation
+        await this.continueAIConversation();
+      }
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus(`Error applying changes: ${err.message}`, "error");
+
+      // If this was triggered by an AI tool execution, send error result back
+      if (this.pendingToolExecution && this.currentAISession) {
+        const { toolUseId } = this.pendingToolExecution;
+
+        this.currentAISession.messages.push({
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content: `Error: ${err.message}`,
+            },
+          ],
+        });
+
+        this.pendingToolExecution = null;
+
+        // Continue the AI conversation even after error
+        await this.continueAIConversation();
+      }
     }
   }
 
