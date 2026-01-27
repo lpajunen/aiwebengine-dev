@@ -137,7 +137,7 @@ async function uploadAsset(token, assetName, assetPath) {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      asset: assetName, // Asset name without leading slash
+      asset: assetName,
       mimetype: mimetype,
       content: base64Content,
     }),
