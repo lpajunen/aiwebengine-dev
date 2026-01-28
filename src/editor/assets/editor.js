@@ -703,7 +703,16 @@ declare var module: any;
 
         // Create a new model with the correct language and URI
         // This helps Monaco properly recognize TypeScript files
-        const uri = monaco.Uri.parse(`file:///${scriptName}`);
+        // If scriptName is already a URL, use it directly; otherwise use file:// scheme
+        let uri;
+        try {
+          new URL(scriptName);
+          // scriptName is a valid URL, use it as-is
+          uri = monaco.Uri.parse(scriptName);
+        } catch {
+          // scriptName is a path, use file:// scheme
+          uri = monaco.Uri.parse(`file:///${scriptName}`);
+        }
         const newModel = monaco.editor.createModel(content, language, uri);
 
         // Dispose old model and set new one
@@ -2278,7 +2287,9 @@ function init(context) {
       this.confirmDeleteAsset(toolInput.asset_path, toolInput.message);
     }
 
-    this.pendingToolExecution = null;
+    // Don't clear pendingToolExecution here - it needs to stay available
+    // for applyPendingChange() to send the result back to the AI
+    // It will be cleared in applyPendingChange() or rejectToolExecution()
   }
 
   /**
@@ -2968,6 +2979,11 @@ function init(context) {
   }
 
   async applyPendingChange() {
+    console.log("[Editor] applyPendingChange() called");
+    console.log("[Editor] pendingChange:", this.pendingChange);
+    console.log("[Editor] pendingToolExecution:", this.pendingToolExecution);
+    console.log("[Editor] currentAISession:", this.currentAISession);
+
     if (!this.pendingChange) return;
 
     const { name, newCode, action, contentType } = this.pendingChange;
@@ -3097,20 +3113,36 @@ function init(context) {
         }
       }
 
+      console.log(
+        "[Editor] Closing diff modal and checking if we need to continue AI conversation...",
+      );
+      console.log(
+        "[Editor] pendingToolExecution exists:",
+        !!this.pendingToolExecution,
+      );
+      console.log("[Editor] currentAISession exists:", !!this.currentAISession);
+
       this.closeDiffModal();
 
       // If this was triggered by an AI tool execution, send the result back
       if (this.pendingToolExecution && this.currentAISession) {
         const { toolUseId } = this.pendingToolExecution;
+        console.log(
+          "[Editor] Sending tool result back to AI, toolUseId:",
+          toolUseId,
+        );
 
         // Add tool result to session
+        const toolResultContent = `Successfully ${action === "create" ? "created" : "updated"} ${contentType === "asset" ? "asset" : "script"}: ${name}`;
+        console.log("[Editor] Tool result content:", toolResultContent);
+
         this.currentAISession.messages.push({
           role: "user",
           content: [
             {
               type: "tool_result",
               tool_use_id: toolUseId,
-              content: `Successfully ${action === "create" ? "created" : "updated"} ${contentType === "asset" ? "asset" : "script"}: ${name}`,
+              content: toolResultContent,
             },
           ],
         });
@@ -3118,7 +3150,9 @@ function init(context) {
         this.pendingToolExecution = null;
 
         // Continue the AI conversation
+        console.log("[Editor] Calling continueAIConversation()...");
         await this.continueAIConversation();
+        console.log("[Editor] continueAIConversation() completed");
       }
     } catch (error) {
       const err = /** @type {Error} */ (error);
