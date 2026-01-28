@@ -2237,6 +2237,17 @@ function init(context) {
   }
 
   /**
+   * Strip CDATA wrapper from content if present
+   * @param {string} content
+   * @returns {string}
+   */
+  stripCDATA(content) {
+    if (typeof content !== "string") return content;
+    // Remove <![CDATA[ prefix and ]]> suffix if present
+    return content.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "");
+  }
+
+  /**
    * Approve and execute pending tool
    */
   async approveToolExecution() {
@@ -2249,7 +2260,7 @@ function init(context) {
       await this.showDiffModal(
         toolInput.script_name,
         "",
-        toolInput.code,
+        this.stripCDATA(toolInput.code),
         toolInput.message,
         "create",
         "script",
@@ -2257,8 +2268,8 @@ function init(context) {
     } else if (toolName === "edit_script") {
       await this.showDiffModal(
         toolInput.script_name,
-        toolInput.original_code || "",
-        toolInput.code,
+        this.stripCDATA(toolInput.original_code || ""),
+        this.stripCDATA(toolInput.code),
         toolInput.message,
         "edit",
         "script",
@@ -2269,7 +2280,7 @@ function init(context) {
       await this.showDiffModal(
         toolInput.asset_path,
         "",
-        toolInput.code,
+        this.stripCDATA(toolInput.code),
         toolInput.message,
         "create",
         "asset",
@@ -2277,8 +2288,8 @@ function init(context) {
     } else if (toolName === "edit_asset") {
       await this.showDiffModal(
         toolInput.asset_path,
-        toolInput.original_code || "",
-        toolInput.code,
+        this.stripCDATA(toolInput.original_code || ""),
+        this.stripCDATA(toolInput.code),
         toolInput.message,
         "edit",
         "asset",
