@@ -26,6 +26,7 @@ const serverHost = process.env.SERVER_HOST || "https://softagen.com";
  */
 function parseArgs() {
   const args = process.argv.slice(2);
+  /** @type {{scriptPath: string|null, scriptUri: string|null, assetsDir: string|null, assetPrefix: string, dryRun: boolean}} */
   const config = {
     scriptPath: null,
     scriptUri: null,

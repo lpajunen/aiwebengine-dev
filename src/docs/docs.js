@@ -11,6 +11,8 @@ function getRequest(context) {
 
 /**
  * Decode base64 string to UTF-8 text
+ * @param {string} base64
+ * @returns {string}
  */
 function decodeBase64(base64) {
   const chars =
@@ -508,7 +510,7 @@ function handleDocsRequest(context) {
 
   try {
     // Decode base64 content (fetchAsset returns base64-encoded string directly)
-    const markdown = decodeBase64(assetContent);
+    const markdown = String(decodeBase64(assetContent));
 
     // Convert markdown to HTML
     const htmlContent = convert.markdown_to_html(markdown);
