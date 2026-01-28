@@ -6,7 +6,10 @@
     "fetch-openapi": "mkdir -p apis && curl ${SERVER_HOST:-https://softagen.com}/engine/openapi.json -o apis/openapi.json && echo '✓ OpenAPI description downloaded to apis/openapi.json'",
     "fetch-graphql-schema": "mkdir -p schemas && node scripts/fetch-graphql-schema.js && echo '✓ GraphQL schema downloaded to schemas/schema.json'",
     "oauth-login": "node scripts/oauth_pkce_token.js",
-    "upload-editor": "node scripts/upload-editor.js",
+    "upload-editor": "node scripts/upload-script.js --script-path src/editor/editor.js --script-uri https://example.com/editor --assets-dir src/editor/assets",
+    "upload-editor-dry-run": "node scripts/upload-script.js --script-path src/editor/editor.js --script-uri https://example.com/editor --assets-dir src/editor/assets --dry-run",
+    "upload-docs": "node scripts/upload-script.js --script-path src/docs/docs.js --script-uri https://example.com/docs --assets-dir src/docs/assets --asset-prefix docs/",
+    "upload-docs-dry-run": "node scripts/upload-script.js --script-path src/docs/docs.js --script-uri https://example.com/docs --assets-dir src/docs/assets --asset-prefix docs/ --dry-run",
     "install": "npm install && echo '✓ Dependencies installed'",
     "outdated": "npm outdated || echo '✓ Checked for outdated packages'",
     "format": "prettier --write \"**/*.js\" \"**/*.ts\" \"**/*.json\" \"**/*.md\" && echo '✓ JavaScript files formatted'",
@@ -17,6 +20,7 @@
     "@types/node": "^25.0.3",
     "dotenv": "^17.2.3",
     "markdownlint-cli": "^0.43.0",
+    "minimatch": "^10.1.1",
     "prettier": "^3.7.4"
   }
 }
