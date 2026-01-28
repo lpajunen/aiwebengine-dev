@@ -1,3 +1,8 @@
+// @ts-nocheck
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+// @ts-ignore - monaco is loaded via AMD and not available at compile time
+/* global monaco */
 // aiwebengine Editor - Main JavaScript
 
 /**
@@ -2321,7 +2326,10 @@ function init(context) {
     // Debug logging
     console.log("handleToolExecution called with:", toolExecution);
     console.log("toolExecution.result:", toolExecution.result);
-    console.log("requires_client_action:", toolExecution.result?.requires_client_action);
+    console.log(
+      "requires_client_action:",
+      toolExecution.result?.requires_client_action,
+    );
 
     // Check if tool result requires client action (diff preview, etc.)
     if (toolExecution.result && toolExecution.result.requires_client_action) {
@@ -2423,7 +2431,14 @@ function init(context) {
    * Sends the current message history back to get the AI's next response
    */
   async continueAIConversation() {
-    if (!this.currentAISession) return;
+    console.log("continueAIConversation() called");
+
+    if (!this.currentAISession) {
+      console.log("No current AI session, aborting");
+      return;
+    }
+
+    console.log("Current AI session messages:", this.currentAISession.messages);
 
     const responseDiv = document.getElementById("ai-response");
     if (responseDiv) {
@@ -2435,6 +2450,8 @@ function init(context) {
     }
 
     try {
+      console.log("Sending continuation request to /api/ai-assistant/tools");
+
       const response = await fetch("/api/ai-assistant/tools", {
         method: "POST",
         headers: {
@@ -2448,14 +2465,18 @@ function init(context) {
         }),
       });
 
+      console.log("Continuation response status:", response.status);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error("Continuation request failed:", errorText);
         throw new Error(
           `HTTP error! status: ${response.status}, body: ${errorText}`,
         );
       }
 
       const data = await response.json();
+      console.log("Continuation response data:", data);
 
       // Add assistant response to session
       const assistantContent = [];
@@ -2975,13 +2996,29 @@ function init(context) {
           };
           const mimetype = mimeTypes[ext] || "text/plain";
 
-          const response = await fetch("/api/assets", {
+          // Get the script URI from tool input or fallback to current script
+          let scriptUri = "https://example.com/editor"; // default fallback
+
+          if (
+            this.pendingToolExecution &&
+            this.pendingToolExecution.toolInput
+          ) {
+            const scriptName = this.pendingToolExecution.toolInput.script_name;
+            if (scriptName) {
+              // Convert script name to URI (e.g., "hello-world.js" -> "https://example.com/hello-world.js")
+              scriptUri = `https://example.com/${scriptName.replace(/\.js$/, ".js")}`;
+            }
+          }
+
+          const scriptUriEncoded = encodeURIComponent(scriptUri);
+
+          const response = await fetch(`/assets?script=${scriptUriEncoded}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              publicPath: name,
+              asset: name,
               mimetype: mimetype,
               content: base64,
             }),

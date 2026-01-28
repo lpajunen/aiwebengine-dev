@@ -1875,6 +1875,11 @@ function getAIAssistantTools() {
       input_schema: {
         type: "object",
         properties: {
+          script_name: {
+            type: "string",
+            description:
+              "The name of the script that will own this asset (e.g., 'hello-world.js')",
+          },
           asset_path: {
             type: "string",
             description:
@@ -1889,7 +1894,7 @@ function getAIAssistantTools() {
             description: "A brief explanation of what this asset is for",
           },
         },
-        required: ["asset_path", "code", "message"],
+        required: ["script_name", "asset_path", "code", "message"],
       },
     },
     {
@@ -1899,6 +1904,11 @@ function getAIAssistantTools() {
       input_schema: {
         type: "object",
         properties: {
+          script_name: {
+            type: "string",
+            description:
+              "The name of the script that owns this asset (e.g., 'hello-world.js')",
+          },
           asset_path: {
             type: "string",
             description:
@@ -1917,7 +1927,13 @@ function getAIAssistantTools() {
             description: "A brief explanation of what changes were made",
           },
         },
-        required: ["asset_path", "original_code", "code", "message"],
+        required: [
+          "script_name",
+          "asset_path",
+          "original_code",
+          "code",
+          "message",
+        ],
       },
     },
     {
@@ -2513,6 +2529,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
 
     const responseJson = /** @type {string} */ (
       /** @type {unknown} */ (
+        // @ts-ignore - fetch is a custom runtime implementation
         fetch("https://api.anthropic.com/v1/messages", options)
       )
     );
@@ -2755,6 +2772,7 @@ CURRENT CONTEXT:`;
 
     const responseJson = /** @type {string} */ (
       /** @type {unknown} */ (
+        // @ts-ignore - fetch is a custom runtime implementation
         fetch("https://api.anthropic.com/v1/messages", options)
       )
     );

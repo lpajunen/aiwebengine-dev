@@ -32,7 +32,8 @@ async function loadToken() {
 
     return token.access_token;
   } catch (err) {
-    if (err.code === "ENOENT") {
+    const error = /** @type {NodeJS.ErrnoException} */ (err);
+    if (error.code === "ENOENT") {
       throw new Error("Token not found. Please run 'make oauth-login' first.");
     }
     throw err;
@@ -97,6 +98,7 @@ async function uploadScript(token) {
  */
 function getMimeType(filename) {
   const ext = path.extname(filename).toLowerCase();
+  /** @type {Record<string, string>} */
   const mimeTypes = {
     ".css": "text/css",
     ".js": "application/javascript",
