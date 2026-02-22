@@ -3091,17 +3091,13 @@ CURRENT CONTEXT:`;
       console.log(
         `AI Assistant (Tools): API error - Status: ${response.status}`,
       );
-      console.log(
-        `AI Assistant (Tools): Response body: ${response.body}`,
-      );
+      console.log(`AI Assistant (Tools): Response body: ${response.body}`);
       let errorMessage = "API request failed";
       try {
         const errorData = JSON.parse(response.body);
         errorMessage =
           errorData.error?.message || errorData.message || errorMessage;
-        console.error(
-          `AI Assistant (Tools): Error message: ${errorMessage}`,
-        );
+        console.error(`AI Assistant (Tools): Error message: ${errorMessage}`);
       } catch (e) {
         console.error(
           `AI Assistant (Tools): Failed to parse error response: ${e}`,

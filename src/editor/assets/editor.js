@@ -1732,7 +1732,8 @@ function init(context) {
     }
     const valueHelp = document.getElementById("secret-value-help");
     if (valueHelp) {
-      valueHelp.textContent = "🔒 Enter new value to update this secret (current value is never shown for security)";
+      valueHelp.textContent =
+        "🔒 Enter new value to update this secret (current value is never shown for security)";
     }
 
     // Update active state in list
@@ -1783,7 +1784,8 @@ function init(context) {
     }
     const valueHelp = document.getElementById("secret-value-help");
     if (valueHelp) {
-      valueHelp.textContent = "⚠️ This value will be encrypted and never displayed after saving";
+      valueHelp.textContent =
+        "⚠️ This value will be encrypted and never displayed after saving";
     }
 
     // Clear active state in list
