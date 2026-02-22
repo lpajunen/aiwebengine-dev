@@ -3008,7 +3008,7 @@ CURRENT CONTEXT:`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 8192,
         system: fullSystemPrompt,
         messages: messages,
@@ -3091,12 +3091,22 @@ CURRENT CONTEXT:`;
       console.log(
         `AI Assistant (Tools): API error - Status: ${response.status}`,
       );
+      console.log(
+        `AI Assistant (Tools): Response body: ${response.body}`,
+      );
       let errorMessage = "API request failed";
       try {
         const errorData = JSON.parse(response.body);
         errorMessage =
           errorData.error?.message || errorData.message || errorMessage;
-      } catch (e) {}
+        console.error(
+          `AI Assistant (Tools): Error message: ${errorMessage}`,
+        );
+      } catch (e) {
+        console.error(
+          `AI Assistant (Tools): Failed to parse error response: ${e}`,
+        );
+      }
 
       return {
         status: response.status,
