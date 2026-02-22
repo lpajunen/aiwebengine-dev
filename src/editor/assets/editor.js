@@ -106,6 +106,28 @@ class AIWebEngineEditor {
   }
 
   /**
+   * Get input value by ID
+   * @param {string} id
+   * @returns {string}
+   */
+  getValue(id) {
+    const input = this.getInput(id);
+    return input ? input.value : "";
+  }
+
+  /**
+   * Set input value by ID
+   * @param {string} id
+   * @param {string} value
+   */
+  setValue(id, value) {
+    const input = this.getInput(id);
+    if (input) {
+      input.value = value;
+    }
+  }
+
+  /**
    * Set text content safely
    * @param {string} id
    * @param {string} text
@@ -223,6 +245,16 @@ class AIWebEngineEditor {
         </div>
       `,
       /** @param {any} data */
+      "secret-item": (data) => `
+        <div class="secret-item ${data.active ? "active" : ""}" data-key="${data.key}" title="${data.key}">
+          <div class="secret-icon">🔑</div>
+          <div class="secret-info">
+            <div class="secret-name">${data.key}</div>
+            <div class="secret-meta">Encrypted secret</div>
+          </div>
+        </div>
+      `,
+      /** @param {any} data */
       "log-entry": (data) => `
         <div class="log-entry log-${data.level}">
           <span class="log-time">${data.time}</span>
@@ -299,11 +331,30 @@ class AIWebEngineEditor {
       });
     }
 
+    // Secret management - script selector
+    const secretsScriptSelect = this.getSelect("secrets-script-select");
+    if (secretsScriptSelect) {
+      secretsScriptSelect.addEventListener("change", (e) => {
+        const target = /** @type {HTMLSelectElement} */ (e.target);
+        if (target) {
+          this.selectedSecretScript = target.value;
+          this.currentSecret = null; // Clear current secret when switching scripts
+          this.clearSecretEditor();
+          this.loadSecrets();
+        }
+      });
+    }
+
     // Asset management
     this.addListener("new-asset-btn", "click", () => this.createNewAsset());
     this.addListener("upload-asset-btn", "click", () =>
       this.triggerAssetUpload(),
     );
+
+    // Secret management
+    this.addListener("new-secret-btn", "click", () => this.createNewSecret());
+    this.addListener("save-secret-btn", "click", () => this.saveSecret());
+    this.addListener("delete-secret-btn", "click", () => this.deleteSecret());
 
     const assetUpload = this.getInput("asset-upload");
     if (assetUpload) {
@@ -549,6 +600,9 @@ declare var module: any;
         break;
       case "assets":
         this.loadAssets();
+        break;
+      case "secrets":
+        this.loadSecrets();
         break;
       case "logs":
         this.loadLogs();
@@ -1591,6 +1645,285 @@ function init(context) {
     }
   }
 
+  // Secrets Management
+  clearSecretEditor() {
+    this.currentSecret = null;
+    this.setText("current-secret-name", "No secret selected");
+    this.setValue("secret-key-input", "");
+    this.setValue("secret-value-input", "");
+    this.setDisplay("secret-form", "none");
+    this.setDisplay("no-secret-selected", "block");
+    this.setDisabled("save-secret-btn", true);
+    this.setDisabled("delete-secret-btn", true);
+  }
+
+  async loadSecrets() {
+    try {
+      const secretsList = document.getElementById("secrets-list");
+      if (!secretsList) return;
+
+      // Check if a script is selected
+      if (!this.selectedSecretScript) {
+        secretsList.innerHTML =
+          '<div class="no-selection"><p>Select a script to view its secrets</p></div>';
+        return;
+      }
+
+      // Build URL with script URI parameter
+      const url = `/api/secrets?uri=${encodeURIComponent(this.selectedSecretScript)}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      secretsList.innerHTML = "";
+
+      if (data.secrets.length === 0) {
+        secretsList.innerHTML =
+          '<div class="no-selection"><p>No secrets found for this script</p></div>';
+        return;
+      }
+
+      data.secrets.forEach(
+        /** @param {string} key */
+        (key) => {
+          const secretElement = document.createElement("div");
+          secretElement.innerHTML = this.templates["secret-item"]({
+            key: key,
+            active: this.currentSecret === key,
+          });
+
+          // Add click listener to select secret
+          const item = secretElement.firstElementChild;
+          if (item) {
+            item.addEventListener("click", () => this.selectSecret(key));
+            secretsList.appendChild(item);
+          }
+        },
+      );
+    } catch (error) {
+      const err = /** @type {Error} */ (error);
+      this.showStatus("Error loading secrets: " + err.message, "error");
+    }
+  }
+
+  /**
+   * @param {string} key
+   */
+  selectSecret(key) {
+    this.currentSecret = key;
+    this.setText("current-secret-name", `Edit: ${key}`);
+    this.setValue("secret-key-input", key);
+    this.setValue("secret-value-input", ""); // Never show the actual value
+    this.setDisplay("secret-form", "block");
+    this.setDisplay("no-secret-selected", "none");
+    this.setDisabled("save-secret-btn", false);
+    this.setDisabled("delete-secret-btn", false);
+
+    // Make key input readonly when editing existing secret
+    const keyInput = this.getInput("secret-key-input");
+    if (keyInput) {
+      keyInput.readOnly = true;
+      keyInput.classList.add("readonly");
+    }
+
+    // Update help text to clarify editing mode
+    const modeText = document.getElementById("secret-form-mode-text");
+    if (modeText) {
+      modeText.textContent = `Editing secret: ${key}`;
+    }
+    const valueHelp = document.getElementById("secret-value-help");
+    if (valueHelp) {
+      valueHelp.textContent = "🔒 Enter new value to update this secret (current value is never shown for security)";
+    }
+
+    // Update active state in list
+    document.querySelectorAll(".secret-item").forEach((item) => {
+      item.classList.remove("active");
+    });
+    const selectedItem = document.querySelector(
+      `.secret-item[data-key="${key}"]`,
+    );
+    if (selectedItem) {
+      selectedItem.classList.add("active");
+    }
+
+    // Focus on value input since key is readonly
+    const valueInput = this.getInput("secret-value-input");
+    if (valueInput) {
+      valueInput.focus();
+    }
+  }
+
+  createNewSecret() {
+    if (!this.selectedSecretScript) {
+      this.showStatus("Please select a script first", "error");
+      return;
+    }
+
+    this.currentSecret = null;
+    this.setText("current-secret-name", "New Secret");
+    this.setValue("secret-key-input", "");
+    this.setValue("secret-value-input", "");
+    this.setDisplay("secret-form", "block");
+    this.setDisplay("no-secret-selected", "none");
+    this.setDisabled("save-secret-btn", false);
+    this.setDisabled("delete-secret-btn", true);
+
+    // Make key input editable when creating new secret
+    const keyInput = this.getInput("secret-key-input");
+    if (keyInput) {
+      keyInput.readOnly = false;
+      keyInput.classList.remove("readonly");
+      keyInput.focus();
+    }
+
+    // Update help text to clarify creation mode
+    const modeText = document.getElementById("secret-form-mode-text");
+    if (modeText) {
+      modeText.textContent = "✨ Create a new secret";
+    }
+    const valueHelp = document.getElementById("secret-value-help");
+    if (valueHelp) {
+      valueHelp.textContent = "⚠️ This value will be encrypted and never displayed after saving";
+    }
+
+    // Clear active state in list
+    document.querySelectorAll(".secret-item").forEach((item) => {
+      item.classList.remove("active");
+    });
+  }
+
+  async saveSecret() {
+    try {
+      const key = this.getValue("secret-key-input");
+      const value = this.getValue("secret-value-input");
+
+      if (!key || !value) {
+        this.showStatus("Both key and value are required", "error");
+        return;
+      }
+
+      if (!this.selectedSecretScript) {
+        this.showStatus("No script selected", "error");
+        return;
+      }
+
+      // Validate key format (alphanumeric, underscore, hyphen)
+      if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+        this.showStatus(
+          "Key must contain only letters, numbers, underscores, and hyphens",
+          "error",
+        );
+        return;
+      }
+
+      const response = await fetch("/api/secrets", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uri: this.selectedSecretScript,
+          key: key,
+          value: value,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        this.showStatus(`Secret '${key}' saved successfully`, "success");
+        this.currentSecret = key;
+        this.loadSecrets();
+        // Clear the value input for security
+        this.setValue("secret-value-input", "");
+      } else {
+        this.showStatus(`Error: ${result.error}`, "error");
+      }
+    } catch (error) {
+      const err = /** @type {Error} */ (error);
+      this.showStatus("Error saving secret: " + err.message, "error");
+    }
+  }
+
+  async deleteSecret() {
+    if (!this.currentSecret) {
+      this.showStatus("No secret selected", "error");
+      return;
+    }
+
+    if (
+      !confirm(
+        `Are you sure you want to delete the secret "${this.currentSecret}"? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/secrets/${encodeURIComponent(this.currentSecret)}?uri=${encodeURIComponent(this.selectedSecretScript)}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        this.showStatus(
+          `Secret '${this.currentSecret}' deleted successfully`,
+          "success",
+        );
+        this.clearSecretEditor();
+        this.loadSecrets();
+      } else {
+        this.showStatus(`Error: ${result.error}`, "error");
+      }
+    } catch (error) {
+      const err = /** @type {Error} */ (error);
+      this.showStatus("Error deleting secret: " + err.message, "error");
+    }
+  }
+
+  async populateSecretsScriptSelector() {
+    try {
+      const response = await fetch("/api/scripts");
+      const data = await response.json();
+
+      const selector = this.getSelect("secrets-script-select");
+      if (!selector) return;
+
+      // Clear existing options except the first placeholder
+      selector.innerHTML = '<option value="">Select a script...</option>';
+
+      // Check if user has admin privileges (can see all scripts)
+      const isAdmin = data.permissions && data.permissions.canTogglePrivileged;
+
+      // Filter scripts based on permissions
+      let filteredScripts = data.scripts;
+      if (!isAdmin) {
+        // Non-admin users only see scripts they own
+        filteredScripts = data.scripts.filter(
+          /** @param {any} script */ (script) => script.isOwner,
+        );
+      }
+
+      // Add scripts to selector
+      filteredScripts.forEach(
+        /** @param {any} script */ (script) => {
+          const option = document.createElement("option");
+          option.value = script.uri;
+          const badge = script.privileged ? " [P]" : " [R]";
+          option.textContent = script.displayName + badge;
+          selector.appendChild(option);
+        },
+      );
+    } catch (error) {
+      const err = /** @type {Error} */ (error);
+      console.error("Error populating secrets script selector:", err);
+    }
+  }
+
   // Logs Management
   async loadLogs() {
     try {
@@ -1775,6 +2108,7 @@ function init(context) {
   loadInitialData() {
     this.loadScripts();
     this.populateAssetsScriptSelector();
+    this.populateSecretsScriptSelector();
   }
 
   async populateAssetsScriptSelector() {

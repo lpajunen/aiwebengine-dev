@@ -118,6 +118,10 @@ function serveEditor(context) {
                 <span class="tab-icon">🖼️</span>
                 Assets
             </button>
+            <button class="nav-tab" data-tab="secrets">
+                <span class="tab-icon">🔐</span>
+                Secrets
+            </button>
             <button class="nav-tab" data-tab="logs">
                 <span class="tab-icon">📋</span>
                 Logs
@@ -217,6 +221,55 @@ function serveEditor(context) {
                             </div>
                             <div id="no-asset-selected" class="no-selection">
                                 <p>Select an asset to view or edit</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secrets Tab -->
+            <div id="secrets-tab" class="tab-content">
+                <div class="secrets-container">
+                    <div class="secrets-sidebar">
+                        <div class="sidebar-header">
+                            <h3>Secrets</h3>
+                            <button id="new-secret-btn" class="btn btn-primary btn-small">+ New</button>
+                        </div>
+                        <div class="secrets-filter">
+                            <select id="secrets-script-select" class="filter-select">
+                                <option value="">Select a script...</option>
+                            </select>
+                        </div>
+                        <div id="secrets-list" class="secrets-list">
+                            <!-- Secrets will be loaded here -->
+                        </div>
+                    </div>
+                    <div class="secrets-editor">
+                        <div class="editor-toolbar">
+                            <span id="current-secret-name" class="current-file">No secret selected</span>
+                            <div class="toolbar-actions">
+                                <button id="save-secret-btn" class="btn btn-success" disabled>Save</button>
+                                <button id="delete-secret-btn" class="btn btn-danger" disabled>Delete</button>
+                            </div>
+                        </div>
+                        <div id="secret-editor-content" class="secret-editor-content">
+                            <div id="secret-form" class="secret-form" style="display: none;">
+                                <div class="form-info-box">
+                                    <p id="secret-form-mode-text" class="form-mode-text">Create a new secret</p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="secret-key-input">Secret Key <span class="required">*</span></label>
+                                    <input type="text" id="secret-key-input" class="form-control" placeholder="e.g., api_key, database_password" />
+                                    <small class="form-text" id="secret-key-help">The identifier used to reference this secret in your code (letters, numbers, underscores, hyphens only)</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="secret-value-input">Secret Value <span class="required">*</span></label>
+                                    <input type="password" id="secret-value-input" class="form-control" placeholder="Enter secret value" />
+                                    <small class="form-text" id="secret-value-help">⚠️ This value will be encrypted and never displayed after saving</small>
+                                </div>
+                            </div>
+                            <div id="no-secret-selected" class="no-selection">
+                                <p>Select a script, then click "+ New" to create a secret</p>
                             </div>
                         </div>
                     </div>
@@ -1747,6 +1800,199 @@ function apiDeleteAsset(context) {
   }
 }
 
+// API: List secrets for a script
+function apiListSecrets(context) {
+  const req = getRequest(context);
+  try {
+    const scriptUri = req.query && req.query.uri ? req.query.uri : null;
+
+    if (!scriptUri) {
+      return {
+        status: 400,
+        body: JSON.stringify({ error: "Script URI is required" }),
+        contentType: "application/json",
+      };
+    }
+
+    if (typeof secretStorage === "undefined") {
+      return {
+        status: 500,
+        body: JSON.stringify({ error: "secretStorage not available" }),
+        contentType: "application/json",
+      };
+    }
+
+    let secretKeys = [];
+    if (typeof secretStorage.listForUri === "function") {
+      secretKeys = secretStorage.listForUri(scriptUri);
+    } else {
+      return {
+        status: 500,
+        body: JSON.stringify({ error: "listForUri function not available" }),
+        contentType: "application/json",
+      };
+    }
+
+    // Sort secret keys alphabetically
+    secretKeys.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+    return {
+      status: 200,
+      body: JSON.stringify({ secrets: secretKeys }),
+      contentType: "application/json",
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: JSON.stringify({ error: error.message }),
+      contentType: "application/json",
+    };
+  }
+}
+
+// API: Create or update a secret
+function apiSaveSecret(context) {
+  const req = getRequest(context);
+  try {
+    const body = JSON.parse(req.body || "{}");
+    const { uri, key, value } = body;
+
+    if (!uri || !key || !value) {
+      return {
+        status: 400,
+        body: JSON.stringify({
+          error: "Script URI, key, and value are required",
+        }),
+        contentType: "application/json",
+      };
+    }
+
+    if (typeof secretStorage === "undefined") {
+      return {
+        status: 500,
+        body: JSON.stringify({ error: "secretStorage not available" }),
+        contentType: "application/json",
+      };
+    }
+
+    let result;
+    if (typeof secretStorage.setSecretForUri === "function") {
+      result = secretStorage.setSecretForUri(uri, key, value);
+    } else {
+      return {
+        status: 500,
+        body: JSON.stringify({
+          error: "setSecretForUri function not available",
+        }),
+        contentType: "application/json",
+      };
+    }
+
+    // Check if result indicates an error
+    if (result && result.startsWith("Error")) {
+      return {
+        status: 500,
+        body: JSON.stringify({ error: result }),
+        contentType: "application/json",
+      };
+    }
+
+    return {
+      status: 200,
+      body: JSON.stringify({ message: "Secret saved successfully", key }),
+      contentType: "application/json",
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: JSON.stringify({
+        error: "Failed to save secret",
+        details: error.message,
+      }),
+      contentType: "application/json",
+    };
+  }
+}
+
+// API: Delete a secret
+function apiDeleteSecret(context) {
+  const req = getRequest(context);
+  try {
+    const scriptUri = req.query && req.query.uri ? req.query.uri : null;
+
+    // Extract the secret key from the URL
+    let secretKey = req.path.replace("/api/secrets", "");
+
+    // URL decode the secret key
+    secretKey = decodeURIComponent(secretKey);
+
+    // Remove leading slash
+    if (secretKey.startsWith("/")) {
+      secretKey = secretKey.substring(1);
+    }
+
+    if (!scriptUri || !secretKey) {
+      return {
+        status: 400,
+        body: JSON.stringify({
+          error: "Script URI and secret key are required",
+        }),
+        contentType: "application/json",
+      };
+    }
+
+    if (typeof secretStorage === "undefined") {
+      return {
+        status: 500,
+        body: JSON.stringify({ error: "secretStorage not available" }),
+        contentType: "application/json",
+      };
+    }
+
+    let deleted = false;
+    if (typeof secretStorage.removeSecretForUri === "function") {
+      deleted = secretStorage.removeSecretForUri(scriptUri, secretKey);
+    } else {
+      return {
+        status: 500,
+        body: JSON.stringify({
+          error: "removeSecretForUri function not available",
+        }),
+        contentType: "application/json",
+      };
+    }
+
+    if (deleted) {
+      return {
+        status: 200,
+        body: JSON.stringify({
+          message: "Secret deleted successfully",
+          key: secretKey,
+        }),
+        contentType: "application/json",
+      };
+    } else {
+      return {
+        status: 404,
+        body: JSON.stringify({
+          error: "Secret not found",
+          key: secretKey,
+        }),
+        contentType: "application/json",
+      };
+    }
+  } catch (error) {
+    return {
+      status: 500,
+      body: JSON.stringify({
+        error: "Failed to delete secret",
+        details: error.message,
+      }),
+      contentType: "application/json",
+    };
+  }
+}
+
 // API: List all registered routes
 function apiListRoutes(context) {
   const req = getRequest(context);
@@ -2912,6 +3158,9 @@ function init(context) {
   routeRegistry.registerRoute("/api/assets", "apiSaveAsset", "POST");
   routeRegistry.registerRoute("/api/assets/*", "apiGetAsset", "GET");
   routeRegistry.registerRoute("/api/assets/*", "apiDeleteAsset", "DELETE");
+  routeRegistry.registerRoute("/api/secrets", "apiListSecrets", "GET");
+  routeRegistry.registerRoute("/api/secrets", "apiSaveSecret", "POST");
+  routeRegistry.registerRoute("/api/secrets/*", "apiDeleteSecret", "DELETE");
   routeRegistry.registerRoute("/api/routes", "apiListRoutes", "GET");
   routeRegistry.registerRoute("/api/ai-assistant", "apiAIAssistant", "POST");
   routeRegistry.registerRoute(
