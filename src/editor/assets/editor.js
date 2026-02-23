@@ -192,8 +192,12 @@ class AIWebEngineEditor {
     this.loadInitialData();
     console.log("[Editor] Loading initial data...");
 
-    // Auto-refresh logs every 5 seconds
-    setInterval(() => this.loadLogs(), 5000);
+    // Auto-refresh logs every 5 seconds, but only when the Logs tab is active
+    setInterval(() => {
+      if (document.getElementById("logs-tab")?.classList.contains("active")) {
+        this.loadLogs();
+      }
+    }, 5000);
   }
 
   compileTemplates() {
