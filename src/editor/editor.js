@@ -14,33 +14,14 @@ function getArgs(context) {
 // Serve the editor HTML page
 function serveEditor(context) {
   const req = getRequest(context);
-  // Debug logging for authentication
-  console.log("=== Editor Authentication Check ===");
-  console.log("req.auth object exists: " + (typeof req.auth !== "undefined"));
-  if (typeof req.auth !== "undefined") {
-    console.log("req.auth.isAuthenticated: " + req.auth.isAuthenticated);
-    console.log("req.auth.userId: " + req.auth.userId);
-    console.log("req.auth.provider: " + req.auth.provider);
-    console.log("req.auth.isEditor: " + req.auth.isEditor);
-    console.log("req.auth.isAdmin: " + req.auth.isAdmin);
-  }
 
-  // Require authentication to access the editor
-  let user;
-  try {
-    user = req.auth.requireAuth();
-    console.log("Authentication successful for user: " + user.id);
-  } catch (error) {
-    console.log("Authentication failed: " + error.message);
-    // Redirect to login page with return URL
+  // Require authentication
+  if (!req.auth) {
     const currentPath = encodeURIComponent(req.path || "/editor");
-    const loginUrl = "/auth/login?redirect=" + currentPath;
-    console.log("Redirecting to: " + loginUrl);
-
     return {
       status: 302,
       headers: {
-        Location: loginUrl,
+        Location: "/auth/login?redirect=" + currentPath,
       },
       body: "",
       contentType: "text/plain; charset=UTF-8",
@@ -48,39 +29,28 @@ function serveEditor(context) {
   }
 
   // Check if user has Editor or Administrator role
-  if (!req.auth.isEditor && !req.auth.isAdmin) {
-    console.log(
-      "User " + user.id + " does not have Editor or Administrator role",
-    );
-    console.log(
-      "isEditor: " + req.auth.isEditor + ", isAdmin: " + req.auth.isAdmin,
-    );
+  let isAuthorized = req.auth.isAdmin;
+  if (!isAuthorized) {
+    try {
+      const users = JSON.parse(userStorage.listUsers());
+      const currentUser = users.find((u) => u.id === req.auth.userId);
+      isAuthorized = !!(currentUser && currentUser.roles.includes("Editor"));
+    } catch (e) {
+      console.log("Could not verify Editor role: " + e.message);
+    }
+  }
 
-    // Redirect to insufficient permissions page
+  if (!isAuthorized) {
     const currentPath = encodeURIComponent(req.path || "/editor");
-    const insufficientPermissionsUrl =
-      "/insufficient-permissions?attempted=" + currentPath;
-    console.log("Redirecting to: " + insufficientPermissionsUrl);
-
     return {
       status: 302,
       headers: {
-        Location: insufficientPermissionsUrl,
+        Location: "/auth/unauthorized?attempted=" + currentPath,
       },
       body: "",
       contentType: "text/plain; charset=UTF-8",
     };
   }
-
-  console.log(
-    "User " +
-      user.id +
-      " has required permissions (isEditor: " +
-      req.auth.isEditor +
-      ", isAdmin: " +
-      req.auth.isAdmin +
-      ")",
-  );
 
   // Serve the modern editor UI
   // Note: The HTML is embedded here to ensure /editor is the single entry point
@@ -1658,17 +1628,15 @@ function apiSaveAsset(context) {
 
       if (scriptUri && typeof assetStorage.upsertAssetForUri === "function") {
         // Use privileged upsertAssetForUri for cross-script access
-        // New API: (scriptUri, assetName, contentBase64, mimetype)
         result = assetStorage.upsertAssetForUri(
           scriptUri,
           assetName,
-          content,
           mimetype,
+          content,
         );
       } else if (typeof assetStorage.upsertAsset === "function") {
         // Fall back to current script's asset
-        // New API: (assetName, contentBase64, mimetype)
-        result = assetStorage.upsertAsset(assetName, content, mimetype);
+        result = assetStorage.upsertAsset(assetName, mimetype, content);
       } else {
         return {
           status: 500,
@@ -2375,9 +2343,6 @@ AVAILABLE JAVASCRIPT APIs:
    routeRegistry.listStreams() - List all registered stream endpoints
    - Returns: JSON string with array of [{path: string, uri: string}]
 
-   routeRegistry.listAssets() - List all registered asset paths
-   - Returns: JSON string with array of asset names
-
 2. Console logging - Write messages to server logs and retrieve log entries
    - console.log(message) - General logging (level: LOG)
    - console.debug(message) - Debug-level logging (level: DEBUG)
@@ -2410,7 +2375,6 @@ AVAILABLE JAVASCRIPT APIs:
 
 5. secretStorage - Read-only access to check secret availability
    - secretStorage.exists(identifier) - Check if a secret exists (returns boolean)
-   - secretStorage.list() - List all secret identifiers (returns array of strings)
    - SECURITY: Secret values are NEVER exposed to JavaScript
    - Use {{secret:identifier}} syntax in fetch() headers to inject secret values
    - identifier: string (secret name)
@@ -2439,20 +2403,23 @@ AVAILABLE JAVASCRIPT APIs:
 
 8. graphQLRegistry - Object containing all GraphQL-related functions:
    
-   graphQLRegistry.registerQuery(name, schema, resolverName) - Register GraphQL query
+   graphQLRegistry.registerQuery(name, sdl, resolverName, visibility) - Register GraphQL query
    - name: string (query name)
-   - schema: string (GraphQL schema definition)
+   - sdl: string (GraphQL SDL schema definition)
    - resolverName: string (name of resolver function)
+   - visibility: "internal" | "engine" | "external"
 
-   graphQLRegistry.registerMutation(name, schema, resolverName) - Register GraphQL mutation
+   graphQLRegistry.registerMutation(name, sdl, resolverName, visibility) - Register GraphQL mutation
    - name: string (mutation name)
-   - schema: string (GraphQL schema definition)
+   - sdl: string (GraphQL SDL schema definition)
    - resolverName: string (name of resolver function)
+   - visibility: "internal" | "engine" | "external"
 
-   graphQLRegistry.registerSubscription(name, schema, resolverName) - Register GraphQL subscription
+   graphQLRegistry.registerSubscription(name, sdl, resolverName, visibility) - Register GraphQL subscription
    - name: string (subscription name)
-   - schema: string (GraphQL schema definition)
+   - sdl: string (GraphQL SDL schema definition)
    - resolverName: string (name of resolver function)
+   - visibility: "internal" | "engine" | "external"
 
    graphQLRegistry.executeGraphQL(query, variables) - Execute GraphQL query
    - query: string (GraphQL query string)
@@ -2568,14 +2535,14 @@ SCRIPT STRUCTURE - Every script MUST follow this pattern:
 // Handles HTTP requests and returns responses
 
 function handlerName(context) {
-  const req = getRequest(context);
+  const req = context.request || {};
   // req has: path, method, headers, query, params, form, body, auth
   try {
     // Generate your response using Response builders
     return ResponseBuilder.html('<h1>Hello World</h1>');
   } catch (error) {
     console.error('Error: ' + error);
-    return ResponseBuilder.error('Internal error', 500);
+    return ResponseBuilder.error(500, 'Internal error');
   }
 }
 
@@ -2589,26 +2556,22 @@ AVAILABLE RESPONSE BUILDERS:
 - ResponseBuilder.json(data) - Return JSON response (status 200)
 - ResponseBuilder.html(html) - Return HTML response (status 200)
 - ResponseBuilder.text(text) - Return plain text response (status 200)
-- ResponseBuilder.error(message, status) - Return error response with custom status
-- ResponseBuilder.redirect(url, status) - Return redirect response (default status 302)
+- ResponseBuilder.error(status, message) - Return error response with status code
+- ResponseBuilder.redirect(location) - Return 302 redirect response
 
-AVAILABLE VALIDATION HELPERS:
-- validate.requireQueryParam(name) - Require query parameter, throws error if missing
-- validate.requireFormParam(name) - Require form parameter, throws error if missing
-- validate.requireAuth() - Require authentication, throws error if not logged in
-- validate.requireRole(role) - Require specific role, throws error if not authorized
-
-USER OBJECT ACCESS:
-- context.request.auth.user - Current authenticated user object (null if not logged in)
-- context.request.auth.user.id - User ID
-- context.request.auth.user.email - User email
-- context.request.auth.user.roles - Array of user roles
+AUTHENTICATION:
+- context.request.auth - AuthContext if user is authenticated, undefined if not
+- context.request.auth.userId - Authenticated user's ID
+- context.request.auth.email - Authenticated user's email
+- context.request.auth.name - Authenticated user's display name
+- context.request.auth.isAdmin - Whether user has admin privileges
+- Check !context.request.auth to detect unauthenticated requests
 
 IMPORTANT CONCEPTS:
 1. Scripts are SERVER-SIDE JavaScript that handle HTTP requests
 2. Use Response builders instead of manual response objects
-3. Use validation helpers for input validation and authentication
-4. Access user data through context.request.auth.user
+3. Check context.request.auth to verify authentication
+4. Access user data through context.request.auth (userId, email, name, isAdmin)
 5. Scripts don't have access to browser APIs or Node.js APIs
 6. Use fetch() to call external APIs
 7. Use routeRegistry.registerRoute() in init() to map URLs to handler functions
@@ -2624,15 +2587,14 @@ RULES:
    - For HTTP services: routeRegistry.registerRoute() or routeRegistry.registerStreamRoute()
    - For GraphQL services: graphQLRegistry.registerQuery(), graphQLRegistry.registerMutation(), or graphQLRegistry.registerSubscription()
    - A script may use multiple registration types
-5. Use Response builders (ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.text(), ResponseBuilder.error()) instead of manual response objects
-6. Use validation helpers (validate.requireQueryParam(), validate.requireFormParam(), validate.requireAuth()) for input validation
-7. Access user data through context.request.auth.user (not auth.currentUser())
-8. Use console.log() for debugging
-9. For edits, include both original_code and code fields
-10. Never use Node.js APIs (fs, path, etc.) - they don't exist here
-11. Never use browser APIs (localStorage, document, window) - they don't exist here
-12. For external API keys, use {{secret:identifier}} in fetch headers
-13. Escape all special characters in JSON strings
+5. Use Response builders (ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.text(), ResponseBuilder.error(status, message)) instead of manual response objects
+6. Check context.request.auth to verify authentication; use context.request.auth.userId, .email, .isAdmin for user info
+7. Use console.log() for debugging
+8. For edits, include both original_code and code fields
+9. Never use Node.js APIs (fs, path, etc.) - they don't exist here
+10. Never use browser APIs (localStorage, document, window) - they don't exist here
+11. For external API keys, use {{secret:identifier}} in fetch headers
+12. Escape all special characters in JSON strings
 
 EXAMPLES OF CORRECT RESPONSES:
 
@@ -2646,10 +2608,10 @@ Example 3 - Explanation:
 {"type":"explanation","message":"This script registers a GET endpoint that returns JSON user data using ResponseBuilder.json() builder."}
 
 Example 4 - Selective Broadcasting Chat:
-{"type":"create_script","message":"Creating a chat application with selective broadcasting for personalized messages","script_name":"chat-app.js","code":"// Chat Application with Selective Broadcasting\\n\\n// Register one stream for all chat messages\\nfunction init(context) {\\n  routeRegistry.registerStreamRoute('/chat');\\n  routeRegistry.registerRoute('/chat/send', 'sendMessage', 'POST');\\n  routeRegistry.registerRoute('/chat/personal', 'sendPersonalMessage', 'POST');\\n  return { success: true };\\n}\\n\\n// Send message to specific room\\nfunction sendMessage(context) {\\n  const req = getRequest(context);\\n  const { room, message, sender } = req.form;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'room_message',\\n    room: room,\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ room: room }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}\\n\\n// Send personal message to specific user\\nfunction sendPersonalMessage(context) {\\n  const req = getRequest(context);\\n  const { targetUser, message, sender } = req.form;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'personal_message',\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: targetUser }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
+{"type":"create_script","message":"Creating a chat application with selective broadcasting for personalized messages","script_name":"chat-app.js","code":"// Chat Application with Selective Broadcasting\\n\\nfunction init(context) {\\n  routeRegistry.registerStreamRoute('/chat');\\n  routeRegistry.registerRoute('/chat/send', 'sendMessage', 'POST');\\n  routeRegistry.registerRoute('/chat/personal', 'sendPersonalMessage', 'POST');\\n  return { success: true };\\n}\\n\\nfunction sendMessage(context) {\\n  const req = context.request || {};\\n  const room = req.form && req.form.room;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'room_message',\\n    room: room,\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ room: room }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}\\n\\nfunction sendPersonalMessage(context) {\\n  const req = context.request || {};\\n  const targetUser = req.form && req.form.targetUser;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'personal_message',\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: targetUser }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
 
 Example 5 - GraphQL Subscription with Selective Broadcasting:
-{"type":"create_script","message":"Creating a GraphQL subscription with selective broadcasting for personalized notifications","script_name":"notification-subscription.js","code":"// GraphQL Subscription with Selective Broadcasting\\n\\nfunction init(context) {\\n  graphQLRegistry.registerSubscription(\\n    'userNotifications',\\n    'type Subscription { userNotifications: String }',\\n    'userNotificationsResolver'\\n  );\\n  routeRegistry.registerRoute('/notify/user', 'sendUserNotification', 'POST');\\n  return { success: true };\\n}\\n\\nfunction userNotificationsResolver() {\\n  return 'User notifications subscription active';\\n}\\n\\nfunction sendUserNotification(context) {\\n  const req = getRequest(context);\\n  const { userId, message, type } = req.form;\\n  \\n  const result = graphQLRegistry.sendSubscriptionMessageFiltered('userNotifications', {\\n    type: type || 'notification',\\n    message: message,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: userId }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
+{"type":"create_script","message":"Creating a GraphQL subscription with selective broadcasting for personalized notifications","script_name":"notification-subscription.js","code":"// GraphQL Subscription with Selective Broadcasting\\n\\nfunction init(context) {\\n  graphQLRegistry.registerSubscription(\\n    'userNotifications',\\n    'type Subscription { userNotifications: String }',\\n    'userNotificationsResolver',\\n    'external'\\n  );\\n  routeRegistry.registerRoute('/notify/user', 'sendUserNotification', 'POST');\\n  return { success: true };\\n}\\n\\nfunction userNotificationsResolver() {\\n  return 'User notifications subscription active';\\n}\\n\\nfunction sendUserNotification(context) {\\n  const req = context.request || {};\\n  const userId = req.form && req.form.userId;\\n  const message = req.form && req.form.message;\\n  const type = (req.form && req.form.type) || 'notification';\\n  \\n  const result = graphQLRegistry.sendSubscriptionMessageFiltered('userNotifications', {\\n    type: type,\\n    message: message,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: userId }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
 
 Example 6 - Create CSS file:
 {"type":"create_asset","message":"Creating a custom stylesheet","asset_path":"/styles/custom.css","code":":root {\\n  --primary-color: #007acc;\\n  --secondary-color: #5a5a5a;\\n}\\n\\nbody {\\n  font-family: 'Arial', sans-serif;\\n  color: var(--secondary-color);\\n}\\n\\n.button {\\n  background-color: var(--primary-color);\\n  color: white;\\n  padding: 10px 20px;\\n  border: none;\\n  border-radius: 4px;\\n  cursor: pointer;\\n}\\n\\n.button:hover {\\n  opacity: 0.9;\\n}"}
@@ -2660,11 +2622,11 @@ Example 7 - Create SVG icon:
 Example 8 - Edit CSS file:
 {"type":"edit_asset","message":"Adding dark mode support to existing CSS","asset_path":"/styles/main.css","original_code":".container {\\n  background: white;\\n  color: black;\\n}","code":".container {\\n  background: white;\\n  color: black;\\n}\\n\\n@media (prefers-color-scheme: dark) {\\n  .container {\\n    background: #1e1e1e;\\n    color: #ffffff;\\n  }\\n}"}
 
-Example 9 - Using validation helpers and user object:
-{"type":"create_script","message":"Creating a protected API that requires authentication and validates input","script_name":"protected-api.js","code":"// Protected API with validation\\n\\nfunction getProfile(context) {\\n  validate.requireAuth();\\n  const userId = validate.requireQueryParam('userId');\\n  \\n  const user = context.request.auth.user;\\n  if (user.id !== userId && !user.roles.includes('admin')) {\\n    return ResponseBuilder.error('Access denied', 403);\\n  }\\n  \\n  return ResponseBuilder.json({ id: user.id, email: user.email, roles: user.roles });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', 'getProfile', 'GET');\\n  return { success: true };\\n}"}
+Example 9 - Protected API requiring authentication:
+{"type":"create_script","message":"Creating a protected API that requires authentication","script_name":"protected-api.js","code":"// Protected API\\n\\nfunction getProfile(context) {\\n  const req = context.request || {};\\n  if (!req.auth) {\\n    return ResponseBuilder.error(401, 'Authentication required');\\n  }\\n  const userId = req.query && req.query.userId;\\n  if (!userId) {\\n    return ResponseBuilder.error(400, 'userId query parameter is required');\\n  }\\n  if (req.auth.userId !== userId && !req.auth.isAdmin) {\\n    return ResponseBuilder.error(403, 'Access denied');\\n  }\\n  return ResponseBuilder.json({ id: req.auth.userId, email: req.auth.email });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', 'getProfile', 'GET');\\n  return { success: true };\\n}"}
 
-Example 10 - Form handling with validation:
-{"type":"create_script","message":"Creating a contact form with validation","script_name":"contact-form.js","code":"// Contact Form with Validation\\\\n\\\\nfunction submitContact(context) {\\\\n  const req = getRequest(context);\\\\n  const name = validate.requireFormParam('name');\\\\n  const email = validate.requireFormParam('email');\\\\n  const message = validate.requireFormParam('message');\\\\n  \\\\n  // Process the form data...\\\\n  console.log(\\\`Contact from \\\${name} (\\\${email}): \\\${message}\\\`);\\\\n  \\\\n  return ResponseBuilder.html('<h1>Thank you for your message!</h1><p>We will get back to you soon.</p>');\\\\n}\\\\n\\\\nfunction init(context) {\\\\n  routeRegistry.registerRoute('/contact', 'submitContact', 'POST');\\\\n  return { success: true };\\\\n}"}
+Example 10 - Form handling:
+{"type":"create_script","message":"Creating a contact form handler","script_name":"contact-form.js","code":"// Contact Form\\n\\nfunction submitContact(context) {\\n  const req = context.request || {};\\n  const name = req.form && req.form.name;\\n  const email = req.form && req.form.email;\\n  const message = req.form && req.form.message;\\n  if (!name || !email || !message) {\\n    return ResponseBuilder.error(400, 'Name, email and message are required');\\n  }\\n  console.log('Contact from ' + name + ' (' + email + '): ' + message);\\n  return ResponseBuilder.html('<h1>Thank you for your message!</h1><p>We will get back to you soon.</p>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/contact', 'submitContact', 'POST');\\n  return { success: true };\\n}"}
 
 ASSET CREATION GUIDELINES:
 - For CSS files: Use modern CSS features (variables, flexbox, grid), include proper formatting
@@ -2675,7 +2637,7 @@ ASSET CREATION GUIDELINES:
 - Always use the asset_path field (not script_name) for asset operations
 - Asset paths should start with / (e.g., "/styles/main.css", "/icons/logo.svg")
 
-Remember: You are creating JavaScript scripts that run on the SERVER and handle HTTP requests. When someone asks for a "web page", you create a script that SERVES that HTML page using ResponseBuilder.html()! For styling, images, or static content, create assets instead of scripts. Use Response builders for all responses, validation helpers for input checking, and context.request.auth.user for user data.`;
+Remember: You are creating JavaScript scripts that run on the SERVER and handle HTTP requests. When someone asks for a "web page", you create a script that SERVES that HTML page using ResponseBuilder.html()! For styling, images, or static content, create assets instead of scripts. Use Response builders for all responses, check context.request.auth for authentication, and access user info via context.request.auth.userId, .email, and .isAdmin.`;
 
   // Build contextual user prompt
   let contextualPrompt = "";
@@ -2955,11 +2917,13 @@ IMPORTANT CONCEPTS:
 1. Scripts are SERVER-SIDE JavaScript that handle HTTP requests
 2. Use routeRegistry.registerRoute() to map URLs to handler functions
 3. Always include init() function that registers at least one route
-4. Use Response builders: ResponseBuilder.json(), ResponseBuilder.html(), etc.
+4. Use Response builders: ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.error(status, message), etc.
 5. Assets are stored by NAME (e.g., "logo.svg", "main.css") not by HTTP path
 6. Assets must be registered to HTTP paths using routeRegistry.registerAssetRoute(path, assetName)
 7. Same asset can be served at multiple HTTP paths via multiple registrations
 8. Asset names should NOT include path separators (no / in names)
+9. Check context.request.auth to verify authentication; use context.request.auth.userId, .email, .isAdmin for user info
+10. GraphQL registration requires a visibility parameter: "internal", "engine", or "external"
 
 CURRENT CONTEXT:`;
 
