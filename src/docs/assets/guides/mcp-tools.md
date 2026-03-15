@@ -226,6 +226,80 @@ The input schema defines what parameters your tool accepts. It follows the [JSON
 }
 ```
 
+## Calling External MCP Servers
+
+The engine also exposes a global `McpClient` helper for connecting to remote MCP servers from your own script code. Use this when you want one aiwebengine script to act as an MCP client to another MCP-compatible service.
+
+### McpClient.constructor(serverUrl, secretIdentifier)
+
+Creates a JSON connection descriptor for a remote MCP server.
+
+- `serverUrl` must be an `https://` URL.
+- `secretIdentifier` must name a secret that contains the remote server token or bearer credential.
+
+```javascript
+const clientDataJson = McpClient.constructor(
+  "https://api.githubcopilot.com/mcp/",
+  "GITHUB_TOKEN",
+);
+```
+
+### McpClient.\_listTools(clientDataJson)
+
+Lists tools exposed by the remote MCP server. The engine caches results for one hour.
+
+```javascript
+const toolsResponse = JSON.parse(McpClient._listTools(clientDataJson));
+
+if (toolsResponse.error) {
+  console.error("Failed to list remote tools:", toolsResponse.error);
+} else {
+  toolsResponse.tools.forEach((tool) => {
+    console.log(`Remote tool: ${tool.name}`);
+  });
+}
+```
+
+### McpClient.\_callTool(clientDataJson, toolName, argsJson)
+
+Calls a remote tool and returns the raw JSON response body.
+
+```javascript
+const result = JSON.parse(
+  McpClient._callTool(
+    clientDataJson,
+    "search_repositories",
+    JSON.stringify({ query: "aiwebengine", limit: 5 }),
+  ),
+);
+
+if (result.error) {
+  console.error("Remote MCP tool failed:", result.error);
+}
+```
+
+### Complete wrapper example
+
+```javascript
+function searchGitHubHandler(context) {
+  const clientDataJson = McpClient.constructor(
+    "https://api.githubcopilot.com/mcp/",
+    "GITHUB_TOKEN",
+  );
+
+  const resultJson = McpClient._callTool(
+    clientDataJson,
+    "search_repositories",
+    JSON.stringify({
+      query: context.args.query,
+      limit: context.args.limit || 5,
+    }),
+  );
+
+  return resultJson;
+}
+```
+
 ## Complete Example
 
 Here's a complete script with multiple MCP tools:

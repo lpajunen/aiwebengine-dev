@@ -587,7 +587,7 @@ return ResponseBuilder.error(400, "Invalid input");
 return ResponseBuilder.noContent();
 
 // Redirects
-return ResponseBuilder.redirect("/new-location", 301);
+return ResponseBuilder.redirect("/new-location");
 ```
 
 ### Response Helper

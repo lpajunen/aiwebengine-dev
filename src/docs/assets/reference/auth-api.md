@@ -349,7 +349,7 @@ function secureHandler(req) {
       status: 401,
       body: JSON.stringify({
         error: error.message,
-        loginUrl: "/auth/login",
+        authorizeUrl: "/oauth2/authorize",
       }),
       contentType: "application/json",
     };
@@ -389,6 +389,106 @@ The authentication context is automatically extracted from:
 2. `session` cookie
 
 The middleware handles authentication before your JavaScript handler runs, so the `req.auth` object is always available and up-to-date.
+
+## HTTP Authentication Endpoints
+
+The engine also exposes HTTP authentication endpoints described by the OpenAPI spec. These are useful for external OAuth clients, debugging auth state, and standards-based discovery.
+
+### `GET /auth/status`
+
+Returns the current authentication status for the caller.
+
+**Response shape:**
+
+```json
+{
+  "authenticated": true,
+  "user_id": "user_123",
+  "username": "alice",
+  "roles": ["editor"]
+}
+```
+
+**Notes:**
+
+- `authenticated` is always present.
+- `user_id`, `username`, and `roles` may be `null` when the caller is anonymous.
+
+### `GET /.well-known/oauth-authorization-server`
+
+Returns OAuth 2.0 authorization server metadata as defined by RFC 8414.
+
+**Typical fields:**
+
+```json
+{
+  "issuer": "https://example.com",
+  "authorization_endpoint": "https://example.com/oauth2/authorize",
+  "token_endpoint": "https://example.com/oauth2/token",
+  "response_types_supported": ["code"],
+  "code_challenge_methods_supported": ["S256"],
+  "registration_endpoint": "https://example.com/oauth2/register"
+}
+```
+
+### `GET /.well-known/oauth-protected-resource`
+
+Returns protected resource metadata for OAuth clients.
+
+**Typical fields:**
+
+```json
+{
+  "resource": "https://example.com",
+  "authorization_servers": ["https://example.com"],
+  "bearer_methods_supported": ["header"]
+}
+```
+
+### `GET /oauth2/authorize`
+
+Authorization endpoint for OAuth 2.0 authorization code flow.
+
+**Query parameters:**
+
+- `response_type` required, must be `code`
+- `client_id` required
+- `redirect_uri` optional
+- `scope` optional
+- `state` optional
+- `code_challenge` optional
+- `code_challenge_method` optional
+- `resource` optional
+
+If the user is not already authenticated, the endpoint may redirect to the engine's login flow before continuing authorization.
+
+### `POST /oauth2/token`
+
+Token endpoint for exchanging an authorization code for an access token.
+
+**Request content type:** `application/x-www-form-urlencoded`
+
+**Response shape:**
+
+```json
+{
+  "access_token": "vlN4nZl9oxyG4Ux99CuqOJXJSxOqCfsWxmZJrblTcG8",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "vlN4nZl9oxyG4Ux99CuqOJXJSxOqCfsWxmZJrblTcG8",
+  "scope": "openid"
+}
+```
+
+**Notes:**
+
+- `access_token` and `token_type` are always present.
+- `expires_in`, `refresh_token`, and `scope` are optional.
+- Clients should treat this shape as the contract exposed by the OpenAPI spec.
+
+### `POST /oauth2/register`
+
+Dynamic client registration endpoint. Accepts a JSON request body and returns the registered client metadata.
 
 ## Security Considerations
 
@@ -435,7 +535,7 @@ function publicStatusHandler(req) {
     status: 200,
     body: JSON.stringify({ status: "online" }),
     contentType: "application/json",
-  };
+        authorizeUrl: "/oauth2/authorize",
 }
 
 // Private endpoint
@@ -483,9 +583,9 @@ function myHandler(req) {
 
 ## See Also
 
-- [Authentication Setup Guide](./AUTH_SETUP.md) - How to configure OAuth2 providers
-- [Authentication Routes](./AUTH_API.md) - HTTP endpoints for login/logout
-- [Middleware Documentation](./AUTH_MIDDLEWARE.md) - Server-side authentication
+- [JavaScript APIs Reference](./javascript-apis.md) - General runtime APIs available to scripts
+- [Getting Started](../getting-started/01-first-script.md) - Building your first script with handler context
+- [Streaming Guide](../guides/streaming.md) - Using auth-aware stream metadata and filtered delivery
 
 ---
 

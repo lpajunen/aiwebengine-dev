@@ -21,6 +21,7 @@ graphQLRegistry.registerSubscription(
   "subscriptionName",
   "type Subscription { subscriptionName: String }",
   "resolverFunctionName",
+  "external",
 );
 ```
 
@@ -29,7 +30,7 @@ graphQLRegistry.registerSubscription(
 The subscription resolver is called when a client subscribes. It should return an initial message and set up any necessary state:
 
 ```javascript
-function mySubscriptionResolver() {
+function mySubscriptionResolver(context) {
   console.log("Client subscribed to mySubscription");
   return "Subscription initialized";
 }
@@ -49,8 +50,7 @@ graphQLRegistry.sendSubscriptionMessage(
 );
 ```
 
-**Note**: With the new execute_stream approach, this function maintains backward compatibility but logs a deprecation warning. For new development, consider generating subscription messages directly within subscription resolvers for better GraphQL compliance.
-routeRegistry.sendStreamMessage("/graphql/subscription/subscriptionName", JSON.stringify(data));
+**Note**: With the `execute_stream` approach, clients subscribe through `/graphql/sse` using a GraphQL subscription query. Use `graphQLRegistry.sendSubscriptionMessage()` to push updates to registered subscription fields.
 
 ````
 
@@ -90,12 +90,23 @@ eventSource.onerror = function(event) {
 If you need more control or EventSource is not available, you can use the lower-level fetch API:
 
 ```javascript
-const eventSource = new EventSource("/graphql/subscription/mySubscription");
+const response = await fetch(
+  "/graphql/sse?query=" + encodeURIComponent("subscription { mySubscription }"),
+  {
+    headers: {
+      Accept: "text/event-stream",
+    },
+  },
+);
 
-eventSource.onmessage = function (event) {
-  const data = JSON.parse(event.data);
-  console.log("Received message:", data);
-};
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  console.log(decoder.decode(value, { stream: true }));
+}
 ```
 
 ## Complete Example
@@ -108,6 +119,7 @@ graphQLRegistry.registerSubscription(
   "liveNotifications",
   "type Subscription { liveNotifications: String }",
   "liveNotificationsResolver",
+  "external",
 );
 
 // Register a mutation to trigger notifications
@@ -115,16 +127,18 @@ graphQLRegistry.registerMutation(
   "sendNotification",
   "type Mutation { sendNotification(message: String!): String }",
   "sendNotificationResolver",
+  "external",
 );
 
 // Subscription resolver - called when clients subscribe
-function liveNotificationsResolver() {
+function liveNotificationsResolver(context) {
   console.log("Client subscribed to live notifications");
   return "Notification subscription active";
 }
 
 // Mutation resolver - triggers subscription messages
-function sendNotificationResolver(args) {
+function sendNotificationResolver(context) {
+  const args = context.args;
   const notification = {
     id: Math.random().toString(36).substr(2, 9),
     message: args.message,
@@ -278,7 +292,7 @@ The system maintains backward compatibility:
 ## Best Practices
 
 1. **Use execute_stream naturally**: Let GraphQL handle the subscription lifecycle
-2. **Consider moving message generation to resolvers**: For better GraphQL compliance
+2. **Use the unified context model**: Access GraphQL arguments through `context.args`
 3. **Send structured data**: Use JSON for consistent message format
 4. **Handle errors gracefully**: execute_stream provides native GraphQL error handling
 5. **Use meaningful subscription names**: They become GraphQL field names
@@ -317,6 +331,6 @@ RUST_LOG=debug ./your-server
 Look for log messages like:
 
 - "Registering GraphQL subscription: {name}"
-- "Auto-registered stream path '/graphql/subscription/{name}'"
+- "Registering GraphQL subscription: {name}"
 - "Client subscribed to {name}"
 - "Successfully broadcast subscription message to N connections"

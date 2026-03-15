@@ -578,8 +578,11 @@ const ${queryName}Schema = \`
   }
 \`;
 
-function ${queryName}Resolver(args, context) {
-  console.log("GraphQL query ${queryName} called with:", args);
+function ${queryName}Resolver(context) {
+  console.log(
+    "GraphQL query ${queryName} called with:",
+    context.args || {},
+  );
   
   // TODO: Implement query logic
   
@@ -590,7 +593,12 @@ function ${queryName}Resolver(args, context) {
 }
 
 // Register the query
-graphqlRegistry.registerQuery("${queryName}", ${queryName}Schema, ${queryName}Resolver);
+graphQLRegistry.registerQuery(
+  "${queryName}",
+  ${queryName}Schema,
+  "${queryName}Resolver",
+  "external",
+);
 console.log("Registered GraphQL query: ${queryName}");
   `.trim();
 

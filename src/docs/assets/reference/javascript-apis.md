@@ -11,7 +11,7 @@ function myHandler(context) {
   const req = context.request;
 
   // Access req.method, req.path, req.query, req.form, req.headers, req.body
-  // Use context.args, context.kind, context.meta as needed
+  // Use context.args, context.invocationType, context.metadata as needed
 }
 ```
 
@@ -75,13 +75,14 @@ routeRegistry.registerStreamRoute("/chat/room1");
 - Streams persist until the server restarts or the script is reloaded
 - Use meaningful, descriptive paths for better organization
 
-### routeRegistry.registerAssetRoute(assetPath)
+### routeRegistry.registerAssetRoute(httpPath, assetName)
 
 Registers a static asset for serving via HTTP.
 
 **Parameters:**
 
-- `assetPath` (string): Path to asset file in the asset repository
+- `httpPath` (string): Public HTTP path to register (must start with `/`)
+- `assetName` (string): Asset name in the asset repository
 
 **Returns:** String describing registration result
 
@@ -239,11 +240,12 @@ Returns a JSON string containing metadata for all assets in the repository.
 
 **Returns:** JSON string with array of asset metadata objects. Each object contains:
 
+- `uri` (string): Asset URI/name
 - `name` (string): Asset name/identifier
 - `size` (number): Size in bytes
 - `mimetype` (string): MIME type of the asset
-- `createdAt` (number): Creation timestamp (milliseconds since Unix epoch)
-- `updatedAt` (number): Last update timestamp (milliseconds since Unix epoch)
+- `created_at` (string): Creation timestamp in ISO 8601 format
+- `updated_at` (string): Last update timestamp in ISO 8601 format
 
 **Required Capability:** `ReadAssets`
 
@@ -256,11 +258,12 @@ function listAllAssets(req) {
 
   // Map to simpler format if needed
   const assetList = assetMetadata.map((asset) => ({
+    uri: asset.uri,
     name: asset.name,
     size: asset.size,
     type: asset.mimetype,
-    created: new Date(asset.createdAt).toISOString(),
-    updated: new Date(asset.updatedAt).toISOString(),
+    created: asset.created_at,
+    updated: asset.updated_at,
   }));
 
   return {
@@ -324,15 +327,15 @@ function getAsset(req) {
 routeRegistry.registerRoute("/asset", "getAsset", "GET");
 ```
 
-### assetStorage.upsertAsset(asset_name, content_b64, mimetype)
+### assetStorage.upsertAsset(asset_name, mimetype, content_b64)
 
 Creates a new asset or updates an existing one in the repository.
 
 **Parameters:**
 
 - `asset_name` (string): Name of the asset (1-255 characters, no path traversal characters)
-- `content_b64` (string): Base64-encoded asset content
 - `mimetype` (string): MIME type of the asset (e.g., `"image/png"`, `"text/css"`)
+- `content_b64` (string): Base64-encoded asset content
 
 **Returns:** Success message string, or error message if validation fails
 
@@ -359,7 +362,7 @@ function uploadAsset(req) {
     };
   }
 
-  const result = assetStorage.upsertAsset(name, content, mimetype);
+  const result = assetStorage.upsertAsset(name, mimetype, content);
 
   if (result.startsWith("Error") || result.startsWith("Invalid")) {
     return {
@@ -388,7 +391,7 @@ function handleImageUpload(req) {
   const filename = req.form.filename || "uploaded-image.png";
 
   try {
-    const result = assetStorage.upsertAsset(filename, imageB64, "image/png");
+    const result = assetStorage.upsertAsset(filename, "image/png", imageB64);
 
     console.log("Asset uploaded: " + filename);
 
@@ -501,7 +504,7 @@ function assetHandler(req) {
   if (method === "POST" && path === "/assets") {
     // Create/update asset
     const { name, content, mimetype } = req.form;
-    const result = assetStorage.upsertAsset(name, content, mimetype);
+    const result = assetStorage.upsertAsset(name, mimetype, content);
 
     return {
       status: 201,
@@ -809,6 +812,94 @@ function clearAllUserData(context) {
 - Data persists across sessions when PostgreSQL is configured
 - Unauthenticated requests cannot access personal storage
 
+## Database API
+
+The global `database` object provides script-scoped table management, CRUD helpers, transactions, lease coordination, and optional GraphQL generation.
+
+### Common table operations
+
+- `database.createTable(tableName)` creates a script-owned table namespace.
+- `database.addIntegerColumn(tableName, columnName, nullable?, defaultValue?)`, `database.addTextColumn(...)`, `database.addBooleanColumn(...)`, `database.addTimestampColumn(...)`, and `database.addReferenceColumn(...)` extend the schema.
+- `database.dropColumn(tableName, columnName)` and `database.dropTable(tableName)` remove schema objects owned by the current script.
+
+```javascript
+function init(context) {
+  database.createTable("tasks");
+  database.addTextColumn("tasks", "title", false);
+  database.addBooleanColumn("tasks", "completed", false, "false");
+  database.addTimestampColumn(
+    "tasks",
+    "created_at",
+    false,
+    "CURRENT_TIMESTAMP",
+  );
+
+  return { success: true };
+}
+```
+
+### Querying and mutations
+
+- `database.query(tableName, filters?, limit?, orderBy?, orderDir?)` returns a JSON string array of matching rows.
+- `database.insert(tableName, dataJson)`, `database.update(tableName, id, dataJson)`, and `database.delete(tableName, id)` perform row-level CRUD.
+- `database.upsert(tableName, keyColumnsJson, dataJson)` performs atomic insert-or-update when the conflict target has a unique index.
+- `database.deleteWhere(tableName, filtersJson)` removes multiple rows using the same filter syntax as `query()`.
+
+```javascript
+function createTask(context) {
+  const req = context.request;
+  const result = JSON.parse(
+    database.insert(
+      "tasks",
+      JSON.stringify({ title: req.form.title, completed: false }),
+    ),
+  );
+
+  if (result.error) {
+    return ResponseBuilder.error(400, result.error);
+  }
+
+  return ResponseBuilder.json(result, 201);
+}
+
+function listOpenTasks(context) {
+  const rows = JSON.parse(
+    database.query(
+      "tasks",
+      JSON.stringify({ completed: false }),
+      100,
+      "created_at",
+      "desc",
+    ),
+  );
+
+  return ResponseBuilder.json(rows);
+}
+```
+
+### Transactions, leases, and GraphQL generation
+
+- `database.beginTransaction(timeout_ms?)`, `database.commitTransaction()`, and `database.rollbackTransaction()` manage transactional work. Nested flows can use `database.createSavepoint(name?)`, `database.rollbackToSavepoint(name)`, and `database.releaseSavepoint(name)`.
+- `database.createLeaseTable(tableName)` and `database.acquireLease(tableName, leaseId, owner, ttlMs)` support distributed lease acquisition for scheduled or multi-instance work.
+- `database.addUniqueIndex(tableName, columnsJson)` prepares columns for `database.upsert(...)`.
+- `database.generateGraphQLForTable(tableName, optionsJson?)` can generate query and mutation bindings for a table.
+
+```javascript
+function init(context) {
+  database.createLeaseTable("job_leases");
+
+  const generated = JSON.parse(
+    database.generateGraphQLForTable(
+      "tasks",
+      JSON.stringify({ visibility: "authenticated" }),
+    ),
+  );
+  console.log("Generated operations:", generated);
+
+  return { success: true };
+}
+```
+
 ## HTTP Fetch
 
 ### fetch(url, options)
@@ -1028,14 +1119,14 @@ Registers a GraphQL query that can be executed through the GraphQL endpoint.
 
 - `name` (string): Name of the query (e.g., `"users"`, `"getPosts"`)
 - `sdl` (string): GraphQL SDL (Schema Definition Language) for the query
-- `resolverFunction` (string): Name of your JavaScript resolver function
+- `resolverFunction` (string): Name of your JavaScript resolver function, which receives a unified `context` object
 - `visibility` (string): Visibility level - `"internal"` (script-only), `"engine"` (all scripts), or `"external"` (authenticated API access)
 
 **Example:**
 
 ```javascript
 // Define a simple query
-function getUsers() {
+function getUsers(context) {
   return JSON.stringify([
     { id: 1, name: "Alice", email: "alice@example.com" },
     { id: 2, name: "Bob", email: "bob@example.com" },
@@ -1061,8 +1152,8 @@ graphQLRegistry.registerQuery(
 **Example with Arguments:**
 
 ```javascript
-function getUserById(args) {
-  const userId = args.id;
+function getUserById(context) {
+  const userId = context.args.id;
   // Simulate database lookup
   const users = [
     { id: 1, name: "Alice", email: "alice@example.com" },
@@ -1096,14 +1187,14 @@ Registers a GraphQL mutation for modifying data.
 
 - `name` (string): Name of the mutation
 - `sdl` (string): GraphQL SDL (Schema Definition Language) for the mutation
-- `resolverFunction` (string): Name of your JavaScript resolver function
+- `resolverFunction` (string): Name of your JavaScript resolver function, which receives a unified `context` object
 - `visibility` (string): Visibility level - `"internal"` (script-only), `"engine"` (all scripts), or `"external"` (authenticated API access)
 
 **Example:**
 
 ```javascript
-function createUser(args) {
-  const { name, email } = args;
+function createUser(context) {
+  const { name, email } = context.args;
 
   // Simulate creating a user
   const newUser = {
@@ -1142,13 +1233,13 @@ Registers a GraphQL subscription for real-time data streaming.
 
 - `name` (string): Name of the subscription
 - `sdl` (string): GraphQL SDL (Schema Definition Language) for the subscription
-- `resolverFunction` (string): Name of your JavaScript resolver function
+- `resolverFunction` (string): Name of your JavaScript resolver function, which receives a unified `context` object
 - `visibility` (string): Visibility level - `"internal"` (script-only), `"engine"` (all scripts), or `"external"` (authenticated API access)
 
 **Example:**
 
 ```javascript
-function onUserActivity() {
+function onUserActivity(context) {
   // Initial subscription message
   return {
     type: "subscription_started",
@@ -1446,11 +1537,11 @@ type Subscription {
 
 ### Resolver Functions
 
-Resolver functions receive arguments and return JSON strings:
+Resolver functions receive the unified `context` object. GraphQL arguments are available on `context.args`.
 
 ```javascript
-function getUserById(args) {
-  const { id } = args;
+function getUserById(context) {
+  const { id } = context.args;
 
   // Your logic here
   const user = findUserById(id);
@@ -1466,8 +1557,8 @@ function getUserById(args) {
   }
 }
 
-function createUser(args) {
-  const { name, email } = args;
+function createUser(context) {
+  const { name, email } = context.args;
 
   // Create user logic
   const newUser = {
@@ -1479,6 +1570,8 @@ function createUser(args) {
   return JSON.stringify(newUser);
 }
 ```
+
+For GraphQL invocations, `context.invocationType` is one of `"graphqlQuery"`, `"graphqlMutation"`, or `"graphqlSubscription"`.
 
 ### GraphQL Client Usage
 
@@ -1710,14 +1803,13 @@ function deleteHandler(context) {
 }
 ```
 
-### ResponseBuilder.redirect(url, status)
+### ResponseBuilder.redirect(location)
 
 Creates a redirect response.
 
 **Parameters:**
 
-- `url` (string): Redirect URL
-- `status` (number, optional): HTTP status code (default: 302)
+- `location` (string): Redirect URL
 
 **Returns:** Response object
 
@@ -1725,7 +1817,55 @@ Creates a redirect response.
 
 ```javascript
 function redirectHandler(context) {
-  return ResponseBuilder.redirect("/new-location", 301);
+  return ResponseBuilder.redirect("/new-location");
+}
+```
+
+## JSX Support
+
+aiwebengine also exposes server-side JSX helpers for building HTML strings in plain JavaScript or TypeScript.
+
+### h(tag, props, ...children)
+
+Creates an HTML string from an intrinsic tag name or a component function.
+
+```javascript
+const cardHtml = h(
+  "section",
+  { className: "card" },
+  h("h2", null, "Welcome"),
+  h("p", null, "Rendered on the server."),
+);
+```
+
+### Fragment(props, ...children)
+
+Groups sibling elements without adding an extra wrapper node.
+
+```javascript
+const listItems = Fragment(
+  null,
+  h("li", null, "First"),
+  h("li", null, "Second"),
+);
+```
+
+### JSX example
+
+With TypeScript JSX enabled, JSX expressions render directly to HTML strings and support the built-in `JSX` namespace from the engine type declarations.
+
+```tsx
+function Greeting(props) {
+  return <p>Hello {props.name}</p>;
+}
+
+function pageHandler(context) {
+  return ResponseBuilder.html(
+    <main>
+      <h1>Dashboard</h1>
+      <Greeting name="aiwebengine" />
+    </main>,
+  );
 }
 ```
 

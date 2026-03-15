@@ -263,6 +263,7 @@ graphQLRegistry.registerSubscription(
   "chatMessages",
   "type Subscription { chatMessages: String }",
   "chatMessagesResolver",
+  "external",
 );
 
 // Send to connections where user_id matches "user456"
@@ -1220,7 +1221,7 @@ graphQLRegistry.sendSubscriptionMessageFiltered(
 
 1. Client connects to `/graphql/sse?user_id=user123&room=general`
 2. Client sends GraphQL subscription: `subscription { chatMessages { ... } }`
-3. Server creates connection to `/graphql/subscription/chatMessages` with metadata `{user_id: "user123", room: "general"}`
+3. Server associates the `chatMessages` subscription connection with metadata `{user_id: "user123", room: "general"}`
 4. Server can selectively broadcast using `graphQLRegistry.sendSubscriptionMessageFiltered("chatMessages", data, filter)`
 
 **Use Cases:**

@@ -19,20 +19,20 @@ As of November 2025, aiwebengine has been refactored to use a more flexible asse
 ### After (New System)
 
 - Assets stored with `asset_name` (e.g., `logo.svg`)
-- HTTP paths registered dynamically using `routeRegistry.registerAssetRoute(path, asset_name)`
+- HTTP paths registered dynamically using `routeRegistry.registerAssetRoute(httpPath, assetName)`
 - Same asset can be served at multiple HTTP paths
 - Paths can be changed without touching the database
 
 ## Asset Functions
 
-### routeRegistry.registerAssetRoute(path, asset_name)
+### routeRegistry.registerAssetRoute(httpPath, assetName)
 
 Registers an HTTP path to serve a specific asset.
 
 **Parameters:**
 
-- `path` (string): The HTTP path (must start with `/`, max 500 characters)
-- `asset_name` (string): The name of the asset in the repository (1-255 characters, no path separators)
+- `httpPath` (string): The HTTP path (must start with `/`, max 500 characters)
+- `assetName` (string): The name of the asset in the repository (1-255 characters, no path separators)
 
 **Example:**
 
@@ -54,15 +54,15 @@ function init(context) {
 }
 ```
 
-### assetStorage.upsertAsset(asset_name, content_base64, mimetype)
+### assetStorage.upsertAsset(assetName, mimetype, contentBase64)
 
 Creates or updates an asset in the repository.
 
 **Parameters:**
 
-- `asset_name` (string): Name of the asset (e.g., `"logo.svg"`, `"app.css"`)
-- `content_base64` (string): Base64-encoded content
+- `assetName` (string): Name of the asset (e.g., `"logo.svg"`, `"app.css"`)
 - `mimetype` (string): MIME type (e.g., `"image/svg+xml"`, `"text/css"`)
+- `contentBase64` (string): Base64-encoded content
 
 **Example:**
 
@@ -72,7 +72,7 @@ function uploadAsset(req) {
   const content = req.form.content; // Base64 string
   const mimetype = req.form.mimetype; // "image/png"
 
-  assetStorage.upsertAsset(name, content, mimetype);
+  assetStorage.upsertAsset(name, mimetype, content);
 
   return {
     status: 201,
@@ -127,18 +127,18 @@ Deletes an asset from the repository.
 
 **Returns:**
 
-- `true` if deleted, `false` if not found
+- Operation result message
 
 **Example:**
 
 ```javascript
 function removeAsset(req) {
   const name = req.query.name;
-  const deleted = assetStorage.deleteAsset(name);
+  const result = assetStorage.deleteAsset(name);
 
   return {
-    status: deleted ? 200 : 404,
-    body: deleted ? "Deleted" : "Not found",
+    status: result.includes("deleted") ? 200 : 404,
+    body: result,
     contentType: "text/plain",
   };
 }
@@ -151,11 +151,12 @@ Lists all assets with metadata in the repository.
 **Returns:**
 
 - JSON string with array of asset metadata objects containing:
+  - `uri`: Asset URI/name
   - `name`: Asset name/identifier
   - `size`: Size in bytes
   - `mimetype`: MIME type
-  - `createdAt`: Creation timestamp (ms since epoch)
-  - `updatedAt`: Last update timestamp (ms since epoch)
+  - `created_at`: Creation timestamp (ISO 8601)
+  - `updated_at`: Last update timestamp (ISO 8601)
 
 **Example:**
 

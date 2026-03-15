@@ -2,6 +2,8 @@
 
 Learn how to work with static files like images, CSS, JavaScript, and other assets in aiwebengine.
 
+Current engine versions store assets by name and expose them over HTTP after you register a route with `routeRegistry.registerAssetRoute(httpPath, assetName)`. Use `assetStorage` to manage file contents and the route registry to choose public URLs.
+
 ## Overview
 
 Assets are static files that your scripts can serve to clients. They can include:
@@ -140,40 +142,38 @@ assets.forEach((asset) => {
 });
 
 // Fetch asset data
-const assetData = assetStorage.fetchAsset("/logo.png");
-const asset = JSON.parse(assetData);
-console.log(asset.mimetype); // "image/png"
-console.log(asset.contentB64); // Base64 encoded content
+const assetContentB64 = assetStorage.fetchAsset("logo.png");
+console.log(assetContentB64); // Base64 encoded content
 
 // Create or update asset
 assetStorage.upsertAsset(
-  "/new-image.png", // Public path
+  "new-image.png", // Asset name
   "image/png", // MIME type
   base64EncodedContent, // Base64 string
 );
 
 // Delete asset
-const deleted = assetStorage.deleteAsset("/old-image.png");
-console.log(deleted); // true if deleted
+const deleteResult = assetStorage.deleteAsset("old-image.png");
+console.log(deleteResult);
 ```
 
 **Example: Upload from form**
 
 ```javascript
 function uploadHandler(req) {
-  const publicPath = req.form.path; // "/uploads/file.jpg"
+  const assetName = req.form.name; // "uploads-file.jpg"
   const mimetype = req.form.mimetype; // "image/jpeg"
   const contentB64 = req.form.content; // Base64 string
 
   try {
-    assetStorage.upsertAsset(publicPath, mimetype, contentB64);
-    console.log(`Asset uploaded: ${publicPath}`);
+    assetStorage.upsertAsset(assetName, mimetype, contentB64);
+    console.log(`Asset uploaded: ${assetName}`);
 
     return {
       status: 201,
       body: JSON.stringify({
         message: "Asset uploaded",
-        url: publicPath,
+        assetName: assetName,
       }),
       contentType: "application/json",
     };
@@ -511,41 +511,34 @@ const assetsJson = assetStorage.listAssets();
 const assets = JSON.parse(assetsJson);
 // [
 //   {
+//     "uri": "logo.png",
 //     "name": "logo.png",
 //     "size": 1024,
 //     "mimetype": "image/png",
-//     "createdAt": 1699564800000,
-//     "updatedAt": 1699564800000
+//     "created_at": "2026-01-18T10:35:00Z",
+//     "updated_at": "2026-01-18T10:35:00Z"
 //   },
 //   { ... }
 // ]
 ```
 
-### `assetStorage.fetchAsset(publicPath)`
+### `assetStorage.fetchAsset(assetName)`
 
-Returns JSON string with asset data.
+Returns the base64-encoded content for an asset.
 
 ```javascript
-const assetJson = assetStorage.fetchAsset("/logo.png");
-const asset = JSON.parse(assetJson);
-
-// Returns:
-// {
-//   "publicPath": "/logo.png",
-//   "mimetype": "image/png",
-//   "contentB64": "iVBORw0KGgoAAAANS..."
-// }
+const contentB64 = assetStorage.fetchAsset("logo.png");
 ```
 
-Returns `"null"` if asset not found.
+Returns an error message string if the asset is not found.
 
-### `assetStorage.upsertAsset(publicPath, mimetype, contentB64)`
+### `assetStorage.upsertAsset(assetName, mimetype, contentB64)`
 
 Creates or updates an asset.
 
 ```javascript
 assetStorage.upsertAsset(
-  "/images/new.png",
+  "new.png",
   "image/png",
   "iVBORw0KGgoAAAANS...", // Base64 encoded
 );
@@ -553,21 +546,17 @@ assetStorage.upsertAsset(
 
 **Parameters:**
 
-- `publicPath` - URL path (e.g., `/images/photo.jpg`)
+- `assetName` - Asset name (e.g., `photo.jpg`)
 - `mimetype` - MIME type (e.g., `image/jpeg`)
 - `contentB64` - Base64 encoded file content
 
-### `assetStorage.deleteAsset(publicPath)`
+### `assetStorage.deleteAsset(assetName)`
 
-Deletes an asset. Returns `true` if deleted, `false` if not found.
+Deletes an asset. Returns a status message string.
 
 ```javascript
-const deleted = assetStorage.deleteAsset("/old-image.png");
-if (deleted) {
-  console.log("Asset deleted");
-} else {
-  console.log("Asset not found");
-}
+const result = assetStorage.deleteAsset("old-image.png");
+console.log(result);
 ```
 
 ## MIME Types Reference
@@ -673,12 +662,12 @@ Regularly remove assets that are no longer referenced:
 
 ```javascript
 function cleanupHandler(req) {
-  const assets = assetStorage.listAssets();
+  const assets = JSON.parse(assetStorage.listAssets());
   const unusedAssets = findUnusedAssets(assets);
 
   unusedAssets.forEach((asset) => {
-    assetStorage.deleteAsset(asset);
-    console.log(`Deleted unused asset: ${asset}`);
+    assetStorage.deleteAsset(asset.name);
+    console.log(`Deleted unused asset: ${asset.name}`);
   });
 
   return {
@@ -820,15 +809,14 @@ routeRegistry.registerRoute("/manifest.json", "pwaManifestHandler", "GET");
 // List all assets with metadata
 const assetsJson = assetStorage.listAssets();
 const assets = JSON.parse(assetsJson);
-// Each asset has: name, size, mimetype, createdAt, updatedAt
+// Each asset has: uri, name, size, mimetype, created_at, updated_at
 
 // Get asset data
-const assetJson = assetStorage.fetchAsset("/logo.png");
-const asset = JSON.parse(assetJson);
+const assetContentB64 = assetStorage.fetchAsset("logo.png");
 
 // Create/update asset
-assetStorage.upsertAsset("/new.png", "image/png", base64Content);
+assetStorage.upsertAsset("new.png", "image/png", base64Content);
 
 // Delete asset
-assetStorage.deleteAsset("/old.png");
+assetStorage.deleteAsset("old.png");
 ```
