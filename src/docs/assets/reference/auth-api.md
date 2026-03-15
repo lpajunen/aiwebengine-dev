@@ -96,21 +96,21 @@ function myHandler(req) {
 }
 ```
 
-### Methods
+### Properties (User Object)
 
-#### `req.auth.currentUser()` → object | null
+#### `req.auth.user` → object | null
 
-Returns an object with complete user information if authenticated, or `null` if not authenticated.
+The complete user object when authenticated, or `null` if not authenticated.
 
-**Returns:**
+**Type:**
 
 ```typescript
 {
-    id: string,
-    email?: string,
-    name?: string,
-    provider: string,
-    isAuthenticated: true
+    id: string | null,
+    email: string | null,
+    name: string | null,
+    provider: string | null,
+    isAuthenticated: boolean
 } | null
 ```
 
@@ -118,7 +118,7 @@ Returns an object with complete user information if authenticated, or `null` if 
 
 ```javascript
 function myHandler(req) {
-  const user = req.auth.currentUser();
+  const user = req.auth.user;
   if (user) {
     console.log(`User ${user.id} logged in via ${user.provider}`);
     if (user.email) {
@@ -225,7 +225,7 @@ function profileHandler(req) {
 
 ```javascript
 function dataHandler(req) {
-  const user = req.auth.currentUser();
+  const user = req.auth.user;
 
   if (!user) {
     return {
@@ -292,7 +292,7 @@ function userDataHandler(req) {
 
 ```javascript
 function contentHandler(req) {
-  const user = req.auth.currentUser();
+  const user = req.auth.user;
 
   // Public content available to everyone
   const publicContent = getPublicContent();
@@ -364,7 +364,7 @@ function requireUser(req) {
   if (!req.auth.isAuthenticated) {
     throw new Error("Please login to access this resource");
   }
-  return req.auth.currentUser();
+  return req.auth.user;
 }
 
 function customProtectedHandler(req) {

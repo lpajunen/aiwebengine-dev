@@ -2562,8 +2562,8 @@ AVAILABLE RESPONSE BUILDERS:
 AUTHENTICATION:
 - context.request.auth - AuthContext if user is authenticated, undefined if not
 - context.request.auth.userId - Authenticated user's ID
-- context.request.auth.email - Authenticated user's email
-- context.request.auth.name - Authenticated user's display name
+- context.request.auth.userEmail - Authenticated user's email
+- context.request.auth.userName - Authenticated user's display name
 - context.request.auth.isAdmin - Whether user has admin privileges
 - Check !context.request.auth to detect unauthenticated requests
 
@@ -2571,7 +2571,7 @@ IMPORTANT CONCEPTS:
 1. Scripts are SERVER-SIDE JavaScript that handle HTTP requests
 2. Use Response builders instead of manual response objects
 3. Check context.request.auth to verify authentication
-4. Access user data through context.request.auth (userId, email, name, isAdmin)
+4. Access user data through context.request.auth (userId, userEmail, userName, isAdmin)
 5. Scripts don't have access to browser APIs or Node.js APIs
 6. Use fetch() to call external APIs
 7. Use routeRegistry.registerRoute() in init() to map URLs to handler functions
@@ -2588,7 +2588,7 @@ RULES:
    - For GraphQL services: graphQLRegistry.registerQuery(), graphQLRegistry.registerMutation(), or graphQLRegistry.registerSubscription()
    - A script may use multiple registration types
 5. Use Response builders (ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.text(), ResponseBuilder.error(status, message)) instead of manual response objects
-6. Check context.request.auth to verify authentication; use context.request.auth.userId, .email, .isAdmin for user info
+6. Check context.request.auth to verify authentication; use context.request.auth.userId, .userEmail, .isAdmin for user info
 7. Use console.log() for debugging
 8. For edits, include both original_code and code fields
 9. Never use Node.js APIs (fs, path, etc.) - they don't exist here
@@ -2623,7 +2623,7 @@ Example 8 - Edit CSS file:
 {"type":"edit_asset","message":"Adding dark mode support to existing CSS","asset_path":"/styles/main.css","original_code":".container {\\n  background: white;\\n  color: black;\\n}","code":".container {\\n  background: white;\\n  color: black;\\n}\\n\\n@media (prefers-color-scheme: dark) {\\n  .container {\\n    background: #1e1e1e;\\n    color: #ffffff;\\n  }\\n}"}
 
 Example 9 - Protected API requiring authentication:
-{"type":"create_script","message":"Creating a protected API that requires authentication","script_name":"protected-api.js","code":"// Protected API\\n\\nfunction getProfile(context) {\\n  const req = context.request || {};\\n  if (!req.auth) {\\n    return ResponseBuilder.error(401, 'Authentication required');\\n  }\\n  const userId = req.query && req.query.userId;\\n  if (!userId) {\\n    return ResponseBuilder.error(400, 'userId query parameter is required');\\n  }\\n  if (req.auth.userId !== userId && !req.auth.isAdmin) {\\n    return ResponseBuilder.error(403, 'Access denied');\\n  }\\n  return ResponseBuilder.json({ id: req.auth.userId, email: req.auth.email });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', 'getProfile', 'GET');\\n  return { success: true };\\n}"}
+{"type":"create_script","message":"Creating a protected API that requires authentication","script_name":"protected-api.js","code":"// Protected API\\n\\nfunction getProfile(context) {\\n  const req = context.request || {};\\n  if (!req.auth) {\\n    return ResponseBuilder.error(401, 'Authentication required');\\n  }\\n  const userId = req.query && req.query.userId;\\n  if (!userId) {\\n    return ResponseBuilder.error(400, 'userId query parameter is required');\\n  }\\n  if (req.auth.userId !== userId && !req.auth.isAdmin) {\\n    return ResponseBuilder.error(403, 'Access denied');\\n  }\\n  return ResponseBuilder.json({ id: req.auth.userId, email: req.auth.userEmail });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', 'getProfile', 'GET');\\n  return { success: true };\\n}"}
 
 Example 10 - Form handling:
 {"type":"create_script","message":"Creating a contact form handler","script_name":"contact-form.js","code":"// Contact Form\\n\\nfunction submitContact(context) {\\n  const req = context.request || {};\\n  const name = req.form && req.form.name;\\n  const email = req.form && req.form.email;\\n  const message = req.form && req.form.message;\\n  if (!name || !email || !message) {\\n    return ResponseBuilder.error(400, 'Name, email and message are required');\\n  }\\n  console.log('Contact from ' + name + ' (' + email + '): ' + message);\\n  return ResponseBuilder.html('<h1>Thank you for your message!</h1><p>We will get back to you soon.</p>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/contact', 'submitContact', 'POST');\\n  return { success: true };\\n}"}
@@ -2637,7 +2637,7 @@ ASSET CREATION GUIDELINES:
 - Always use the asset_path field (not script_name) for asset operations
 - Asset paths should start with / (e.g., "/styles/main.css", "/icons/logo.svg")
 
-Remember: You are creating JavaScript scripts that run on the SERVER and handle HTTP requests. When someone asks for a "web page", you create a script that SERVES that HTML page using ResponseBuilder.html()! For styling, images, or static content, create assets instead of scripts. Use Response builders for all responses, check context.request.auth for authentication, and access user info via context.request.auth.userId, .email, and .isAdmin.`;
+Remember: You are creating JavaScript scripts that run on the SERVER and handle HTTP requests. When someone asks for a "web page", you create a script that SERVES that HTML page using ResponseBuilder.html()! For styling, images, or static content, create assets instead of scripts. Use Response builders for all responses, check context.request.auth for authentication, and access user info via context.request.auth.userId, .userEmail, and .isAdmin.`;
 
   // Build contextual user prompt
   let contextualPrompt = "";
@@ -2922,7 +2922,7 @@ IMPORTANT CONCEPTS:
 6. Assets must be registered to HTTP paths using routeRegistry.registerAssetRoute(path, assetName)
 7. Same asset can be served at multiple HTTP paths via multiple registrations
 8. Asset names should NOT include path separators (no / in names)
-9. Check context.request.auth to verify authentication; use context.request.auth.userId, .email, .isAdmin for user info
+9. Check context.request.auth to verify authentication; use context.request.auth.userId, .userEmail, .isAdmin for user info
 10. GraphQL registration requires a visibility parameter: "internal", "engine", or "external"
 
 CURRENT CONTEXT:`;
