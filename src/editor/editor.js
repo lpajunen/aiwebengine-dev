@@ -61,7 +61,7 @@ function serveEditor(context) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editor</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="stylesheet" href="/editor.css">
+    <link rel="stylesheet" href="/editor/editor.css">
 </head>
 <body>
     <div class="editor-container">
@@ -71,10 +71,10 @@ function serveEditor(context) {
                 <h1>aiwebengine</h1>
             </div>
             <nav class="unified-nav">
-                <a href="/engine/docs" title="Documentation">📚 Documentation</a>
-                <a href="/engine/editor" title="Code Editor">✏️ Editor</a>
-                <a href="/engine/graphql" title="GraphQL API">🔗 GraphiQL</a>
-                <a href="/engine/swagger" title="REST API">📖 Swagger</a>
+                <a href="/docs" title="Documentation">📚 Documentation</a>
+                <a href="/editor" title="Code Editor">✏️ Editor</a>
+                <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
+                <a href="/editor/swagger" title="REST API">📖 Swagger</a>
             </nav>
         </header>
 
@@ -334,7 +334,7 @@ function serveEditor(context) {
     <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
     
     <!-- Main JavaScript -->
-    <script src="/editor.js"></script>
+    <script src="/editor/editor.js"></script>
     
     <!-- Active state detection for unified navigation -->
     <script>
@@ -435,10 +435,10 @@ function serveGraphiQL(context) {
             <h1>aiwebengine</h1>
         </div>
         <nav class="unified-nav">
-            <a href="/engine/docs" title="Documentation">📚 Documentation</a>
-            <a href="/engine/editor" title="Code Editor">✏️ Editor</a>
-            <a href="/engine/graphql" title="GraphQL API">🔗 GraphiQL</a>
-            <a href="/engine/swagger" title="REST API">📖 Swagger</a>
+            <a href="/docs" title="Documentation">📚 Documentation</a>
+            <a href="/editor" title="Code Editor">✏️ Editor</a>
+            <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
+            <a href="/editor/swagger" title="REST API">📖 Swagger</a>
         </nav>
     </header>
     <div id="graphiql">Loading...</div>
@@ -671,10 +671,10 @@ function serveSwaggerUI(context) {
             <h1>aiwebengine</h1>
         </div>
         <nav class="unified-nav">
-            <a href="/engine/docs" title="Documentation">📚 Documentation</a>
-            <a href="/engine/editor" title="Code Editor">✏️ Editor</a>
-            <a href="/engine/graphql" title="GraphQL API">🔗 GraphiQL</a>
-            <a href="/engine/swagger" title="REST API">📖 Swagger</a>
+            <a href="/docs" title="Documentation">📚 Documentation</a>
+            <a href="/editor" title="Code Editor">✏️ Editor</a>
+            <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
+            <a href="/editor/swagger" title="REST API">📖 Swagger</a>
         </nav>
     </header>
     <div id="swagger-ui"></div>
@@ -822,8 +822,8 @@ function apiGetScript(context) {
   const req = getRequest(context);
   try {
     // Extract the script name from the path
-    // The path will be something like /api/scripts/https://example.com/core
-    let scriptName = req.path.replace("/api/scripts/", "");
+    // The path will be something like /editor/api/scripts/https://example.com/core
+    let scriptName = req.path.replace("/editor/api/scripts/", "");
 
     // URL decode the script name in case it contains encoded characters
     scriptName = decodeURIComponent(scriptName);
@@ -879,7 +879,7 @@ function apiSaveScript(context) {
   const req = getRequest(context);
   try {
     // Extract the script name from the path
-    let scriptName = req.path.replace("/api/scripts/", "");
+    let scriptName = req.path.replace("/editor/api/scripts/", "");
 
     // URL decode the script name in case it contains encoded characters
     scriptName = decodeURIComponent(scriptName);
@@ -974,7 +974,7 @@ function apiDeleteScript(context) {
   const req = getRequest(context);
   try {
     // Extract the script name from the path
-    let scriptName = req.path.replace("/api/scripts/", "");
+    let scriptName = req.path.replace("/editor/api/scripts/", "");
 
     // URL decode the script name in case it contains encoded characters
     scriptName = decodeURIComponent(scriptName);
@@ -1100,8 +1100,8 @@ function apiUpdateScriptPrivilege(context) {
       };
     }
 
-    // Expect path /api/script-security/<script>
-    let scriptName = req.path.replace("/api/script-security/", "");
+    // Expect path /editor/api/script-security/<script>
+    let scriptName = req.path.replace("/editor/api/script-security/", "");
     scriptName = decodeURIComponent(scriptName);
 
     let fullUri;
@@ -1180,8 +1180,8 @@ function apiAddScriptOwner(context) {
       };
     }
 
-    // Extract script name from path /api/script-owners/<script>
-    let scriptName = req.path.replace("/api/script-owners/", "");
+    // Extract script name from path /editor/api/script-owners/<script>
+    let scriptName = req.path.replace("/editor/api/script-owners/", "");
     scriptName = decodeURIComponent(scriptName);
 
     let fullUri;
@@ -1267,8 +1267,8 @@ function apiRemoveScriptOwner(context) {
       };
     }
 
-    // Extract script name from path /api/script-owners/<script>
-    let scriptName = req.path.replace("/api/script-owners/", "");
+    // Extract script name from path /editor/api/script-owners/<script>
+    let scriptName = req.path.replace("/editor/api/script-owners/", "");
     scriptName = decodeURIComponent(scriptName);
 
     // Get ownerId from request body (now properly supported for DELETE)
@@ -1371,7 +1371,7 @@ function apiGetLogs(context) {
   }
 }
 
-// API: Prune logs (DELETE /api/logs)
+// API: Prune logs (DELETE /editor/api/logs)
 function apiPruneLogs(context) {
   const req = getRequest(context);
   try {
@@ -1463,7 +1463,7 @@ function apiGetAsset(context) {
     const scriptUri = req.query && req.query.uri ? req.query.uri : null;
 
     // Extract the asset path from the URL
-    let assetPath = req.path.replace("/api/assets", "");
+    let assetPath = req.path.replace("/editor/api/assets", "");
 
     // URL decode the asset path in case it contains encoded characters
     assetPath = decodeURIComponent(assetPath);
@@ -1683,7 +1683,7 @@ function apiDeleteAsset(context) {
     const scriptUri = req.query && req.query.uri ? req.query.uri : null;
 
     // Extract the asset path from the URL
-    let assetPath = req.path.replace("/api/assets", "");
+    let assetPath = req.path.replace("/editor/api/assets", "");
 
     // URL decode the asset path in case it contains encoded characters
     assetPath = decodeURIComponent(assetPath);
@@ -1889,7 +1889,7 @@ function apiDeleteSecret(context) {
     const scriptUri = req.query && req.query.uri ? req.query.uri : null;
 
     // Extract the secret key from the URL
-    let secretKey = req.path.replace("/api/secrets", "");
+    let secretKey = req.path.replace("/editor/api/secrets", "");
 
     // URL decode the secret key
     secretKey = decodeURIComponent(secretKey);
@@ -3096,47 +3096,137 @@ function init(context) {
   console.log("Initializing editor.js at " + new Date().toISOString());
 
   // Register editor assets
-  routeRegistry.registerAssetRoute("/editor.css", "editor.css");
-  routeRegistry.registerAssetRoute("/editor.js", "editor.js");
+  routeRegistry.registerAssetRoute("/editor/editor.css", "editor.css");
+  routeRegistry.registerAssetRoute("/editor/editor.js", "editor.js");
 
-  routeRegistry.registerRoute("/engine/editor", "serveEditor", "GET");
-  routeRegistry.registerRoute("/engine/graphql", "serveGraphiQL", "GET");
-  routeRegistry.registerRoute("/engine/swagger", "serveSwaggerUI", "GET");
-  routeRegistry.registerRoute("/api/scripts", "apiListScripts", "GET");
-  routeRegistry.registerRoute("/api/scripts/*", "apiGetScript", "GET");
-  routeRegistry.registerRoute("/api/scripts/*", "apiSaveScript", "POST");
-  routeRegistry.registerRoute("/api/scripts/*", "apiDeleteScript", "DELETE");
+  const editorTag = { tags: ["Aiwebengine editor"] };
+  routeRegistry.registerRoute("/editor", "serveEditor", "GET", editorTag);
   routeRegistry.registerRoute(
-    "/api/script-security/*",
+    "/editor/graphql",
+    "serveGraphiQL",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/swagger",
+    "serveSwaggerUI",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/scripts",
+    "apiListScripts",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/scripts/*",
+    "apiGetScript",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/scripts/*",
+    "apiSaveScript",
+    "POST",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/scripts/*",
+    "apiDeleteScript",
+    "DELETE",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/script-security/*",
     "apiUpdateScriptPrivilege",
     "POST",
+    editorTag,
   );
   // Owner management uses separate path to avoid wildcard conflicts
   routeRegistry.registerRoute(
-    "/api/script-owners/*",
+    "/editor/api/script-owners/*",
     "apiAddScriptOwner",
     "POST",
+    editorTag,
   );
   routeRegistry.registerRoute(
-    "/api/script-owners/*",
+    "/editor/api/script-owners/*",
     "apiRemoveScriptOwner",
     "DELETE",
+    editorTag,
   );
-  routeRegistry.registerRoute("/api/logs", "apiGetLogs", "GET");
-  routeRegistry.registerRoute("/api/logs", "apiPruneLogs", "DELETE");
-  routeRegistry.registerRoute("/api/assets", "apiGetAssets", "GET");
-  routeRegistry.registerRoute("/api/assets", "apiSaveAsset", "POST");
-  routeRegistry.registerRoute("/api/assets/*", "apiGetAsset", "GET");
-  routeRegistry.registerRoute("/api/assets/*", "apiDeleteAsset", "DELETE");
-  routeRegistry.registerRoute("/api/secrets", "apiListSecrets", "GET");
-  routeRegistry.registerRoute("/api/secrets", "apiSaveSecret", "POST");
-  routeRegistry.registerRoute("/api/secrets/*", "apiDeleteSecret", "DELETE");
-  routeRegistry.registerRoute("/api/routes", "apiListRoutes", "GET");
-  routeRegistry.registerRoute("/api/ai-assistant", "apiAIAssistant", "POST");
   routeRegistry.registerRoute(
-    "/api/ai-assistant/tools",
+    "/editor/api/logs",
+    "apiGetLogs",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/logs",
+    "apiPruneLogs",
+    "DELETE",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/assets",
+    "apiGetAssets",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/assets",
+    "apiSaveAsset",
+    "POST",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/assets/*",
+    "apiGetAsset",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/assets/*",
+    "apiDeleteAsset",
+    "DELETE",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/secrets",
+    "apiListSecrets",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/secrets",
+    "apiSaveSecret",
+    "POST",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/secrets/*",
+    "apiDeleteSecret",
+    "DELETE",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/routes",
+    "apiListRoutes",
+    "GET",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/ai-assistant",
+    "apiAIAssistant",
+    "POST",
+    editorTag,
+  );
+  routeRegistry.registerRoute(
+    "/editor/api/ai-assistant/tools",
     "apiAIAssistantWithTools",
     "POST",
+    editorTag,
   );
   console.log("Editor endpoints registered");
   return { success: true };

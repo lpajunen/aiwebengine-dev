@@ -2,7 +2,7 @@
 
 /**
  * Documentation Feature Script
- * Serves markdown documentation from assets/docs as HTML at /engine/docs routes
+ * Serves markdown documentation from assets/docs as HTML at /docs routes
  */
 
 function getRequest(context) {
@@ -108,9 +108,9 @@ function extractTitle(markdown) {
 
 /**
  * Map URL path to asset name
- * /engine/docs/ -> docs/README.md
- * /engine/docs/guides/scripts -> docs/guides/scripts.md
- * /engine/docs/guides/scripts/ -> docs/guides/scripts.md
+ * /docs/ -> docs/README.md
+ * /docs/guides/scripts -> docs/guides/scripts.md
+ * /docs/guides/scripts/ -> docs/guides/scripts.md
  */
 function mapPathToAssetName(docPath) {
   // Remove trailing slash if present
@@ -403,10 +403,10 @@ function wrapInTemplate(htmlContent, title) {
                 <h1>aiwebengine</h1>
             </div>
             <nav class="unified-nav">
-                <a href="/engine/docs" title="Documentation">📚 Documentation</a>
-                <a href="/engine/editor" title="Code Editor">✏️ Editor</a>
-                <a href="/engine/graphql" title="GraphQL API">🔗 GraphiQL</a>
-                <a href="/engine/swagger" title="REST API">📖 Swagger</a>
+                <a href="/docs" title="Documentation">📚 Documentation</a>
+                <a href="/editor" title="Code Editor">✏️ Editor</a>
+                <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
+                <a href="/editor/swagger" title="REST API">📖 Swagger</a>
             </nav>
         </header>
         <main class="docs-content">
@@ -436,7 +436,7 @@ function render404Page() {
     <div class="error-container">
         <h1>404</h1>
         <p>Documentation page not found</p>
-        <a href="/engine/docs/">← Back to Documentation</a>
+        <a href="/docs/">← Back to Documentation</a>
     </div>
   `;
   return wrapInTemplate(errorContent, "Page Not Found");
@@ -451,20 +451,20 @@ function render500Page(errorMessage) {
         <h1>500</h1>
         <p>Error rendering documentation</p>
         <p style="font-size: 0.875rem; color: #e74c3c;">${errorMessage}</p>
-        <a href="/engine/docs/">← Back to Documentation</a>
+        <a href="/docs/">← Back to Documentation</a>
     </div>
   `;
   return wrapInTemplate(errorContent, "Server Error");
 }
 
 /**
- * Handle redirect from /engine/docs to /engine/docs/
+ * Handle redirect from /docs to /docs/
  */
 function handleDocsRedirect(context) {
   return {
     status: 301,
     headers: {
-      Location: "/engine/docs/",
+      Location: "/docs/",
     },
     body: "",
     contentType: "text/html; charset=UTF-8",
@@ -476,10 +476,10 @@ function handleDocsRedirect(context) {
  */
 function handleDocsRequest(context) {
   const req = getRequest(context);
-  const path = req.path || "/engine/docs/";
+  const path = req.path || "/docs/";
 
-  // Extract the doc path (remove /engine/docs prefix)
-  let docPath = path.substring("/engine/docs".length);
+  // Extract the doc path (remove /docs prefix)
+  let docPath = path.substring("/docs".length);
 
   // Map path to asset name
   const assetName = mapPathToAssetName(docPath);
@@ -557,24 +557,24 @@ function init(context) {
   );
 
   // Register redirect route
-  routeRegistry.registerRoute("/engine/docs", "handleDocsRedirect", "GET", {
+  routeRegistry.registerRoute("/docs", "handleDocsRedirect", "GET", {
     summary: "Documentation redirect",
-    description: "Redirects to /engine/docs/",
-    tags: ["Documentation"],
+    description: "Redirects to /docs/",
+    tags: ["Aiwebengine documentation"],
   });
 
   // Register main documentation route
-  routeRegistry.registerRoute("/engine/docs/", "handleDocsRequest", "GET", {
+  routeRegistry.registerRoute("/docs/", "handleDocsRequest", "GET", {
     summary: "Documentation home",
     description: "Main documentation page",
-    tags: ["Documentation"],
+    tags: ["Aiwebengine documentation"],
   });
 
   // Register wildcard route for all doc pages
-  routeRegistry.registerRoute("/engine/docs/*", "handleDocsRequest", "GET", {
+  routeRegistry.registerRoute("/docs/*", "handleDocsRequest", "GET", {
     summary: "Documentation pages",
     description: "Serve documentation markdown as HTML",
-    tags: ["Documentation"],
+    tags: ["Aiwebengine documentation"],
   });
 
   console.log("[docs.js] Documentation routes registered successfully");

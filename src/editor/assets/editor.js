@@ -621,7 +621,7 @@ declare var module: any;
   async loadScripts() {
     console.log("[Editor] loadScripts() called");
     try {
-      const response = await fetch("/api/scripts");
+      const response = await fetch("/editor/api/scripts");
       console.log("[Editor] API response status:", response.status);
       const payload = await response.json();
       const scripts = Array.isArray(payload) ? payload : payload.scripts || [];
@@ -736,7 +736,7 @@ declare var module: any;
     console.log("[Editor] loadScript() called for:", scriptName);
     try {
       const encodedScriptName = encodeURIComponent(scriptName);
-      const response = await fetch(`/api/scripts/${encodedScriptName}`);
+      const response = await fetch(`/editor/api/scripts/${encodedScriptName}`);
       console.log("[Editor] loadScript response status:", response.status);
       const content = await response.text();
       console.log("[Editor] Script content length:", content.length);
@@ -815,7 +815,7 @@ declare var module: any;
 
     // Create empty script with proper init() pattern
     const encodedScriptName = encodeURIComponent(fullName);
-    fetch(`/api/scripts/${encodedScriptName}`, {
+    fetch(`/editor/api/scripts/${encodedScriptName}`, {
       method: "POST",
       body: `// ${fullName}
 // New script created at ${new Date().toISOString()}
@@ -852,7 +852,7 @@ function init(context) {
     const content = this.monacoEditor.getValue();
     const encodedScriptName = encodeURIComponent(this.currentScript);
 
-    fetch(`/api/scripts/${encodedScriptName}`, {
+    fetch(`/editor/api/scripts/${encodedScriptName}`, {
       method: "POST",
       body: content,
     })
@@ -873,7 +873,7 @@ function init(context) {
       return;
 
     const encodedScriptName = encodeURIComponent(this.currentScript);
-    fetch(`/api/scripts/${encodedScriptName}`, {
+    fetch(`/editor/api/scripts/${encodedScriptName}`, {
       method: "DELETE",
     })
       .then(() => {
@@ -946,7 +946,7 @@ function init(context) {
     const encoded = encodeURIComponent(this.currentScript);
 
     try {
-      const response = await fetch(`/api/script-security/${encoded}`, {
+      const response = await fetch(`/editor/api/script-security/${encoded}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1121,11 +1121,14 @@ function init(context) {
 
     try {
       const encodedScript = encodeURIComponent(this.currentScript);
-      const response = await fetch(`/api/script-owners/${encodedScript}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerId }),
-      });
+      const response = await fetch(
+        `/editor/api/script-owners/${encodedScript}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ownerId }),
+        },
+      );
 
       if (response.ok) {
         this.showStatus(`Added owner: ${ownerId}`, "success");
@@ -1150,11 +1153,14 @@ function init(context) {
 
     try {
       const encodedScript = encodeURIComponent(this.currentScript);
-      const response = await fetch(`/api/script-owners/${encodedScript}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerId }),
-      });
+      const response = await fetch(
+        `/editor/api/script-owners/${encodedScript}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ownerId }),
+        },
+      );
 
       if (response.ok) {
         this.showStatus(`Removed owner: ${ownerId}`, "success");
@@ -1195,7 +1201,7 @@ function init(context) {
       }
 
       // Build URL with script URI parameter
-      const url = `/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
+      const url = `/editor/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -1322,7 +1328,7 @@ function init(context) {
       // Load text asset in Monaco editor
       try {
         // Build URL with script URI parameter if selected
-        let url = `/api/assets/${path}`;
+        let url = `/editor/api/assets/${path}`;
         if (this.selectedAssetScript) {
           url += `?uri=${encodeURIComponent(this.selectedAssetScript)}`;
         }
@@ -1395,7 +1401,7 @@ function init(context) {
       if (imageExtensions.includes(ext)) {
         previewDiv.innerHTML = `
           <div class="image-preview">
-            <img src="/api/assets/${path}" alt="${filename}" style="max-width: 100%; max-height: 400px;">
+            <img src="/editor/api/assets/${path}" alt="${filename}" style="max-width: 100%; max-height: 400px;">
           </div>
         `;
       }
@@ -1472,7 +1478,7 @@ function init(context) {
       const mimetype = mimeTypes[ext] || "text/plain";
 
       // Build URL with script URI parameter
-      const url = `/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
+      const url = `/editor/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
 
       const response = await fetch(url, {
         method: "POST",
@@ -1516,7 +1522,7 @@ function init(context) {
 
     try {
       // Build URL with script URI parameter
-      const url = `/api/assets/${this.currentAsset}?uri=${encodeURIComponent(this.selectedAssetScript)}`;
+      const url = `/editor/api/assets/${this.currentAsset}?uri=${encodeURIComponent(this.selectedAssetScript)}`;
 
       const response = await fetch(url, {
         method: "DELETE",
@@ -1576,7 +1582,7 @@ function init(context) {
         const publicPath = `/${file.name}`;
 
         // Build URL with script URI parameter
-        const url = `/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
+        const url = `/editor/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
 
         await fetch(url, {
           method: "POST",
@@ -1616,7 +1622,7 @@ function init(context) {
 
     if (isIco) {
       // For ICO files, use fetch + blob to ensure proper binary handling
-      fetch(`/api/assets/${path}`)
+      fetch(`/editor/api/assets/${path}`)
         .then((response) => {
           console.log(`Download response status: ${response.status}`);
           if (!response.ok) {
@@ -1641,11 +1647,11 @@ function init(context) {
           console.error("ICO download failed:", error);
           this.showStatus(`Download failed: ${err.message}`, "error");
           // Fallback to window.open
-          window.open(`/api/assets/${path}`, "_blank");
+          window.open(`/editor/api/assets/${path}`, "_blank");
         });
     } else {
       // For other files, use the simple window.open approach
-      window.open(`/api/assets/${path}`, "_blank");
+      window.open(`/editor/api/assets/${path}`, "_blank");
     }
   }
 
@@ -1674,7 +1680,7 @@ function init(context) {
       }
 
       // Build URL with script URI parameter
-      const url = `/api/secrets?uri=${encodeURIComponent(this.selectedSecretScript)}`;
+      const url = `/editor/api/secrets?uri=${encodeURIComponent(this.selectedSecretScript)}`;
       const response = await fetch(url);
       const data = await response.json();
 
@@ -1822,7 +1828,7 @@ function init(context) {
         return;
       }
 
-      const response = await fetch("/api/secrets", {
+      const response = await fetch("/editor/api/secrets", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1867,7 +1873,7 @@ function init(context) {
 
     try {
       const response = await fetch(
-        `/api/secrets/${encodeURIComponent(this.currentSecret)}?uri=${encodeURIComponent(this.selectedSecretScript)}`,
+        `/editor/api/secrets/${encodeURIComponent(this.currentSecret)}?uri=${encodeURIComponent(this.selectedSecretScript)}`,
         {
           method: "DELETE",
         },
@@ -1893,7 +1899,7 @@ function init(context) {
 
   async populateSecretsScriptSelector() {
     try {
-      const response = await fetch("/api/scripts");
+      const response = await fetch("/editor/api/scripts");
       const data = await response.json();
 
       const selector = this.getSelect("secrets-script-select");
@@ -1933,7 +1939,7 @@ function init(context) {
   // Logs Management
   async loadLogs() {
     try {
-      const response = await fetch("/api/logs");
+      const response = await fetch("/editor/api/logs");
       const logs = await response.json();
 
       const logsContent = document.getElementById("logs-content");
@@ -2002,7 +2008,7 @@ function init(context) {
   async clearLogs() {
     try {
       this.showStatus("Clearing logs...", "info");
-      const response = await fetch("/api/logs", { method: "DELETE" });
+      const response = await fetch("/editor/api/logs", { method: "DELETE" });
       if (response.ok) {
         this.showStatus("Logs pruned successfully", "success");
         // Refresh logs after successful prune
@@ -2029,7 +2035,7 @@ function init(context) {
   // Routes Management
   async loadRoutes() {
     try {
-      const response = await fetch("/api/routes");
+      const response = await fetch("/editor/api/routes");
       const routes = await response.json();
 
       const routesList = document.getElementById("routes-list");
@@ -2119,7 +2125,7 @@ function init(context) {
 
   async populateAssetsScriptSelector() {
     try {
-      const response = await fetch("/api/scripts");
+      const response = await fetch("/editor/api/scripts");
       const data = await response.json();
 
       const selector = this.getSelect("assets-script-select");
@@ -2430,7 +2436,7 @@ function init(context) {
     this.addMessageToSession("user", contextualContent);
 
     // Call the API
-    const response = await fetch("/api/ai-assistant/tools", {
+    const response = await fetch("/editor/api/ai-assistant/tools", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2812,9 +2818,11 @@ function init(context) {
     }
 
     try {
-      console.log("Sending continuation request to /api/ai-assistant/tools");
+      console.log(
+        "Sending continuation request to /editor/api/ai-assistant/tools",
+      );
 
-      const response = await fetch("/api/ai-assistant/tools", {
+      const response = await fetch("/editor/api/ai-assistant/tools", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2962,7 +2970,7 @@ function init(context) {
             : null,
       };
 
-      const response = await fetch("/api/ai-assistant", {
+      const response = await fetch("/editor/api/ai-assistant", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -3444,10 +3452,13 @@ function init(context) {
         // Handle script creation/editing (existing logic)
         if (action === "create" || action === "edit") {
           const encodedScriptName = encodeURIComponent(name);
-          const response = await fetch(`/api/scripts/${encodedScriptName}`, {
-            method: "POST",
-            body: newCode,
-          });
+          const response = await fetch(
+            `/editor/api/scripts/${encodedScriptName}`,
+            {
+              method: "POST",
+              body: newCode,
+            },
+          );
 
           if (!response.ok) {
             throw new Error(`Failed to save script: ${response.status}`);
@@ -3540,7 +3551,7 @@ function init(context) {
     if (
       confirm(`${explanation}\n\nAre you sure you want to delete ${assetPath}?`)
     ) {
-      fetch(`/api/assets/${assetPath}`, {
+      fetch(`/editor/api/assets/${assetPath}`, {
         method: "DELETE",
       })
         .then(() => {
@@ -3573,7 +3584,7 @@ function init(context) {
       )
     ) {
       const encodedScriptName = encodeURIComponent(scriptName);
-      fetch(`/api/scripts/${encodedScriptName}`, {
+      fetch(`/editor/api/scripts/${encodedScriptName}`, {
         method: "DELETE",
       })
         .then(() => {
