@@ -75,6 +75,7 @@ function serveEditor(context) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Editor</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/editor/header.css">
     <link rel="stylesheet" href="/editor/editor.css">
 </head>
 <body>
@@ -384,60 +385,17 @@ function serveGraphiQL(context) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>aiwebengine GraphiQL Editor</title>
     <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css" />
+    <link rel="stylesheet" href="/editor/header.css" />
     <style>
-        body { 
-            margin: 0; 
-            padding: 0; 
+        body {
+            margin: 0;
+            padding: 0;
             height: 100vh;
             display: flex;
             flex-direction: column;
             background: #1e1e1e;
         }
-        .unified-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 20px;
-            background-color: #252526;
-            border-bottom: 1px solid #3e3e42;
-            min-height: 50px;
-            flex-shrink: 0;
-        }
-        .unified-header h1 {
-            font-size: 18px;
-            font-weight: 600;
-            color: #cccccc;
-            margin: 0;
-            line-height: 1;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .unified-nav {
-            display: flex;
-            gap: 5px;
-        }
-        .unified-nav a {
-            color: #999999;
-            text-decoration: none;
-            font-size: 12px;
-            padding: 6px 12px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .unified-nav a:hover {
-            background-color: #37373d;
-            color: #007acc;
-        }
-        .unified-nav a.active {
-            background-color: #007acc;
-            color: white;
-            font-weight: 600;
-            border-left: 3px solid #007acc;
-        }
-        #graphiql { 
+        #graphiql {
             flex: 1;
             height: calc(100vh - 50px);
         }
@@ -617,63 +575,20 @@ function serveSwaggerUI(context) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>aiwebengine API Documentation</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+    <link rel="stylesheet" href="/editor/header.css" />
     <style>
-        body { 
-            margin: 0; 
+        body {
+            margin: 0;
             padding: 0;
             display: flex;
             flex-direction: column;
             height: 100vh;
             background: #1e1e1e;
         }
-        .unified-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 20px;
-            background-color: #252526;
-            border-bottom: 1px solid #3e3e42;
-            min-height: 50px;
-            flex-shrink: 0;
-        }
-        .unified-header h1 {
-            font-size: 18px;
-            font-weight: 600;
-            color: #cccccc;
-            margin: 0;
-            line-height: 1;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .unified-nav {
-            display: flex;
-            gap: 5px;
-        }
-        .unified-nav a {
-            color: #999999;
-            text-decoration: none;
-            font-size: 12px;
-            padding: 6px 12px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .unified-nav a:hover {
-            background-color: #37373d;
-            color: #007acc;
-        }
-        .unified-nav a.active {
-            background-color: #007acc;
-            color: white;
-            font-weight: 600;
-            border-left: 3px solid #007acc;
-        }
-        #swagger-ui { 
+        #swagger-ui {
             flex: 1;
             overflow-y: auto;
-            max-width: 1460px; 
+            max-width: 1460px;
             margin: 0 auto;
             width: 100%;
         }
@@ -3047,6 +2962,7 @@ function init(context) {
   console.log("Initializing editor.js at " + new Date().toISOString());
 
   // Register editor assets
+  routeRegistry.registerAssetRoute("/editor/header.css", "header.css");
   routeRegistry.registerAssetRoute("/editor/editor.css", "editor.css");
   routeRegistry.registerAssetRoute("/editor/editor.js", "editor.js");
 

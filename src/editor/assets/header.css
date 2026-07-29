@@ -1,0 +1,67 @@
+/*
+ * Shared unified header/navigation styles.
+ * Linked by the editor, GraphiQL, and Swagger pages so the top bar stays
+ * consistent across all of them. Uses concrete color values (not CSS
+ * variables) so it renders identically on pages that don't load editor.css.
+ */
+
+.unified-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background-color: #252526;
+  border-bottom: 1px solid #3e3e42;
+  min-height: 50px;
+  flex-shrink: 0;
+}
+
+.unified-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #cccccc;
+  margin: 0;
+  line-height: 1;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.unified-nav {
+  display: flex;
+  gap: 5px;
+}
+
+.unified-nav a {
+  color: #999999;
+  text-decoration: none;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.unified-nav a:hover {
+  background-color: #37373d;
+  color: #007acc;
+}
+
+.unified-nav a.active {
+  background-color: #007acc;
+  color: white;
+  font-weight: 600;
+  border-left: 3px solid #007acc;
+}
