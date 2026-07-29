@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repository is
 
 This is the **developer toolkit** for AI Web Engine, a platform for building AI-powered web
-applications in JavaScript. This repo is *not* the engine itself — it holds the tooling, type
+applications in JavaScript. This repo is _not_ the engine itself — it holds the tooling, type
 definitions, documentation, and example scripts used to build and deploy solutions that run on a
 remote AI Web Engine server (default `https://softagen.com`, override with `SERVER_HOST`).
 
@@ -57,7 +57,7 @@ sandboxed **QuickJS** environment — not Node — so:
 
 - No `require`/`import`, no npm packages, no Node built-ins at runtime.
 - Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,
-  method)`, `userStorage`, `console`, `fetch`, etc. Handlers take a `context` and return
+method)`, `userStorage`, `console`, `fetch`, etc. Handlers take a `context` and return
   `{ status, body, contentType, headers }`. See `src/docs/assets/guides/scripts.md` for the model.
 - Privileged APIs (e.g. `userStorage` for user/role management) are only available to scripts marked
   privileged on the server; their types live in `types/aiwebengine-priv.d.ts`.
