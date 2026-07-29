@@ -133,14 +133,15 @@ The easiest way to view logs:
 - Jump to latest button (scrolls view to newest entry)
 - Timestamps included
 
-### Method 2: `listLogs()` Function
+### Method 2: `console.listLogs()` Function
 
-Retrieve logs programmatically in your scripts:
+Retrieve logs programmatically in your scripts. `console.listLogs()` returns a
+JSON string (parse it), and is only available to **privileged** scripts:
 
 ```javascript
-function logsHandler(req) {
-  // Get logs for current script
-  const logs = listLogs();
+function logsHandler(context) {
+  // Get logs for current script (privileged scripts only)
+  const logs = JSON.parse(console.listLogs());
 
   return {
     status: 200,
@@ -152,13 +153,13 @@ function logsHandler(req) {
 routeRegistry.registerRoute("/my-logs", "logsHandler", "GET");
 ```
 
-### Method 3: `listLogsForUri()` Function
+### Method 3: `console.listLogsForUri()` Function
 
-Get logs for a specific script URI:
+Get logs for a specific script URI (privileged scripts only):
 
 ```javascript
-function allLogsHandler(req) {
-  const uri = req.query.uri; // e.g., "/api/users"
+function allLogsHandler(context) {
+  const uri = context.request.query.uri; // e.g., "/api/users"
 
   if (!uri) {
     return {
@@ -168,7 +169,7 @@ function allLogsHandler(req) {
     };
   }
 
-  const logs = listLogsForUri(uri);
+  const logs = JSON.parse(console.listLogsForUri(uri));
 
   return {
     status: 200,
@@ -202,12 +203,12 @@ tail -f /var/log/aiwebengine/server.log
 ### Basic Log Viewer
 
 ```javascript
-function logViewerHandler(req) {
-  const logs = listLogs();
+function logViewerHandler(context) {
+  const logs = JSON.parse(console.listLogs());
 
   const logItems = logs
     .map((log) => {
-      return `<li><code>${log}</code></li>`;
+      return `<li><code>${log.message}</code></li>`;
     })
     .join("");
 
@@ -243,23 +244,27 @@ routeRegistry.registerRoute("/logs-viewer", "logViewerHandler", "GET");
 ### Advanced Log Viewer with Filtering
 
 ```javascript
-function advancedLogViewerHandler(req) {
-  const filter = req.query.filter || "";
-  const level = req.query.level || "all";
+function advancedLogViewerHandler(context) {
+  const filter = context.request.query.filter || "";
+  const level = context.request.query.level || "all";
 
-  const logs = listLogs();
+  const logs = JSON.parse(console.listLogs());
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
-    if (filter && !log.toLowerCase().includes(filter.toLowerCase())) {
+    const message = log.message || "";
+    if (filter && !message.toLowerCase().includes(filter.toLowerCase())) {
       return false;
     }
 
     if (level !== "all") {
-      if (level === "error" && !log.toLowerCase().includes("error")) {
+      if (level === "error" && (log.level || "").toLowerCase() !== "error") {
         return false;
       }
-      if (level === "warning" && !log.toLowerCase().includes("warning")) {
+      if (
+        level === "warning" &&
+        (log.level || "").toLowerCase() !== "warning"
+      ) {
         return false;
       }
     }
@@ -310,13 +315,13 @@ function advancedLogViewerHandler(req) {
         <p><strong>${filteredLogs.length}</strong> log entries</p>
         ${filteredLogs
           .map((log) => {
+            const level = (log.level || "").toLowerCase();
             let className = "log-entry";
-            if (log.toLowerCase().includes("error")) className += " error";
-            else if (log.toLowerCase().includes("warning"))
-              className += " warning";
-            else if (log.toLowerCase().includes("info")) className += " info";
+            if (level === "error") className += " error";
+            else if (level === "warning") className += " warning";
+            else if (level === "info") className += " info";
 
-            return `<div class="${className}">${log}</div>`;
+            return `<div class="${className}">${log.message}</div>`;
           })
           .join("")}
       </div>

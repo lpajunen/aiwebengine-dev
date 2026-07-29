@@ -45,12 +45,12 @@ cargo run --bin deployer --uri "https://example.com/my-script" --file "my-script
 # Deploy the blog example
 cargo run --bin deployer \
   --uri "https://example.com/blog" \
-  --file "scripts/example_scripts/blog.js"
+  --file "src/blog/blog.js"
 
 # Deploy the feedback form
 cargo run --bin deployer \
   --uri "https://example.com/feedback" \
-  --file "scripts/example_scripts/feedback.js"
+  --file "src/feedback/feedback.js"
 ```
 
 #### Development Workflow
@@ -140,7 +140,7 @@ You can add a task to your VS Code workspace for easy deployment:
 ```makefile
 .PHONY: deploy-blog
 deploy-blog:
-    cargo run --bin deployer --uri "https://example.com/blog" --file "scripts/example_scripts/blog.js"
+    cargo run --bin deployer --uri "https://example.com/blog" --file "src/blog/blog.js"
 
 .PHONY: watch-script
 watch-script:

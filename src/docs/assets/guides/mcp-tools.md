@@ -722,7 +722,7 @@ If arguments aren't being passed correctly:
 
 ## Next Steps
 
-- See complete example in `/scripts/example_scripts/mcp_tools_demo.js`
+- See the complete example in [`mcp_tools_demo`](https://github.com/lpajunen/aiwebengine-examples/tree/main/src/mcp_tools_demo)
 - Learn about [JavaScript APIs](../reference/javascript-apis.md)
 - Explore [AI-Assisted Development](ai-development.md)
 - Check [Script Development Guide](scripts.md)
@@ -731,4 +731,4 @@ If arguments aren't being passed correctly:
 
 - [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18)
 - [JSON Schema Documentation](https://json-schema.org/)
-- [Example MCP Tools Script](/scripts/example_scripts/mcp_tools_demo.js)
+- [Example MCP Tools Script](https://github.com/lpajunen/aiwebengine-examples/tree/main/src/mcp_tools_demo)

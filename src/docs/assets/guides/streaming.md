@@ -1235,9 +1235,9 @@ graphQLRegistry.sendSubscriptionMessageFiltered(
 
 - Check out the [Examples](examples.md) for complete streaming applications
 - Read the [GraphQL Subscriptions Guide](graphql-subscriptions.md) for subscription-specific features
-- Review the [JavaScript APIs](javascript-apis.md) for detailed API documentation
-- Learn about [Local Development](local-development.md) workflows for testing streams
-- Explore the streaming test scripts in the `scripts/test_scripts/` directory
+- Review the [JavaScript APIs](../reference/javascript-apis.md) for detailed API documentation
+- Learn about the [Deployment Workflow](../getting-started/03-deployment-workflow.md) for testing streams
+- Explore the streaming examples in the [aiwebengine-examples](https://github.com/lpajunen/aiwebengine-examples/tree/main/src) repository
 
 ---
 

@@ -1534,37 +1534,6 @@ function apiGetAsset(context) {
   }
 }
 
-// Manual base64 decoder
-function decodeBase64(base64) {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let buffer = [];
-  let bits = 0;
-  let value = 0;
-
-  for (let i = 0; i < base64.length; i++) {
-    const char = base64[i];
-    if (char === "=" || char === "\n" || char === "\r" || char === " ")
-      continue;
-
-    const charIndex = chars.indexOf(char);
-    if (charIndex === -1) {
-      throw new Error("Invalid base64 character: " + char);
-    }
-
-    value = (value << 6) | charIndex;
-    bits += 6;
-
-    if (bits >= 8) {
-      bits -= 8;
-      buffer.push((value >> bits) & 0xff);
-      value &= (1 << bits) - 1;
-    }
-  }
-
-  return new Uint8Array(buffer);
-}
-
 // Helper function to determine MIME type from file path
 function getMimeTypeFromPath(path) {
   const ext = path.split(".").pop().toLowerCase();

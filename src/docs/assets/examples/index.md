@@ -1,8 +1,8 @@
 # Example Scripts Reference
 
-This guide documents the example JavaScript scripts available in `/scripts/example_scripts/`. These working examples demonstrate how to create solutions for aiwebengine, from simple HTML pages to interactive forms and real-time features.
+This guide documents the example JavaScript scripts maintained in the dedicated examples repository. These working examples demonstrate how to create solutions for aiwebengine, from simple HTML pages to interactive forms and real-time features.
 
-**Script Location**: All example scripts are located in [`/scripts/example_scripts/`](../../../scripts/example_scripts/) in the repository.
+**Script Location**: All example scripts live in the [aiwebengine-examples](https://github.com/lpajunen/aiwebengine-examples) repository under `src/<name>/<name>.js`.
 
 ## How to Upload Scripts
 
@@ -100,6 +100,6 @@ These examples demonstrate the power and flexibility of aiwebengine's JavaScript
 ## More Resources
 
 - **[Deployer Tool Guide](deployer.md)** - Learn how to use the deployer for rapid development
-- **[JavaScript APIs](../javascript-apis.md)** - Complete API reference
-- **[Getting Started Guide](../APP_DEVELOPMENT.md)** - Full development guide
-- **[Actual Script Files](../../../scripts/example_scripts/)** - View the source code
+- **[JavaScript APIs](../reference/javascript-apis.md)** - Complete API reference
+- **[Your First Script](../getting-started/01-first-script.md)** - Full development guide
+- **[Actual Script Files](https://github.com/lpajunen/aiwebengine-examples/tree/main/src)** - View the source code

@@ -10,89 +10,6 @@ function getRequest(context) {
 }
 
 /**
- * Decode base64 string to UTF-8 text
- * @param {string} base64
- * @returns {string}
- */
-function decodeBase64(base64) {
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let buffer = [];
-  let bits = 0;
-  let value = 0;
-
-  for (let i = 0; i < base64.length; i++) {
-    const char = base64[i];
-    if (char === "=" || char === "\n" || char === "\r" || char === " ")
-      continue;
-
-    const charIndex = chars.indexOf(char);
-    if (charIndex === -1) {
-      throw new Error("Invalid base64 character: " + char);
-    }
-
-    value = (value << 6) | charIndex;
-    bits += 6;
-
-    if (bits >= 8) {
-      bits -= 8;
-      buffer.push((value >> bits) & 0xff);
-      value &= (1 << bits) - 1;
-    }
-  }
-
-  // Convert bytes to UTF-8 string
-  let result = "";
-  let i = 0;
-  while (i < buffer.length) {
-    const byte1 = buffer[i++];
-
-    // Single-byte character (0xxxxxxx)
-    if (byte1 < 0x80) {
-      result += String.fromCharCode(byte1);
-    }
-    // Two-byte character (110xxxxx 10xxxxxx)
-    else if (byte1 >= 0xc0 && byte1 < 0xe0 && i < buffer.length) {
-      const byte2 = buffer[i++];
-      const codePoint = ((byte1 & 0x1f) << 6) | (byte2 & 0x3f);
-      result += String.fromCharCode(codePoint);
-    }
-    // Three-byte character (1110xxxx 10xxxxxx 10xxxxxx)
-    else if (byte1 >= 0xe0 && byte1 < 0xf0 && i + 1 < buffer.length) {
-      const byte2 = buffer[i++];
-      const byte3 = buffer[i++];
-      const codePoint =
-        ((byte1 & 0x0f) << 12) | ((byte2 & 0x3f) << 6) | (byte3 & 0x3f);
-      result += String.fromCharCode(codePoint);
-    }
-    // Four-byte character (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx) - for emojis
-    else if (byte1 >= 0xf0 && byte1 < 0xf8 && i + 2 < buffer.length) {
-      const byte2 = buffer[i++];
-      const byte3 = buffer[i++];
-      const byte4 = buffer[i++];
-      let codePoint =
-        ((byte1 & 0x07) << 18) |
-        ((byte2 & 0x3f) << 12) |
-        ((byte3 & 0x3f) << 6) |
-        (byte4 & 0x3f);
-      // Convert to UTF-16 surrogate pair for characters above U+FFFF
-      if (codePoint > 0xffff) {
-        codePoint -= 0x10000;
-        result += String.fromCharCode(0xd800 + (codePoint >> 10));
-        result += String.fromCharCode(0xdc00 + (codePoint & 0x3ff));
-      } else {
-        result += String.fromCharCode(codePoint);
-      }
-    } else {
-      // Invalid UTF-8 sequence, skip byte
-      console.error("[docs.js] Invalid UTF-8 byte: " + byte1.toString(16));
-    }
-  }
-
-  return result;
-}
-
-/**
  * Extract title from markdown by finding first H1 heading
  */
 function extractTitle(markdown) {
@@ -509,8 +426,23 @@ function handleDocsRequest(context) {
   }
 
   try {
-    // Decode base64 content (fetchAsset returns base64-encoded string directly)
-    const markdown = String(decodeBase64(assetContent));
+    // Decode base64 content (fetchAsset returns base64-encoded string directly).
+    // convert.atob decodes to a UTF-8 string (handles multi-byte / emoji) and
+    // returns an "Invalid base64..." / "Decoded data is not valid UTF-8..."
+    // message on failure instead of throwing.
+    const markdown = convert.atob(assetContent);
+
+    if (
+      markdown.startsWith("Invalid base64") ||
+      markdown.startsWith("Decoded data is not valid UTF-8")
+    ) {
+      console.error("[docs.js] Failed to decode asset: " + markdown);
+      return {
+        status: 500,
+        body: render500Page(markdown),
+        contentType: "text/html; charset=UTF-8",
+      };
+    }
 
     // Convert markdown to HTML
     const htmlContent = convert.markdown_to_html(markdown);

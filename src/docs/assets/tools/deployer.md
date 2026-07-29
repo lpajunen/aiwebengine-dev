@@ -150,12 +150,12 @@ deployer \
 # Deploy blog example
 deployer \
   --uri "http://localhost:8080/blog" \
-  --file "./scripts/example_scripts/blog.js"
+  --file "./src/blog/blog.js"
 
 # Deploy feedback form
 deployer \
   --uri "http://localhost:8080/feedback" \
-  --file "./scripts/example_scripts/feedback.js"
+  --file "./src/feedback/feedback.js"
 ```
 
 ## Development Workflows

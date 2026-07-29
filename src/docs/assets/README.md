@@ -219,7 +219,7 @@ routeRegistry.registerRoute(path, handlerName, method);
 
 // Logging
 console.log(message);
-const logs = listLogs();
+const logs = JSON.parse(console.listLogs()); // privileged scripts only
 
 // Assets (returns JSON metadata)
 const assetsJson = assetStorage.listAssets();
@@ -279,9 +279,9 @@ init();
 
 ## 🔗 Related Resources
 
-- **Example Scripts** - Browse working examples in `/scripts/example_scripts/`
-- **Built-in Features** - See feature scripts in `/scripts/feature_scripts/`
-- **Test Scripts** - Check test examples in `/scripts/test_scripts/`
+- **Example Scripts** - Browse working examples in the [Example Scripts Index](examples/index.md)
+- **Web Editor** - Explore and edit deployed scripts and assets at `/editor`
+- **API Reference** - Look up available functions in [JavaScript APIs](reference/javascript-apis.md)
 
 ## 🆘 Getting Help
 
@@ -293,9 +293,9 @@ init();
 
 ## 🎓 Additional Resources
 
-- **[Example Scripts in Repository](/scripts/example_scripts/)** - Source code for examples
-- **[Test Scripts](/scripts/test_scripts/)** - Test examples
-- **[Feature Scripts](/scripts/feature_scripts/)** - Built-in features like editor
+- **[Example Scripts Index](examples/index.md)** - Guided tour of the example scripts
+- **[Basic API Examples](examples/basic-api.md)** - Simple REST endpoints and JSON responses
+- **[AI Integration Examples](examples/ai-integration.md)** - Using AI assistants and external AI APIs
 
 ---
 
