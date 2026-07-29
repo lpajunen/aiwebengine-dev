@@ -1,4 +1,4 @@
-.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run install outdated format lint
+.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run install outdated format format-check lint typecheck verify
 
 # Server host configuration (can be overridden via environment variable)
 export SERVER_HOST ?= https://softagen.com
@@ -40,5 +40,14 @@ outdated:
 format:
 	npm run format
 
+format-check:
+	npm run format-check
+
 lint:
 	npm run lint
+
+typecheck:
+	npm run typecheck
+
+verify:
+	npm run verify

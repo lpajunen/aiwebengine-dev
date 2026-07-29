@@ -903,9 +903,7 @@ routeRegistry.registerRoute("/broadcast-data", "broadcastData", "GET");
      type: "message_type", // Required: categorize messages
      timestamp: new Date().toISOString(), // Recommended: for ordering
      id: generateId(), // Optional: for deduplication
-     data: {
-       /* actual payload */
-     }, // Your data
+     data: {/* actual payload */}, // Your data
    };
    ```
 

@@ -5,12 +5,19 @@
  * Serves markdown documentation from assets/docs as HTML at /docs routes
  */
 
+/** @param {unknown} error */
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** @param {*} context */
 function getRequest(context) {
   return (context && context.request) || {};
 }
 
 /**
  * Extract title from markdown by finding first H1 heading
+ * @param {string} markdown
  */
 function extractTitle(markdown) {
   const lines = markdown.split("\n");
@@ -28,6 +35,7 @@ function extractTitle(markdown) {
  * /docs/ -> docs/README.md
  * /docs/guides/scripts -> docs/guides/scripts.md
  * /docs/guides/scripts/ -> docs/guides/scripts.md
+ * @param {string} docPath
  */
 function mapPathToAssetName(docPath) {
   // Remove trailing slash if present
@@ -63,6 +71,7 @@ function mapPathToAssetName(docPath) {
  * @returns {string}
  */
 function addHeadingIds(html) {
+  /** @type {Record<string, number>} */
   const seen = {};
   return html.replace(
     /<(h[1-6])>([\s\S]*?)<\/\1>/g,
@@ -97,6 +106,8 @@ function addHeadingIds(html) {
 
 /**
  * Wrap HTML content in styled template
+ * @param {string} htmlContent
+ * @param {string} title
  */
 function wrapInTemplate(htmlContent, title) {
   return `<!DOCTYPE html>
@@ -402,6 +413,7 @@ function render404Page() {
 
 /**
  * Render 500 error page
+ * @param {string} errorMessage
  */
 function render500Page(errorMessage) {
   const errorContent = `
@@ -417,6 +429,7 @@ function render500Page(errorMessage) {
 
 /**
  * Handle redirect from /docs to /docs/
+ * @param {*} context
  */
 function handleDocsRedirect(context) {
   return {
@@ -431,6 +444,7 @@ function handleDocsRedirect(context) {
 
 /**
  * Main documentation request handler
+ * @param {*} context
  */
 function handleDocsRequest(context) {
   const req = getRequest(context);
@@ -512,12 +526,11 @@ function handleDocsRequest(context) {
       contentType: "text/html; charset=UTF-8",
     };
   } catch (error) {
-    console.error(
-      "[docs.js] Error processing documentation: " + error.toString(),
-    );
+    const message = getErrorMessage(error);
+    console.error("[docs.js] Error processing documentation: " + message);
     return {
       status: 500,
-      body: render500Page(error.toString()),
+      body: render500Page(message),
       contentType: "text/html; charset=UTF-8",
     };
   }
@@ -525,6 +538,7 @@ function handleDocsRequest(context) {
 
 /**
  * Initialize documentation routes
+ * @param {*} context
  */
 function init(context) {
   console.log(

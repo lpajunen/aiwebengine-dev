@@ -3,10 +3,17 @@
 // Simple aiwebengine Editor script
 // This script provides basic editor functionality
 
+/** @param {unknown} error */
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** @param {*} context */
 function getRequest(context) {
   return (context && context.request) || {};
 }
 
+/** @param {*} context */
 function getArgs(context) {
   return (context && context.args) || {};
 }
@@ -15,6 +22,10 @@ function getArgs(context) {
 // Full URIs are used as-is. Short names are namespaced under the server's own
 // host (from the request's Host header) so scripts created through the editor
 // live under the deployment's origin rather than a hardcoded placeholder.
+/**
+ * @param {*} context
+ * @param {string} scriptName
+ */
 function resolveScriptUri(context, scriptName) {
   if (scriptName.startsWith("https://") || scriptName.startsWith("http://")) {
     return scriptName;
@@ -26,6 +37,7 @@ function resolveScriptUri(context, scriptName) {
 }
 
 // Serve the editor HTML page
+/** @param {*} context */
 function serveEditor(context) {
   const req = getRequest(context);
 
@@ -47,10 +59,12 @@ function serveEditor(context) {
   if (!isAuthorized) {
     try {
       const users = JSON.parse(userStorage.listUsers());
-      const currentUser = users.find((u) => u.id === req.auth.userId);
+      const currentUser = users.find(
+        (/** @type {any} */ u) => u.id === req.auth.userId,
+      );
       isAuthorized = !!(currentUser && currentUser.roles.includes("Editor"));
     } catch (e) {
-      console.log("Could not verify Editor role: " + e.message);
+      console.log("Could not verify Editor role: " + getErrorMessage(e));
     }
   }
 
@@ -374,6 +388,7 @@ function serveEditor(context) {
 }
 
 // Serve GraphiQL interface
+/** @param {*} context */
 function serveGraphiQL(context) {
   const req = getRequest(context);
 
@@ -564,6 +579,7 @@ function serveGraphiQL(context) {
 }
 
 // Serve Swagger UI interface
+/** @param {*} context */
 function serveSwaggerUI(context) {
   const req = getRequest(context);
 
@@ -641,6 +657,7 @@ function serveSwaggerUI(context) {
 }
 
 // API: List all scripts
+/** @param {*} context */
 function apiListScripts(context) {
   const req = getRequest(context);
   try {
@@ -656,7 +673,7 @@ function apiListScripts(context) {
     const currentUserId = req.auth && req.auth.userId ? req.auth.userId : null;
 
     // Sort scripts alphabetically (case-insensitive)
-    scriptMetadata.sort((a, b) =>
+    scriptMetadata.sort((/** @type {any} */ a, /** @type {any} */ b) =>
       a.uri.toLowerCase().localeCompare(b.uri.toLowerCase()),
     );
 
@@ -666,7 +683,7 @@ function apiListScripts(context) {
         ? !!scriptStorage.canManageScriptPrivileges()
         : false;
 
-    const scriptDetails = scriptMetadata.map((meta) => {
+    const scriptDetails = scriptMetadata.map((/** @type {any} */ meta) => {
       // Get owners for this script
       let owners = [];
       let isOwner = false;
@@ -680,7 +697,7 @@ function apiListScripts(context) {
           isOwner = currentUserId && owners.includes(currentUserId);
         } catch (e) {
           console.log(
-            "Error getting owners for " + meta.uri + ": " + e.message,
+            "Error getting owners for " + meta.uri + ": " + getErrorMessage(e),
           );
         }
       }
@@ -711,12 +728,16 @@ function apiListScripts(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
+/**
+ * @param {string} scriptUri
+ * @param {string} field
+ */
 function getSecurityField(scriptUri, field) {
   if (
     typeof scriptStorage === "undefined" ||
@@ -740,13 +761,17 @@ function getSecurityField(scriptUri, field) {
     return false;
   } catch (err) {
     console.log(
-      "Failed to parse security profile for " + scriptUri + ": " + err.message,
+      "Failed to parse security profile for " +
+        scriptUri +
+        ": " +
+        getErrorMessage(err),
     );
     return false;
   }
 }
 
 // API: Get script content
+/** @param {*} context */
 function apiGetScript(context) {
   const req = getRequest(context);
   try {
@@ -790,13 +815,14 @@ function apiGetScript(context) {
   } catch (error) {
     return {
       status: 500,
-      body: "Error: " + error.message,
+      body: "Error: " + getErrorMessage(error),
       contentType: "text/plain; charset=UTF-8",
     };
   }
 }
 
 // API: Save/update script
+/** @param {*} context */
 function apiSaveScript(context) {
   const req = getRequest(context);
   try {
@@ -859,14 +885,14 @@ function apiSaveScript(context) {
             } catch (graphqlError) {
               console.log(
                 "Failed to send to GraphQL subscription: " +
-                  graphqlError.message,
+                  getErrorMessage(graphqlError),
               );
             }
           }
         } catch (broadcastError) {
           console.log(
             "Failed to broadcast script update from editor: " +
-              broadcastError.message,
+              getErrorMessage(broadcastError),
           );
         }
       }
@@ -880,13 +906,14 @@ function apiSaveScript(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Delete script
+/** @param {*} context */
 function apiDeleteScript(context) {
   const req = getRequest(context);
   try {
@@ -942,14 +969,14 @@ function apiDeleteScript(context) {
               } catch (graphqlError) {
                 console.log(
                   "Failed to send to GraphQL subscription: " +
-                    graphqlError.message,
+                    getErrorMessage(graphqlError),
                 );
               }
             }
           } catch (broadcastError) {
             console.log(
               "Failed to broadcast script deletion from editor: " +
-                broadcastError.message,
+                getErrorMessage(broadcastError),
             );
           }
         }
@@ -985,12 +1012,14 @@ function apiDeleteScript(context) {
       };
     }
   } catch (error) {
-    console.log("Script deletion failed via editor API: " + error.message);
+    console.log(
+      "Script deletion failed via editor API: " + getErrorMessage(error),
+    );
     return {
       status: 500,
       body: JSON.stringify({
         error: "Failed to delete script",
-        details: error.message,
+        details: getErrorMessage(error),
       }),
       contentType: "application/json",
     };
@@ -998,6 +1027,7 @@ function apiDeleteScript(context) {
 }
 
 // API: Update privileged flag
+/** @param {*} context */
 function apiUpdateScriptPrivilege(context) {
   const req = getRequest(context);
   try {
@@ -1018,7 +1048,7 @@ function apiUpdateScriptPrivilege(context) {
 
     const fullUri = resolveScriptUri(context, scriptName);
 
-    let payload = {};
+    let payload = /** @type {any} */ ({});
     if (req.body) {
       try {
         payload = JSON.parse(req.body);
@@ -1042,7 +1072,7 @@ function apiUpdateScriptPrivilege(context) {
     try {
       scriptStorage.setScriptPrivileged(fullUri, payload.privileged);
     } catch (error) {
-      const message = error && error.message ? error.message : String(error);
+      const message = getErrorMessage(error);
       const forbidden =
         message.includes("Administrator privileges") ||
         message.includes("permission_denied");
@@ -1066,13 +1096,14 @@ function apiUpdateScriptPrivilege(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Add script owner
+/** @param {*} context */
 function apiAddScriptOwner(context) {
   const req = getRequest(context);
   try {
@@ -1093,7 +1124,7 @@ function apiAddScriptOwner(context) {
 
     const fullUri = resolveScriptUri(context, scriptName);
 
-    let payload = {};
+    let payload = /** @type {any} */ ({});
     if (req.body) {
       try {
         payload = JSON.parse(req.body);
@@ -1127,7 +1158,7 @@ function apiAddScriptOwner(context) {
         };
       }
     } catch (error) {
-      const message = error && error.message ? error.message : String(error);
+      const message = getErrorMessage(error);
       const forbidden = message.includes("Permission denied");
       return {
         status: forbidden ? 403 : 500,
@@ -1148,13 +1179,14 @@ function apiAddScriptOwner(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Remove script owner
+/** @param {*} context */
 function apiRemoveScriptOwner(context) {
   const req = getRequest(context);
   try {
@@ -1174,7 +1206,7 @@ function apiRemoveScriptOwner(context) {
     scriptName = decodeURIComponent(scriptName);
 
     // Get ownerId from request body (now properly supported for DELETE)
-    let payload = {};
+    let payload = /** @type {any} */ ({});
     if (req.body) {
       try {
         payload = JSON.parse(req.body);
@@ -1212,7 +1244,7 @@ function apiRemoveScriptOwner(context) {
         };
       }
     } catch (error) {
-      const message = error && error.message ? error.message : String(error);
+      const message = getErrorMessage(error);
       const forbidden =
         message.includes("Permission denied") ||
         message.includes("Cannot remove");
@@ -1235,20 +1267,21 @@ function apiRemoveScriptOwner(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Get logs
+/** @param {*} context */
 function apiGetLogs(context) {
   const req = getRequest(context);
   try {
     const logsJson =
       typeof console.listLogs === "function" ? console.listLogs() : "[]";
     const logs = JSON.parse(logsJson);
-    const formattedLogs = logs.map((log) => ({
+    const formattedLogs = logs.map((/** @type {any} */ log) => ({
       timestamp: new Date(log.timestamp),
       level: log.level || "INFO",
       message: log.message,
@@ -1262,13 +1295,14 @@ function apiGetLogs(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Prune logs (DELETE /editor/api/logs)
+/** @param {*} context */
 function apiPruneLogs(context) {
   const req = getRequest(context);
   try {
@@ -1291,13 +1325,14 @@ function apiPruneLogs(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Get assets
+/** @param {*} context */
 function apiGetAssets(context) {
   const req = getRequest(context);
   try {
@@ -1324,11 +1359,11 @@ function apiGetAssets(context) {
     const assetMetadata = JSON.parse(assetsJson);
 
     // Sort assets alphabetically by name (case-insensitive)
-    assetMetadata.sort((a, b) =>
+    assetMetadata.sort((/** @type {any} */ a, /** @type {any} */ b) =>
       a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
     );
 
-    const assetDetails = assetMetadata.map((meta) => ({
+    const assetDetails = assetMetadata.map((/** @type {any} */ meta) => ({
       uri: meta.uri,
       displayName: meta.name || meta.uri,
       path: meta.uri,
@@ -1346,13 +1381,14 @@ function apiGetAssets(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Get individual asset
+/** @param {*} context */
 function apiGetAsset(context) {
   const req = getRequest(context);
   try {
@@ -1425,15 +1461,17 @@ function apiGetAsset(context) {
   } catch (error) {
     return {
       status: 500,
-      body: "Error: " + error.message,
+      body: "Error: " + getErrorMessage(error),
       contentType: "text/plain; charset=UTF-8",
     };
   }
 }
 
 // Helper function to determine MIME type from file path
+/** @param {string} path */
 function getMimeTypeFromPath(path) {
-  const ext = path.split(".").pop().toLowerCase();
+  const ext = (path.split(".").pop() || "").toLowerCase();
+  /** @type {Record<string, string>} */
   const mimeTypes = {
     png: "image/png",
     jpg: "image/jpeg",
@@ -1454,6 +1492,7 @@ function getMimeTypeFromPath(path) {
 }
 
 // API: Save/upload asset
+/** @param {*} context */
 function apiSaveAsset(context) {
   const req = getRequest(context);
   try {
@@ -1535,13 +1574,14 @@ function apiSaveAsset(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Delete asset
+/** @param {*} context */
 function apiDeleteAsset(context) {
   const req = getRequest(context);
   try {
@@ -1622,12 +1662,12 @@ function apiDeleteAsset(context) {
       };
     }
   } catch (error) {
-    console.log("apiDeleteAsset: error - " + error.message);
+    console.log("apiDeleteAsset: error - " + getErrorMessage(error));
     return {
       status: 500,
       body: JSON.stringify({
         error: "Failed to delete asset",
-        details: error.message,
+        details: getErrorMessage(error),
       }),
       contentType: "application/json",
     };
@@ -1635,6 +1675,7 @@ function apiDeleteAsset(context) {
 }
 
 // API: List secrets for a script
+/** @param {*} context */
 function apiListSecrets(context) {
   const req = getRequest(context);
   try {
@@ -1668,7 +1709,9 @@ function apiListSecrets(context) {
     }
 
     // Sort secret keys alphabetically
-    secretKeys.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    secretKeys.sort((/** @type {any} */ a, /** @type {any} */ b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
 
     return {
       status: 200,
@@ -1678,13 +1721,14 @@ function apiListSecrets(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
 }
 
 // API: Create or update a secret
+/** @param {*} context */
 function apiSaveSecret(context) {
   const req = getRequest(context);
   try {
@@ -1741,7 +1785,7 @@ function apiSaveSecret(context) {
       status: 500,
       body: JSON.stringify({
         error: "Failed to save secret",
-        details: error.message,
+        details: getErrorMessage(error),
       }),
       contentType: "application/json",
     };
@@ -1749,6 +1793,7 @@ function apiSaveSecret(context) {
 }
 
 // API: Delete a secret
+/** @param {*} context */
 function apiDeleteSecret(context) {
   const req = getRequest(context);
   try {
@@ -1820,7 +1865,7 @@ function apiDeleteSecret(context) {
       status: 500,
       body: JSON.stringify({
         error: "Failed to delete secret",
-        details: error.message,
+        details: getErrorMessage(error),
       }),
       contentType: "application/json",
     };
@@ -1828,6 +1873,7 @@ function apiDeleteSecret(context) {
 }
 
 // API: List all registered routes
+/** @param {*} context */
 function apiListRoutes(context) {
   const req = getRequest(context);
   try {
@@ -1840,7 +1886,7 @@ function apiListRoutes(context) {
     const routesData = JSON.parse(routes);
 
     // Sort routes alphabetically by path (case-insensitive)
-    routesData.sort((a, b) =>
+    routesData.sort((/** @type {any} */ a, /** @type {any} */ b) =>
       a.path.toLowerCase().localeCompare(b.path.toLowerCase()),
     );
 
@@ -1852,7 +1898,7 @@ function apiListRoutes(context) {
   } catch (error) {
     return {
       status: 500,
-      body: JSON.stringify({ error: error.message }),
+      body: JSON.stringify({ error: getErrorMessage(error) }),
       contentType: "application/json",
     };
   }
@@ -2041,6 +2087,7 @@ function getAIAssistantTools() {
 }
 
 // Check if a tool requires user confirmation
+/** @param {string} toolName */
 function toolRequiresConfirmation(toolName) {
   return [
     "edit_script",
@@ -2051,6 +2098,10 @@ function toolRequiresConfirmation(toolName) {
 }
 
 // Execute a tool and return the result
+/**
+ * @param {string} toolName
+ * @param {*} toolInput
+ */
 function executeAITool(toolName, toolInput) {
   try {
     switch (toolName) {
@@ -2109,6 +2160,7 @@ function executeAITool(toolName, toolInput) {
 }
 
 // API: AI Assistant prompt handler
+/** @param {*} context */
 function apiAIAssistant(context) {
   const req = getRequest(context);
   // Debug: Log the raw request body
@@ -2400,6 +2452,7 @@ SCRIPT STRUCTURE - Every script MUST follow this pattern:
 // Script description
 // Handles HTTP requests and returns responses
 
+/** @param {*} context */
 function handlerName(context) {
   const req = context.request || {};
   // req has: path, method, headers, query, params, form, body, auth
@@ -2412,6 +2465,7 @@ function handlerName(context) {
   }
 }
 
+/** @param {*} context */
 function init(context) {
   console.log('Initializing script');
   routeRegistry.registerRoute('/your-path', 'handlerName', 'GET');
@@ -2549,7 +2603,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
         ? scriptStorage.listScripts()
         : "[]";
     const scriptMetadata = JSON.parse(scriptsJson);
-    const scripts = scriptMetadata.map((meta) => meta.uri);
+    const scripts = scriptMetadata.map((/** @type {any} */ meta) => meta.uri);
     if (scripts.length > 0) {
       contextualPrompt += "AVAILABLE SCRIPTS: " + scripts.join(", ") + "\\n\\n";
     }
@@ -2566,7 +2620,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
         : "[]";
     const assetMetadata = JSON.parse(assetsJson);
     if (assetMetadata.length > 0) {
-      const assetNames = assetMetadata.map((a) => a.name);
+      const assetNames = assetMetadata.map((/** @type {any} */ a) => a.name);
       contextualPrompt +=
         "AVAILABLE ASSETS: " + assetNames.join(", ") + "\\n\\n";
     }
@@ -2728,6 +2782,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
 }
 
 // API: AI Assistant with tool calling support
+/** @param {*} context */
 function apiAIAssistantWithTools(context) {
   const req = getRequest(context);
   const body = JSON.parse(req.body || "{}");
@@ -2743,7 +2798,9 @@ function apiAIAssistantWithTools(context) {
   );
 
   // Check turn limit
-  const userMessageCount = messages.filter((m) => m.role === "user").length;
+  const userMessageCount = messages.filter(
+    (/** @type {any} */ m) => m.role === "user",
+  ).length;
   if (userMessageCount >= maxTurns) {
     return {
       status: 429,
@@ -2806,7 +2863,9 @@ CURRENT CONTEXT:`;
     const scriptsJson = scriptStorage.listScripts
       ? scriptStorage.listScripts()
       : "[]";
-    const scripts = JSON.parse(scriptsJson).map((m) => m.uri);
+    const scripts = JSON.parse(scriptsJson).map(
+      (/** @type {any} */ m) => m.uri,
+    );
     if (scripts.length > 0) {
       contextInfo += `\nAvailable Scripts: ${scripts.join(", ")}`;
     }
@@ -2818,7 +2877,7 @@ CURRENT CONTEXT:`;
     const assetsJson = assetStorage.listAssets
       ? assetStorage.listAssets()
       : "[]";
-    const assets = JSON.parse(assetsJson).map((a) => a.name);
+    const assets = JSON.parse(assetsJson).map((/** @type {any} */ a) => a.name);
     if (assets.length > 0) {
       contextInfo += `\nAvailable Assets: ${assets.join(", ")}`;
     }
@@ -2958,6 +3017,7 @@ CURRENT CONTEXT:`;
 }
 
 // Initialization function
+/** @param {*} context */
 function init(context) {
   console.log("Initializing editor.js at " + new Date().toISOString());
 
