@@ -55,6 +55,47 @@ function mapPathToAssetName(docPath) {
 }
 
 /**
+ * Inject GitHub-style slug ids into heading tags so in-page anchor links
+ * (tables of contents, cross-references) resolve. The markdown renderer does
+ * not emit heading ids on its own, so `[Foo](#foo)` links would otherwise
+ * point at nothing.
+ * @param {string} html
+ * @returns {string}
+ */
+function addHeadingIds(html) {
+  const seen = {};
+  return html.replace(
+    /<(h[1-6])>([\s\S]*?)<\/\1>/g,
+    function (match, tag, inner) {
+      // Slugify the text content, matching the GitHub algorithm: strip inline
+      // tags and HTML entities (the renderer escapes & < > in heading text),
+      // lowercase, drop punctuation except word chars and hyphens, then
+      // collapse whitespace to single hyphens.
+      let slug = inner
+        .replace(/<[^>]+>/g, "")
+        .replace(/&[#a-zA-Z0-9]+;/g, "")
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-");
+
+      if (!slug) {
+        return match;
+      }
+
+      if (seen[slug] === undefined) {
+        seen[slug] = 0;
+      } else {
+        seen[slug] += 1;
+        slug = slug + "-" + seen[slug];
+      }
+
+      return "<" + tag + ' id="' + slug + '">' + inner + "</" + tag + ">";
+    },
+  );
+}
+
+/**
  * Wrap HTML content in styled template
  */
 function wrapInTemplate(htmlContent, title) {
@@ -456,11 +497,14 @@ function handleDocsRequest(context) {
       };
     }
 
+    // Add slug ids to headings so in-page anchor links resolve
+    const htmlWithIds = addHeadingIds(htmlContent);
+
     // Extract title from markdown
     const title = extractTitle(markdown);
 
     // Wrap in template
-    const fullPage = wrapInTemplate(htmlContent, title);
+    const fullPage = wrapInTemplate(htmlWithIds, title);
 
     return {
       status: 200,

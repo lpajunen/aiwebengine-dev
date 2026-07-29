@@ -732,5 +732,5 @@ endpoints.register("POST ${submitPath}", handle${formName}Submit);
 ## See Also
 
 - [MCP Tools Guide](mcp-tools.md) - Learn about MCP tools for actions
-- [Quick Start Guide](quick-start.md) - Get started with AI Web Engine
-- [JavaScript API Reference](../reference/javascript-api.md) - Full API documentation
+- [Quick Start Guide](../getting-started/01-first-script.md) - Get started with AI Web Engine
+- [JavaScript API Reference](../reference/javascript-apis.md) - Full API documentation

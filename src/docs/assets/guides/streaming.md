@@ -1233,7 +1233,7 @@ graphQLRegistry.sendSubscriptionMessageFiltered(
 
 ## Next Steps
 
-- Check out the [Examples](examples.md) for complete streaming applications
+- Check out the [Examples](../examples/index.md) for complete streaming applications
 - Read the [GraphQL Subscriptions Guide](graphql-subscriptions.md) for subscription-specific features
 - Review the [JavaScript APIs](../reference/javascript-apis.md) for detailed API documentation
 - Learn about the [Deployment Workflow](../getting-started/03-deployment-workflow.md) for testing streams
