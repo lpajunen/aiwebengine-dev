@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__softagen__virtualWorldGetState",
+      "mcp__softagen__read_asset",
+      "mcp__softagen__list_files"
+    ]
+  }
+}
