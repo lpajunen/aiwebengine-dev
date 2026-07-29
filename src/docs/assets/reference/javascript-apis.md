@@ -818,6 +818,88 @@ function clearAllUserData(context) {
 - Data persists across sessions when PostgreSQL is configured
 - Unauthenticated requests cannot access personal storage
 
+## Secret Storage API
+
+The global `secretStorage` object manages secrets (API keys, tokens, passwords)
+scoped to the current script. Secrets are encrypted at rest and are never
+returned in plaintext — you check whether one exists and reference its value in
+outbound `fetch` requests with the `{{secret:KEY}}` / `{{KEY}}` injection syntax
+(see the HTTP Fetch section below).
+
+Secrets live at two levels for a script:
+
+- **Script secrets** — shared by everyone using the script.
+- **User secrets** — set by an authenticated user, take precedence over the
+  script-level value for that user.
+
+Write operations (`setSecret`, `removeSecret`, `clear`) require an authenticated
+user and operate on that user's secrets.
+
+### secretStorage.exists(key)
+
+Returns `true` if the secret exists. Checks the authenticated user's secrets
+first, then falls back to the script-level secret.
+
+```javascript
+function callApiHandler(context) {
+  if (!secretStorage.exists("WEATHER_API_KEY")) {
+    return ResponseBuilder.error(400, "WEATHER_API_KEY is not configured");
+  }
+
+  // The value is injected server-side; it never appears in the script.
+  const response = fetch("https://api.example.com/weather", {
+    headers: { Authorization: "Bearer {{secret:WEATHER_API_KEY}}" },
+  });
+
+  return ResponseBuilder.json(JSON.parse(response).body);
+}
+```
+
+### secretStorage.setSecret(key, value)
+
+Stores a secret for the authenticated user (max 1 MB). Returns a success
+message, or a string starting with `Error` if the request is unauthenticated or
+validation fails.
+
+```javascript
+function saveTokenHandler(context) {
+  const req = context.request;
+  const token = req.form.token;
+
+  const result = secretStorage.setSecret("USER_API_TOKEN", token);
+  if (result.startsWith("Error")) {
+    return ResponseBuilder.error(400, result);
+  }
+
+  return ResponseBuilder.json({ message: "Token saved" });
+}
+```
+
+### secretStorage.removeSecret(key)
+
+Removes a single secret for the authenticated user. Returns `true` if it existed
+and was removed, `false` otherwise.
+
+```javascript
+secretStorage.removeSecret("USER_API_TOKEN");
+```
+
+### secretStorage.clear()
+
+Removes all secrets for the authenticated user in the current script. Returns a
+success message, or a string starting with `Error` if unauthenticated.
+
+```javascript
+secretStorage.clear();
+```
+
+**Privileged extensions:** privileged scripts can manage secrets for _other_
+scripts by URI — `secretStorage.listForUri(uri)`,
+`secretStorage.setSecretForUri(uri, key, value)`,
+`secretStorage.removeSecretForUri(uri, key)`, and
+`secretStorage.clearForUri(uri)`. These are used by tools like the editor's
+Secrets tab. See `types/aiwebengine-priv.d.ts`.
+
 ## Database API
 
 The global `database` object provides script-scoped table management, CRUD helpers, transactions, lease coordination, and optional GraphQL generation.

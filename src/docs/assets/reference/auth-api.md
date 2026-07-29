@@ -595,6 +595,69 @@ function myHandler(context) {
 }
 ```
 
+## User & Role Management (privileged)
+
+The `userStorage` global lets **privileged** scripts inspect users and manage
+their roles. It is only available to scripts marked privileged on the server;
+its type lives in `types/aiwebengine-priv.d.ts`. The methods that read or change
+users also require the caller to be an **Administrator** and throw otherwise.
+
+Roles are `"Authenticated"` (every logged-in user, cannot be removed),
+`"Editor"`, and `"Administrator"`.
+
+### userStorage.listUsers()
+
+Returns a JSON string array of user objects (requires admin). Parse it before
+use:
+
+```javascript
+function listUsersHandler(context) {
+  const req = context.request;
+
+  // Guard: only administrators may list users.
+  if (!req.auth || !req.auth.isAdmin) {
+    return ResponseBuilder.error(403, "Administrator access required");
+  }
+
+  const users = JSON.parse(userStorage.listUsers());
+  // Each user: { id, email, roles: string[], ... }
+  return ResponseBuilder.json({ users: users });
+}
+```
+
+### userStorage.addUserRole(userId, role)
+
+Grants a role to a user (requires admin). Throws if the caller is not an
+administrator or the role is invalid.
+
+```javascript
+userStorage.addUserRole("user-123", "Editor");
+```
+
+### userStorage.removeUserRole(userId, role)
+
+Removes a role from a user (requires admin). Throws for invalid roles or when
+attempting to remove `"Authenticated"`.
+
+```javascript
+userStorage.removeUserRole("user-123", "Editor");
+```
+
+Wrap these in `try/catch` — permission and validation failures surface as thrown
+errors, not return values:
+
+```javascript
+function grantEditorHandler(context) {
+  const req = context.request;
+  try {
+    userStorage.addUserRole(req.form.userId, "Editor");
+    return ResponseBuilder.json({ message: "Editor role granted" });
+  } catch (error) {
+    return ResponseBuilder.error(403, error.message);
+  }
+}
+```
+
 ## See Also
 
 - [JavaScript APIs Reference](./javascript-apis.md) - General runtime APIs available to scripts
