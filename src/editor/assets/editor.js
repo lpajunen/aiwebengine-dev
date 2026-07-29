@@ -812,25 +812,24 @@ declare var module: any;
     const fullName = scriptName.endsWith(".js")
       ? scriptName
       : scriptName + ".js";
+    const routePath = "/" + fullName.replace(/\.js$/, "");
 
-    // Create empty script with proper init() pattern
+    // Create empty script with the canonical handler pattern:
+    // handlers take `context` and return a response via ResponseBuilder.
     const encodedScriptName = encodeURIComponent(fullName);
     fetch(`/editor/api/scripts/${encodedScriptName}`, {
       method: "POST",
       body: `// ${fullName}
 // New script created at ${new Date().toISOString()}
 
-function handler(req) {
-    return {
-        status: 200,
-        body: 'Hello from ${fullName}!',
-        contentType: 'text/plain; charset=UTF-8'
-    };
+function handler(context) {
+    const req = context.request;
+    return ResponseBuilder.text('Hello from ${fullName}!');
 }
 
 function init(context) {
     console.log('Initializing ${fullName} at ' + new Date().toISOString());
-    routeRegistry.registerRoute('/', 'handler', 'GET');
+    routeRegistry.registerRoute('${routePath}', 'handler', 'GET');
     console.log('${fullName} endpoints registered');
     return { success: true };
 }`,
@@ -3371,8 +3370,11 @@ function init(context) {
           };
           const mimetype = mimeTypes[ext] || "text/plain";
 
-          // Get the script URI from tool input or fallback to current script
-          let scriptUri = "https://example.com/editor"; // default fallback
+          // Get the script URI from tool input or fall back to the current
+          // script. Short names are namespaced under the current server host
+          // to match how the server stores script URIs.
+          let scriptUri =
+            this.currentScript || `https://${window.location.host}/editor`;
 
           if (
             this.pendingToolExecution &&
@@ -3380,8 +3382,7 @@ function init(context) {
           ) {
             const scriptName = this.pendingToolExecution.toolInput.script_name;
             if (scriptName) {
-              // Convert script name to URI (e.g., "hello-world.js" -> "https://example.com/hello-world.js")
-              scriptUri = `https://example.com/${scriptName.replace(/\.js$/, ".js")}`;
+              scriptUri = `https://${window.location.host}/${scriptName}`;
             }
           }
 

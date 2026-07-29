@@ -11,6 +11,20 @@ function getArgs(context) {
   return (context && context.args) || {};
 }
 
+// Resolve a script identifier (short name or full URI) to a full script URI.
+// Full URIs are used as-is. Short names are namespaced under the server's own
+// host (from the request's Host header) so scripts created through the editor
+// live under the deployment's origin rather than a hardcoded placeholder.
+function resolveScriptUri(context, scriptName) {
+  if (scriptName.startsWith("https://") || scriptName.startsWith("http://")) {
+    return scriptName;
+  }
+  const req = getRequest(context);
+  const host =
+    (req.headers && (req.headers.host || req.headers.Host)) || "example.com";
+  return "https://" + host + "/" + scriptName;
+}
+
 // Serve the editor HTML page
 function serveEditor(context) {
   const req = getRequest(context);
@@ -821,21 +835,14 @@ function getSecurityField(scriptUri, field) {
 function apiGetScript(context) {
   const req = getRequest(context);
   try {
-    // Extract the script name from the path
-    // The path will be something like /editor/api/scripts/https://example.com/core
+    // Extract the script name from the path. The trailing segment is either a
+    // full URI (e.g. .../scripts/https://host/core) or a short name.
     let scriptName = req.path.replace("/editor/api/scripts/", "");
 
     // URL decode the script name in case it contains encoded characters
     scriptName = decodeURIComponent(scriptName);
 
-    // If it's already a full URI, use it as-is
-    // If it's just a short name, convert it to full URI
-    let fullUri;
-    if (scriptName.startsWith("https://")) {
-      fullUri = scriptName;
-    } else {
-      fullUri = "https://example.com/" + scriptName;
-    }
+    const fullUri = resolveScriptUri(context, scriptName);
 
     let content = "";
 
@@ -886,12 +893,7 @@ function apiSaveScript(context) {
 
     // If it's already a full URI, use it as-is
     // If it's just a short name, convert it to full URI
-    let fullUri;
-    if (scriptName.startsWith("https://")) {
-      fullUri = scriptName;
-    } else {
-      fullUri = "https://example.com/" + scriptName;
-    }
+    const fullUri = resolveScriptUri(context, scriptName);
 
     if (
       typeof scriptStorage !== "undefined" &&
@@ -981,12 +983,7 @@ function apiDeleteScript(context) {
 
     // If it's already a full URI, use it as-is
     // If it's just a short name, convert it to full URI
-    let fullUri;
-    if (scriptName.startsWith("https://")) {
-      fullUri = scriptName;
-    } else {
-      fullUri = "https://example.com/" + scriptName;
-    }
+    const fullUri = resolveScriptUri(context, scriptName);
 
     if (
       typeof scriptStorage !== "undefined" &&
@@ -1104,12 +1101,7 @@ function apiUpdateScriptPrivilege(context) {
     let scriptName = req.path.replace("/editor/api/script-security/", "");
     scriptName = decodeURIComponent(scriptName);
 
-    let fullUri;
-    if (scriptName.startsWith("https://")) {
-      fullUri = scriptName;
-    } else {
-      fullUri = "https://example.com/" + scriptName;
-    }
+    const fullUri = resolveScriptUri(context, scriptName);
 
     let payload = {};
     if (req.body) {
@@ -1184,12 +1176,7 @@ function apiAddScriptOwner(context) {
     let scriptName = req.path.replace("/editor/api/script-owners/", "");
     scriptName = decodeURIComponent(scriptName);
 
-    let fullUri;
-    if (scriptName.startsWith("https://")) {
-      fullUri = scriptName;
-    } else {
-      fullUri = "https://example.com/" + scriptName;
-    }
+    const fullUri = resolveScriptUri(context, scriptName);
 
     let payload = {};
     if (req.body) {
@@ -1295,12 +1282,7 @@ function apiRemoveScriptOwner(context) {
 
     const ownerId = payload.ownerId;
 
-    let fullUri;
-    if (scriptName.startsWith("https://")) {
-      fullUri = scriptName;
-    } else {
-      fullUri = "https://example.com/" + scriptName;
-    }
+    const fullUri = resolveScriptUri(context, scriptName);
 
     try {
       const result = scriptStorage.removeScriptOwner(fullUri, ownerId);
