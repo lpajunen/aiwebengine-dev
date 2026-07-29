@@ -90,7 +90,7 @@ assets/
 3. Use in your scripts:
 
    ```javascript
-   function pageHandler(req) {
+   function pageHandler(context) {
      return {
        status: 200,
        body: `
@@ -160,7 +160,8 @@ console.log(deleteResult);
 **Example: Upload from form**
 
 ```javascript
-function uploadHandler(req) {
+function uploadHandler(context) {
+  const req = context.request;
   const assetName = req.form.name; // "uploads-file.jpg"
   const mimetype = req.form.mimetype; // "image/jpeg"
   const contentB64 = req.form.content; // Base64 string
@@ -195,7 +196,7 @@ routeRegistry.registerRoute("/upload-asset", "uploadHandler", "POST");
 ### Linking Stylesheets
 
 ```javascript
-function styledPageHandler(req) {
+function styledPageHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -222,7 +223,7 @@ function styledPageHandler(req) {
 ### Loading JavaScript
 
 ```javascript
-function appPageHandler(req) {
+function appPageHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -250,7 +251,7 @@ function appPageHandler(req) {
 ### Embedding Images
 
 ```javascript
-function galleryHandler(req) {
+function galleryHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -284,7 +285,7 @@ function galleryHandler(req) {
 ### Referencing Documents
 
 ```javascript
-function resourcesHandler(req) {
+function resourcesHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -369,7 +370,7 @@ assets/
 ### Asset Gallery Script
 
 ```javascript
-function assetGalleryHandler(req) {
+function assetGalleryHandler(context) {
   // Get all assets with metadata
   const assetsJson = assetStorage.listAssets();
   const assets = JSON.parse(assetsJson);
@@ -429,7 +430,7 @@ routeRegistry.registerRoute("/assets-gallery", "assetGalleryHandler", "GET");
 ### Asset Upload Form
 
 ```javascript
-function uploadFormHandler(req) {
+function uploadFormHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -661,7 +662,7 @@ Or use query parameters:
 Regularly remove assets that are no longer referenced:
 
 ```javascript
-function cleanupHandler(req) {
+function cleanupHandler(context) {
   const assets = JSON.parse(assetStorage.listAssets());
   const unusedAssets = findUnusedAssets(assets);
 
@@ -685,7 +686,7 @@ function cleanupHandler(req) {
 ### Responsive Images
 
 ```javascript
-function responsiveImageHandler(req) {
+function responsiveImageHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -712,7 +713,8 @@ function responsiveImageHandler(req) {
 ### CSS Themes
 
 ```javascript
-function themedPageHandler(req) {
+function themedPageHandler(context) {
+  const req = context.request;
   const theme = req.query.theme || "light";
 
   const html = `
@@ -735,7 +737,7 @@ function themedPageHandler(req) {
 ### Progressive Web App (PWA)
 
 ```javascript
-function pwaManifestHandler(req) {
+function pwaManifestHandler(context) {
   const manifest = {
     name: "My App",
     short_name: "App",

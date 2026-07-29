@@ -252,7 +252,7 @@ Returns a JSON string containing metadata for all assets in the repository.
 **Example:**
 
 ```javascript
-function listAllAssets(req) {
+function listAllAssets(context) {
   const assetsJson = assetStorage.listAssets();
   const assetMetadata = JSON.parse(assetsJson);
 
@@ -294,7 +294,8 @@ Retrieves an asset's content from the repository.
 **Example:**
 
 ```javascript
-function getAsset(req) {
+function getAsset(context) {
+  const req = context.request;
   const assetName = req.query.name;
 
   if (!assetName) {
@@ -351,7 +352,8 @@ Creates a new asset or updates an existing one in the repository.
 **Example:**
 
 ```javascript
-function uploadAsset(req) {
+function uploadAsset(context) {
+  const req = context.request;
   const { name, content, mimetype } = req.form;
 
   if (!name || !content || !mimetype) {
@@ -385,7 +387,8 @@ routeRegistry.registerRoute("/upload-asset", "uploadAsset", "POST");
 **Example - Upload from form data:**
 
 ```javascript
-function handleImageUpload(req) {
+function handleImageUpload(context) {
+  const req = context.request;
   // Assume req.form.image contains base64 encoded image
   const imageB64 = req.form.image;
   const filename = req.form.filename || "uploaded-image.png";
@@ -430,7 +433,8 @@ Deletes an asset from the repository.
 **Example:**
 
 ```javascript
-function removeAsset(req) {
+function removeAsset(context) {
+  const req = context.request;
   const assetName = req.query.name;
 
   if (!assetName) {
@@ -467,7 +471,8 @@ routeRegistry.registerRoute("/delete-asset", "removeAsset", "DELETE");
 Complete example showing asset CRUD operations:
 
 ```javascript
-function assetHandler(req) {
+function assetHandler(context) {
+  const req = context.request;
   const method = req.method;
   const path = req.path;
 
@@ -564,7 +569,8 @@ Writes a message to the server log for debugging and monitoring.
 **Example:**
 
 ```javascript
-function myHandler(req) {
+function myHandler(context) {
+  const req = context.request;
   console.log("Handler called with path: " + req.path);
   return {
     status: 200,
@@ -928,7 +934,7 @@ Makes HTTP requests to external APIs with built-in security features including s
 **Example - Simple GET Request:**
 
 ```javascript
-function fetchExample(req) {
+function fetchExample(context) {
   try {
     // Make a GET request
     const responseJson = fetch("https://api.example.com/data");
@@ -958,7 +964,7 @@ function fetchExample(req) {
 **Example - POST with JSON:**
 
 ```javascript
-function createResource(req) {
+function createResource(context) {
   const requestData = {
     name: "New Item",
     description: "Created via API",
@@ -988,7 +994,7 @@ function createResource(req) {
 The fetch function supports secure secret injection using template syntax `{{secret:identifier}}`. This allows you to use API keys stored in the server's secrets manager without exposing them in your script code.
 
 ```javascript
-function callSecureAPI(req) {
+function callSecureAPI(context) {
   // Use {{secret:identifier}} syntax to inject secrets securely
   const options = JSON.stringify({
     method: "GET",
@@ -1021,7 +1027,7 @@ function callSecureAPI(req) {
 **Error Handling:**
 
 ```javascript
-function robustFetch(req) {
+function robustFetch(context) {
   try {
     const responseJson = fetch("https://api.example.com/data");
     const response = JSON.parse(responseJson);
@@ -1276,7 +1282,8 @@ Sends a message to all clients subscribed to a specific GraphQL subscription.
 **Example:**
 
 ```javascript
-function logUserAction(req) {
+function logUserAction(context) {
+  const req = context.request;
   const { userId, action } = req.form;
 
   // Send real-time update to subscribers
@@ -1312,7 +1319,8 @@ Sends a message to filtered clients subscribed to a specific GraphQL subscriptio
 **Example:**
 
 ```javascript
-function broadcastAdminMessage(req) {
+function broadcastAdminMessage(context) {
+  const req = context.request;
   const { message } = req.form;
 
   // Send to all admin connections only
@@ -1358,7 +1366,7 @@ Executes a GraphQL query or mutation directly against the registered schema with
 **Example - Simple Query:**
 
 ```javascript
-function listScriptsHandler(req) {
+function listScriptsHandler(context) {
   const query = `
     query {
       scripts {
@@ -1400,7 +1408,8 @@ function listScriptsHandler(req) {
 **Example - Query with Variables:**
 
 ```javascript
-function getScriptHandler(req) {
+function getScriptHandler(context) {
+  const req = context.request;
   const scriptUri = req.query.uri;
 
   if (!scriptUri) {
@@ -1440,7 +1449,8 @@ function getScriptHandler(req) {
 **Example - Mutation:**
 
 ```javascript
-function createScriptHandler(req) {
+function createScriptHandler(context) {
+  const req = context.request;
   const { uri, content } = req.form;
 
   if (!uri || !content) {
@@ -1626,7 +1636,8 @@ The `req` parameter passed to handler functions contains information about the H
 ### Examples
 
 ```javascript
-function exampleHandler(req) {
+function exampleHandler(context) {
+  const req = context.request;
   // GET /search?q=javascript&page=1
   console.log(req.method); // "GET"
   console.log(req.path); // "/search"
@@ -1640,7 +1651,8 @@ function exampleHandler(req) {
 For POST requests with form data:
 
 ```javascript
-function postHandler(req) {
+function postHandler(context) {
+  const req = context.request;
   // POST /submit with form fields: name=John&email=john@example.com
   console.log(req.form); // { name: "John", email: "john@example.com" }
 
@@ -2052,14 +2064,15 @@ Basic console logging (output goes to server logs).
 **Example:**
 
 ```javascript
-function debugHandler(req) {
+function debugHandler(context) {
+  const req = context.request;
   console.log("Request received: " + req.path);
   console.error("This is an error message");
 
   return { status: 200, body: "Check logs" };
 }
 
-function viewLogsHandler(req) {
+function viewLogsHandler(context) {
   // Get all logs
   const allLogsJson = console.listLogs();
   const allLogs = JSON.parse(allLogsJson);
@@ -2531,7 +2544,8 @@ Scripts run in a sandboxed environment. If a script throws an error:
 **Example error handling:**
 
 ```javascript
-function safeHandler(req) {
+function safeHandler(context) {
+  const req = context.request;
   try {
     // Your code here
     if (!req.query.id) {

@@ -61,7 +61,7 @@ Best for: Quick prototyping, learning, small projects
 
 ```javascript
 // Create api/hello.js in the editor
-function helloHandler(req) {
+function helloHandler(context) {
   return {
     status: 200,
     body: "Hello from editor!",
@@ -137,7 +137,7 @@ mkdir -p my-scripts/api
 
 # Create script
 cat > my-scripts/api/users.js << 'EOF'
-function usersHandler(req) {
+function usersHandler(context) {
   return {
     status: 200,
     body: JSON.stringify({ users: [] }),
@@ -335,7 +335,7 @@ aiwebengine exposes REST APIs for script management (if editor is enabled):
 curl -X POST "http://localhost:8080/api/scripts/api/hello.js" \
   -H "Content-Type: application/json" \
   -d '{
-    "content": "function helloHandler(req) { return { status: 200, body: \"Hello\" }; } function init() { routeRegistry.registerRoute(\"/api/hello\", \"helloHandler\", \"GET\"); } init();"
+    "content": "function helloHandler(context) { return { status: 200, body: \"Hello\" }; } function init() { routeRegistry.registerRoute(\"/api/hello\", \"helloHandler\", \"GET\"); } init();"
   }'
 ```
 

@@ -304,7 +304,7 @@ assets/
 Assets are immediately accessible:
 
 ```javascript
-function homeHandler(req) {
+function homeHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -619,7 +619,7 @@ Type and press Tab:
 
 ```javascript
 // Type: handler
-function myHandler(req) {
+function myHandler(context) {
   return {
     status: 200,
     body: "",
@@ -823,7 +823,7 @@ GET /api/scripts/api/users.js
 # Create/update script
 POST /api/scripts/api/users.js
 Content-Type: application/json
-{"content": "function handler(req) {...}"}
+{"content": "function handler(context) {...}"}
 
 # Delete script
 DELETE /api/scripts/api/users.js

@@ -45,7 +45,8 @@ Each script follows this basic pattern:
 
 ```javascript
 // Define handler functions
-function my_handler(req) {
+function my_handler(context) {
+  const req = context.request;
   // Process the request
   // req contains: path, method, query, form, etc.
 

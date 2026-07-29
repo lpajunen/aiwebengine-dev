@@ -232,41 +232,42 @@ const response = fetch(url, options);
 // Streaming
 routeRegistry.registerStreamRoute(path);
 routeRegistry.sendStreamMessage(path, data);
+
+// Response builders (preferred over hand-built response objects)
+ResponseBuilder.json(data, status); // application/json
+ResponseBuilder.text(text, status); // text/plain
+ResponseBuilder.html(html, status); // text/html
+ResponseBuilder.error(status, message); // JSON error body
+ResponseBuilder.redirect(location); // 302 redirect
+ResponseBuilder.noContent(); // 204
 ```
 
 ### Handler Template
 
+Handlers receive a single `context` argument (the HTTP request is
+`context.request`) and return a response. Use `ResponseBuilder` helpers to build
+responses — they set the status and `Content-Type` for you:
+
 ```javascript
-function myHandler(req) {
+function myHandler(context) {
+  const req = context.request;
   try {
     // Extract parameters
     const param = req.query.param;
 
     // Validate
     if (!param) {
-      return {
-        status: 400,
-        body: JSON.stringify({ error: "Missing parameter" }),
-        contentType: "application/json",
-      };
+      return ResponseBuilder.error(400, "Missing parameter");
     }
 
     // Process
     const result = process(param);
 
     // Return success
-    return {
-      status: 200,
-      body: JSON.stringify({ result: result }),
-      contentType: "application/json",
-    };
+    return ResponseBuilder.json({ result: result });
   } catch (error) {
     console.error(`Error: ${error.message}`);
-    return {
-      status: 500,
-      body: JSON.stringify({ error: "Internal error" }),
-      contentType: "application/json",
-    };
+    return ResponseBuilder.error(500, "Internal error");
   }
 }
 

@@ -67,7 +67,8 @@ Creates or updates an asset in the repository.
 **Example:**
 
 ```javascript
-function uploadAsset(req) {
+function uploadAsset(context) {
+  const req = context.request;
   const name = req.form.name; // "my-image.png"
   const content = req.form.content; // Base64 string
   const mimetype = req.form.mimetype; // "image/png"
@@ -97,7 +98,8 @@ Retrieves an asset by name from the repository.
 **Example:**
 
 ```javascript
-function getAssetInfo(req) {
+function getAssetInfo(context) {
+  const req = context.request;
   const name = req.query.name; // "logo.svg"
   const content = assetStorage.fetchAsset(name);
 
@@ -132,7 +134,8 @@ Deletes an asset from the repository.
 **Example:**
 
 ```javascript
-function removeAsset(req) {
+function removeAsset(context) {
+  const req = context.request;
   const name = req.query.name;
   const result = assetStorage.deleteAsset(name);
 
@@ -161,7 +164,7 @@ Lists all assets with metadata in the repository.
 **Example:**
 
 ```javascript
-function listAllAssets(req) {
+function listAllAssets(context) {
   const assetsJson = assetStorage.listAssets();
   const assets = JSON.parse(assetsJson);
 
@@ -183,7 +186,7 @@ Here's a complete script that demonstrates the new asset system:
 ```javascript
 // Asset demo script
 
-function homePage(req) {
+function homePage(context) {
   const html = `
     <!DOCTYPE html>
     <html>

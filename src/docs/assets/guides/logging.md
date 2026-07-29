@@ -24,7 +24,8 @@ Writes a message to the server's log system.
 **Example:**
 
 ```javascript
-function myHandler(req) {
+function myHandler(context) {
+  const req = context.request;
   console.log("Request received");
 
   const result = processRequest(req);
@@ -350,7 +351,8 @@ routeRegistry.registerRoute(
 Add logs at key points:
 
 ```javascript
-function complexHandler(req) {
+function complexHandler(context) {
+  const req = context.request;
   console.log("complexHandler: Start");
 
   console.log("complexHandler: Validating input");
@@ -377,7 +379,8 @@ function complexHandler(req) {
 Inspect data at runtime:
 
 ```javascript
-function debugHandler(req) {
+function debugHandler(context) {
+  const req = context.request;
   console.log(`Received query: ${JSON.stringify(req.query)}`);
   console.log(`Received form: ${JSON.stringify(req.form)}`);
 
@@ -401,7 +404,8 @@ function debugLog(message) {
   }
 }
 
-function myHandler(req) {
+function myHandler(context) {
+  const req = context.request;
   debugLog("Handler called with path: " + req.path);
 
   // Your logic
@@ -416,7 +420,8 @@ function myHandler(req) {
 Provide context when logging errors:
 
 ```javascript
-function createUserHandler(req) {
+function createUserHandler(context) {
+  const req = context.request;
   try {
     const user = createUser(req.form);
     console.log(`User created successfully: ${user.email}`);
@@ -451,7 +456,7 @@ function timedOperation(name, operation) {
   }
 }
 
-function slowHandler(req) {
+function slowHandler(context) {
   return timedOperation("slowHandler", () => {
     // Your slow operation
     const result = expensiveComputation();
@@ -465,7 +470,8 @@ function slowHandler(req) {
 ### Request/Response Logging
 
 ```javascript
-function loggedHandler(req) {
+function loggedHandler(context) {
+  const req = context.request;
   const requestId = generateRequestId();
 
   console.log(`[${requestId}] Request: ${req.method} ${req.path}`);
@@ -495,7 +501,8 @@ function auditLog(action, user, details) {
   console.log(`[AUDIT] ${JSON.stringify(entry)}`);
 }
 
-function deleteUserHandler(req) {
+function deleteUserHandler(context) {
+  const req = context.request;
   const userId = req.query.id;
   const currentUser = getCurrentUser(req);
 
@@ -516,7 +523,8 @@ const metrics = {
   totalDuration: 0,
 };
 
-function metricsHandler(req) {
+function metricsHandler(context) {
+  const req = context.request;
   const start = Date.now();
   metrics.requests++;
 
@@ -535,7 +543,7 @@ function metricsHandler(req) {
   }
 }
 
-function statsHandler(req) {
+function statsHandler(context) {
   const avgDuration =
     metrics.requests > 0 ? metrics.totalDuration / metrics.requests : 0;
 

@@ -162,7 +162,8 @@ routeRegistry.registerRoute(
   "POST",
 );
 
-function triggerNotificationHandler(req) {
+function triggerNotificationHandler(context) {
+  const req = context.request;
   const message = req.body || "Default notification";
 
   graphQLRegistry.sendSubscriptionMessage(

@@ -574,7 +574,7 @@ If developing locally with VS Code:
 
    ```javascript
    // Create a handler that returns a list of users as JSON
-   function usersHandler(req) {
+   function usersHandler(context) {
      // Copilot will suggest implementation
    }
    ```

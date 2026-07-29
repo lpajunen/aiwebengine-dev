@@ -32,11 +32,7 @@ A script in aiwebengine is a JavaScript file that:
 function helloHandler(context) {
   const req = context.request;
 
-  return {
-    status: 200,
-    body: "Hello, World!",
-    contentType: "text/plain; charset=UTF-8",
-  };
+  return ResponseBuilder.text("Hello, World!");
 }
 
 function init() {
@@ -45,6 +41,10 @@ function init() {
 
 init();
 ```
+
+Handlers always receive a single `context` argument; the HTTP request lives at
+`context.request`. Return responses with the `ResponseBuilder` helpers — see
+[Response Formatting](#response-formatting).
 
 ### Script Lifecycle
 
@@ -517,6 +517,46 @@ function headerHandler(context) {
 
 ## Response Formatting
 
+### Response Builders (recommended)
+
+`ResponseBuilder` helpers are the recommended way to build responses — they set
+the status code and `Content-Type` for you, so handler code stays short:
+
+```javascript
+// JSON responses
+return ResponseBuilder.json({ users: ["Alice", "Bob"] });
+return ResponseBuilder.json({ error: "Not found" }, 404);
+
+// Text responses
+return ResponseBuilder.text("Hello, World!");
+
+// HTML responses
+return ResponseBuilder.html("<h1>Welcome</h1>");
+
+// Error responses (JSON error body)
+return ResponseBuilder.error(400, "Invalid input");
+
+// No content (204)
+return ResponseBuilder.noContent();
+
+// Redirects (302)
+return ResponseBuilder.redirect("/new-location");
+```
+
+Under the hood a response is just an object of the shape
+`{ status, body, contentType, headers }`. You can return that raw shape directly
+when you need something the builders don't cover — a custom `Content-Type`,
+extra `headers`, or binary `bodyBase64`:
+
+```javascript
+return {
+  status: 200,
+  body: css,
+  contentType: "text/css",
+  headers: { "Cache-Control": "max-age=3600" },
+};
+```
+
 ### HTTP Status Codes
 
 Use appropriate status codes:
@@ -565,61 +605,8 @@ contentType: "image/gif";
 contentType: "image/svg+xml";
 ```
 
-### Response Builders
-
-aiwebengine provides convenient helper functions for creating common response types:
-
-```javascript
-// JSON responses
-return ResponseBuilder.json({ users: ["Alice", "Bob"] });
-return ResponseBuilder.json({ error: "Not found" }, 404);
-
-// Text responses
-return ResponseBuilder.text("Hello, World!");
-
-// HTML responses
-return ResponseBuilder.html("<h1>Welcome</h1>");
-
-// Error responses
-return ResponseBuilder.error(400, "Invalid input");
-
-// No content (204)
-return ResponseBuilder.noContent();
-
-// Redirects
-return ResponseBuilder.redirect("/new-location");
-```
-
-### Response Helper
-
-Create a helper function:
-
-```javascript
-function jsonResponse(status, data) {
-  return {
-    status: status,
-    body: JSON.stringify(data),
-    contentType: "application/json",
-  };
-}
-
-function textResponse(status, text) {
-  return {
-    status: status,
-    body: text,
-    contentType: "text/plain; charset=UTF-8",
-  };
-}
-
-function errorResponse(status, message) {
-  return jsonResponse(status, { error: message });
-}
-
-// Usage
-function myHandler(context) {
-  return jsonResponse(200, { message: "Success" });
-}
-```
+The MIME types above matter mainly when you return the raw response shape;
+`ResponseBuilder.json`/`text`/`html` set the `Content-Type` for you.
 
 ## State Management
 

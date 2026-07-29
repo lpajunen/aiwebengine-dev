@@ -28,11 +28,7 @@ Every aiwebengine script has three key parts:
 function myHandler(context) {
   const req = context.request;
 
-  return {
-    status: 200,
-    body: "Hello!",
-    contentType: "text/plain; charset=UTF-8",
-  };
+  return ResponseBuilder.text("Hello!");
 }
 
 // 2. Initialization Function - registers routes
@@ -46,7 +42,8 @@ init();
 
 **Key Concepts:**
 
-- **Handler functions** receive a `context` object and return a response object
+- **Handler functions** receive a single `context` object; the HTTP request is `context.request`
+- **`ResponseBuilder`** helpers (`.text`, `.json`, `.html`, `.error`, `.redirect`) build the response and set its `Content-Type`
 - **`init()` function** registers your routes when the script loads
 - **`routeRegistry.registerRoute(path, handlerName, method)`** maps URLs to handler functions
 
@@ -94,11 +91,7 @@ function helloHandler(context) {
   const greeting = `Hello, ${name}! Welcome to aiwebengine.`;
 
   // Return the response
-  return {
-    status: 200,
-    body: greeting,
-    contentType: "text/plain; charset=UTF-8",
-  };
+  return ResponseBuilder.text(greeting);
 }
 
 function init() {
@@ -256,20 +249,12 @@ function helloHandler(context) {
 
   // Validate input
   if (!name) {
-    return {
-      status: 400,
-      body: "Error: 'name' parameter is required",
-      contentType: "text/plain; charset=UTF-8",
-    };
+    return ResponseBuilder.error(400, "'name' parameter is required");
   }
 
   // Sanitize input (basic example)
   if (name.length > 50) {
-    return {
-      status: 400,
-      body: "Error: Name too long (max 50 characters)",
-      contentType: "text/plain; charset=UTF-8",
-    };
+    return ResponseBuilder.error(400, "Name too long (max 50 characters)");
   }
 
   // Log the request
@@ -283,11 +268,7 @@ function helloHandler(context) {
   };
 
   // Return JSON response
-  return {
-    status: 200,
-    body: JSON.stringify(response),
-    contentType: "application/json",
-  };
+  return ResponseBuilder.json(response);
 }
 
 function init() {
@@ -403,18 +384,10 @@ function myHandler(context) {
   try {
     // Your logic here
 
-    return {
-      status: 200,
-      body: "Success",
-      contentType: "text/plain; charset=UTF-8",
-    };
+    return ResponseBuilder.text("Success");
   } catch (error) {
     console.error(`Error: ${error.message}`);
-    return {
-      status: 500,
-      body: "Internal server error",
-      contentType: "text/plain; charset=UTF-8",
-    };
+    return ResponseBuilder.error(500, "Internal server error");
   }
 }
 

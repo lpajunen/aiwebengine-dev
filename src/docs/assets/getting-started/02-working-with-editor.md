@@ -187,7 +187,7 @@ Or in a subdirectory:
 **HTML example:**
 
 ```javascript
-function homeHandler(req) {
+function homeHandler(context) {
   const html = `
     <!DOCTYPE html>
     <html>
@@ -259,7 +259,8 @@ aiwebengine logs capture:
 **Good logging practices:**
 
 ```javascript
-function createUser(req) {
+function createUser(context) {
+  const req = context.request;
   const email = req.form.email;
 
   // Log important actions
@@ -459,7 +460,7 @@ Explain how the streaming works in this script
 3. Write or generate code:
 
    ```javascript
-   function apiHandler(req) {
+   function apiHandler(context) {
      return {
        status: 200,
        body: JSON.stringify({ message: "Hello API" }),
@@ -483,7 +484,7 @@ Explain how the streaming works in this script
 3. Write HTML handler:
 
    ```javascript
-   function homeHandler(req) {
+   function homeHandler(context) {
      return {
        status: 200,
        body: `
