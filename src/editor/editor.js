@@ -3021,12 +3021,21 @@ CURRENT CONTEXT:`;
 function init(context) {
   console.log("Initializing editor.js at " + new Date().toISOString());
 
-  // Register editor assets
-  routeRegistry.registerAssetRoute("/editor/header.css", "header.css");
-  routeRegistry.registerAssetRoute("/editor/editor.css", "editor.css");
-  routeRegistry.registerAssetRoute("/editor/editor.js", "editor.js");
-
   const editorTag = { tags: ["Aiwebengine editor"] };
+
+  // Register editor assets under the editor Swagger tag
+  routeRegistry.registerAssetRoute(
+    "/editor/header.css",
+    "header.css",
+    editorTag,
+  );
+  routeRegistry.registerAssetRoute(
+    "/editor/editor.css",
+    "editor.css",
+    editorTag,
+  );
+  routeRegistry.registerAssetRoute("/editor/editor.js", "editor.js", editorTag);
+
   routeRegistry.registerRoute("/editor", "serveEditor", "GET", editorTag);
   routeRegistry.registerRoute(
     "/editor/graphql",
