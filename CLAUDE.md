@@ -37,6 +37,7 @@ from `.env`), uploads the script to `POST /upsert_script`, then base64-uploads e
 ```bash
 npm run upload-editor            # deploy src/editor/  (add -dry-run to preview)
 npm run upload-docs              # deploy src/docs/    (add -dry-run to preview)
+npm run upload-admin             # deploy src/admin/   (add -dry-run to preview)
 ```
 
 Always run the `*-dry-run` variant first to see exactly what would be uploaded. To deploy something
@@ -51,9 +52,13 @@ Files matching patterns in `.uploadignore` are skipped when scanning `--assets-d
 
 ## Two things that both live in `src/`, and how they differ
 
-`src/editor/` and `src/docs/` are each a **deployed AI Web Engine solution**, not local Node code.
-Each is a single `.js` entry script plus an `assets/` directory. They run on the server inside a
-sandboxed **QuickJS** environment — not Node — so:
+`src/editor/`, `src/docs/`, and `src/admin/` are each a **deployed AI Web Engine solution**, not
+local Node code. Each is a single `.js` entry script (the editor and docs also ship an `assets/`
+directory; admin is a single self-contained script with no assets). `src/admin/admin.js` serves the
+user-role management UI and API under the `/admin/` prefix, grouped under the "Aiwebengine
+administration" tag in Swagger; its APIs use the privileged `userStorage` role management calls, so
+the script must be marked privileged on the server. They run on the server inside a sandboxed
+**QuickJS** environment — not Node — so:
 
 - No `require`/`import`, no npm packages, no Node built-ins at runtime.
 - Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,

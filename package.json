@@ -10,6 +10,8 @@
     "upload-editor-dry-run": "node scripts/upload-script.js --script-path src/editor/editor.js --script-uri https://example.com/editor --assets-dir src/editor/assets --dry-run",
     "upload-docs": "node scripts/upload-script.js --script-path src/docs/docs.js --script-uri https://example.com/docs --assets-dir src/docs/assets --asset-prefix docs/",
     "upload-docs-dry-run": "node scripts/upload-script.js --script-path src/docs/docs.js --script-uri https://example.com/docs --assets-dir src/docs/assets --asset-prefix docs/ --dry-run",
+    "upload-admin": "node scripts/upload-script.js --script-path src/admin/admin.js --script-uri https://example.com/admin",
+    "upload-admin-dry-run": "node scripts/upload-script.js --script-path src/admin/admin.js --script-uri https://example.com/admin --dry-run",
     "outdated": "npm outdated || echo '✓ Checked for outdated packages'",
     "format": "prettier --write --log-level warn \"**/*.js\" \"**/*.ts\" \"**/*.json\" \"**/*.md\" && echo '✓ JavaScript files formatted'",
     "format-check": "prettier --check \"**/*.js\" \"**/*.ts\" \"**/*.json\" \"**/*.md\" && echo '✓ Source files match Prettier formatting'",

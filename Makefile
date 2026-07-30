@@ -1,4 +1,4 @@
-.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run install outdated format format-check lint typecheck verify
+.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run upload-admin upload-admin-dry-run install outdated format format-check lint typecheck verify
 
 # Server host configuration (can be overridden via environment variable)
 export SERVER_HOST ?= https://softagen.com
@@ -30,6 +30,12 @@ upload-docs:
 
 upload-docs-dry-run:
 	npm run upload-docs-dry-run
+
+upload-admin:
+	npm run upload-admin
+
+upload-admin-dry-run:
+	npm run upload-admin-dry-run
 
 install:
 	npm run install
