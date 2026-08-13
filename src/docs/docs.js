@@ -546,6 +546,11 @@ function init(context) {
       new Date().toISOString(),
   );
 
+  // Register engine stylesheet asset
+  routeRegistry.registerAssetRoute("/engine.css", "docs/engine.css", {
+    tags: ["Aiwebengine documentation"],
+  });
+
   // Register redirect route
   routeRegistry.registerRoute("/docs", "handleDocsRedirect", "GET", {
     summary: "Documentation redirect",
