@@ -409,7 +409,7 @@ init();
 For better development experience with autocomplete and type checking in your IDE (VS Code, WebStorm, etc.), add this reference comment at the top of your scripts:
 
 ```javascript
-/// <reference path="https://your-engine.com/api/types/v0.1.0/aiwebengine.d.ts" />
+/// <reference path="https://your-engine.com/engine/types/v0.1.0/aiwebengine.d.ts" />
 ```
 
 Replace `your-engine.com` with your actual engine URL (e.g., `localhost:8080` for local development).
@@ -424,7 +424,7 @@ Replace `your-engine.com` with your actual engine URL (e.g., `localhost:8080` fo
 ### Example with Type Support
 
 ```javascript
-/// <reference path="http://localhost:8080/api/types/v0.1.0/aiwebengine.d.ts" />
+/// <reference path="http://localhost:8080/engine/types/v0.1.0/aiwebengine.d.ts" />
 
 /**
  * @param {HandlerContext} context
