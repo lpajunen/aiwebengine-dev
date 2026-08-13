@@ -27,6 +27,283 @@
  * @property {number} [ownerCount]
  */
 
+/**
+ * The engine's own HTTP API, served under /engine/. These endpoints replaced
+ * the privileged JavaScript globals (scriptStorage, assetStorage,
+ * secretStorage) that the editor script used to call on the browser's behalf,
+ * so the editor now talks to them directly with the signed-in user's session
+ * and the engine enforces that user's permissions.
+ */
+const engineApi = {
+  /**
+   * Resolve a script identifier to a full script URI. Full URIs are used
+   * as-is; short names are namespaced under this deployment's own origin, the
+   * way the engine stores scripts created through the editor.
+   * @param {string} script
+   * @returns {string}
+   */
+  scriptUri(script) {
+    if (script.startsWith("https://") || script.startsWith("http://")) {
+      return script;
+    }
+    return "https://" + window.location.host + "/" + script;
+  },
+
+  /**
+   * Asset names are stored without a leading slash; the editor UI carries
+   * paths like "/styles.css" for assets it is about to create.
+   * @param {string} path
+   * @returns {string}
+   */
+  assetName(path) {
+    return path.startsWith("/") ? path.substring(1) : path;
+  },
+
+  /**
+   * @param {Response} response
+   * @returns {Promise<string>}
+   */
+  async errorMessage(response) {
+    let detail = "";
+    try {
+      detail = (await response.text()).trim();
+    } catch {
+      detail = "";
+    }
+    try {
+      const parsed = JSON.parse(detail);
+      detail = parsed.error || parsed.message || detail;
+    } catch {
+      /* not JSON - keep the raw text */
+    }
+    return detail || `Request failed with status ${response.status}`;
+  },
+
+  /**
+   * @param {string} path
+   * @param {RequestInit} [options]
+   * @returns {Promise<Response>}
+   */
+  async request(path, options) {
+    const response = await fetch("/engine" + path, options);
+    if (!response.ok) {
+      throw new Error(await this.errorMessage(response));
+    }
+    return response;
+  },
+
+  /**
+   * @param {string} path
+   * @param {RequestInit} [options]
+   * @returns {Promise<any>}
+   */
+  async json(path, options) {
+    const response = await this.request(path, options);
+    return response.json();
+  },
+
+  /**
+   * @param {Record<string, string>} fields
+   * @returns {RequestInit}
+   */
+  form(fields) {
+    return {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(fields).toString(),
+    };
+  },
+
+  /** @returns {Promise<any[]>} */
+  async listScripts() {
+    const data = await this.json("/scripts");
+    return data.scripts || [];
+  },
+
+  /**
+   * @param {string} uri
+   * @returns {Promise<string>}
+   */
+  async readScript(uri) {
+    const response = await this.request(
+      "/read_script?uri=" + encodeURIComponent(uri),
+    );
+    return response.text();
+  },
+
+  /**
+   * @param {string} uri
+   * @param {string} content
+   */
+  async upsertScript(uri, content) {
+    await this.request("/upsert_script", this.form({ uri, content }));
+  },
+
+  /** @param {string} uri */
+  async deleteScript(uri) {
+    await this.request("/delete_script", this.form({ uri }));
+  },
+
+  /**
+   * @param {string} uri
+   * @returns {Promise<string[]>}
+   */
+  async listScriptOwners(uri) {
+    const data = await this.json(
+      "/script_owners?uri=" + encodeURIComponent(uri),
+    );
+    return data.owners || [];
+  },
+
+  /**
+   * @param {string} uri
+   * @param {string} owner
+   */
+  async addScriptOwner(uri, owner) {
+    await this.request("/script_owners", this.form({ uri, owner }));
+  },
+
+  /**
+   * @param {string} uri
+   * @param {string} owner
+   */
+  async removeScriptOwner(uri, owner) {
+    await this.request(
+      `/script_owners?uri=${encodeURIComponent(uri)}&owner=${encodeURIComponent(owner)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  /**
+   * @param {string} uri
+   * @returns {Promise<any>}
+   */
+  securityProfile(uri) {
+    return this.json("/script_security_profile?uri=" + encodeURIComponent(uri));
+  },
+
+  /**
+   * @param {string} uri
+   * @param {boolean} privileged
+   */
+  async setScriptPrivileged(uri, privileged) {
+    await this.request(
+      "/set_script_privileged",
+      this.form({ uri, privileged: String(privileged) }),
+    );
+  },
+
+  /**
+   * @param {string} script
+   * @returns {Promise<any[]>}
+   */
+  async listAssets(script) {
+    const data = await this.json(
+      "/assets?script=" + encodeURIComponent(script),
+    );
+    return data.assets || [];
+  },
+
+  /**
+   * @param {string} script
+   * @param {string} asset
+   * @returns {Promise<string>} base64-encoded asset content
+   */
+  async readAsset(script, asset) {
+    const data = await this.json(
+      `/assets?script=${encodeURIComponent(script)}&asset=${encodeURIComponent(this.assetName(asset))}`,
+    );
+    return data.content || "";
+  },
+
+  /**
+   * @param {string} script
+   * @param {string} asset
+   * @param {string} mimetype
+   * @param {string} content base64-encoded asset content
+   */
+  async upsertAsset(script, asset, mimetype, content) {
+    await this.request("/assets?script=" + encodeURIComponent(script), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        asset: this.assetName(asset),
+        mimetype: mimetype,
+        content: content,
+      }),
+    });
+  },
+
+  /**
+   * @param {string} script
+   * @param {string} asset
+   */
+  async deleteAsset(script, asset) {
+    await this.request(
+      `/assets?script=${encodeURIComponent(script)}&asset=${encodeURIComponent(this.assetName(asset))}`,
+      { method: "DELETE" },
+    );
+  },
+
+  /**
+   * @param {string} script
+   * @returns {Promise<string[]>}
+   */
+  async listSecrets(script) {
+    const data = await this.json(
+      "/secrets?script=" + encodeURIComponent(script),
+    );
+    return data.keys || [];
+  },
+
+  /**
+   * @param {string} script
+   * @param {string} key
+   * @param {string} value
+   */
+  async setSecret(script, key, value) {
+    await this.request("/secrets?script=" + encodeURIComponent(script), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value }),
+    });
+  },
+
+  /**
+   * @param {string} script
+   * @param {string} key
+   */
+  async deleteSecret(script, key) {
+    await this.request(
+      `/secrets?script=${encodeURIComponent(script)}&key=${encodeURIComponent(key)}`,
+      { method: "DELETE" },
+    );
+  },
+};
+
+/**
+ * Decode base64 asset content into text, honouring UTF-8 multi-byte
+ * characters. The mirror image of textToBase64().
+ * @param {string} base64
+ * @returns {string}
+ */
+function base64ToText(base64) {
+  return new TextDecoder().decode(base64ToBytes(base64));
+}
+
+/**
+ * @param {string} base64
+ * @returns {Uint8Array}
+ */
+function base64ToBytes(base64) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 class AIWebEngineEditor {
   constructor() {
     /** @type {string | null} */
@@ -51,6 +328,10 @@ class AIWebEngineEditor {
     this.currentFilter = "all";
     this.scriptsData = [];
     this.currentUserId = null;
+    /** @type {Promise<ScriptData[]> | null} */
+    this.scriptSummariesPromise = null;
+    /** @type {Object.<string, string>} */
+    this.assetMimetypes = {};
 
     // AI Assistant session management
     /** @type {{id: string, turnCount: number, messages: any[], maxTurns: number} | null} */
@@ -618,20 +899,96 @@ declare var module: any;
   }
 
   // Script Management
+
+  /**
+   * The signed-in user's id, needed to work out which scripts they own.
+   * @returns {Promise<string | null>}
+   */
+  async getCurrentUserId() {
+    if (this.currentUserId) return this.currentUserId;
+
+    // The editor page renders the id it authenticated the request with; fall
+    // back to /auth/status for a page served before that was in place.
+    if (window.EDITOR_USER_ID) {
+      this.currentUserId = window.EDITOR_USER_ID;
+      return this.currentUserId;
+    }
+
+    try {
+      const response = await fetch("/auth/status");
+      if (!response.ok) return null;
+      const status = await response.json();
+      this.currentUserId = status.user_id || null;
+    } catch (error) {
+      console.warn("[Editor] Could not resolve current user:", error);
+      this.currentUserId = null;
+    }
+    return this.currentUserId;
+  }
+
+  /**
+   * The script list the three script-aware views share, enriched with the
+   * ownership and security details the engine serves from separate endpoints.
+   * @returns {Promise<ScriptData[]>}
+   */
+  async fetchScriptSummaries() {
+    const metadata = await engineApi.listScripts();
+    metadata.sort((/** @type {any} */ a, /** @type {any} */ b) =>
+      a.uri.toLowerCase().localeCompare(b.uri.toLowerCase()),
+    );
+
+    const currentUserId = await this.getCurrentUserId();
+
+    const summaries = await Promise.all(
+      metadata.map(async (/** @type {any} */ meta) => {
+        const [owners, profile] = await Promise.all([
+          engineApi.listScriptOwners(meta.uri).catch((error) => {
+            console.log(`Error getting owners for ${meta.uri}: ${error}`);
+            return [];
+          }),
+          engineApi.securityProfile(meta.uri).catch(() => null),
+        ]);
+
+        return {
+          uri: meta.uri,
+          displayName: meta.name || meta.uri,
+          size: meta.size || 0,
+          lastModified: new Date(meta.updatedAt || Date.now()).toISOString(),
+          privileged: !!meta.privileged,
+          defaultPrivileged: !!(profile && profile.defaultPrivileged),
+          canManagePrivileges: !!(profile && profile.canManagePrivileges),
+          owners: owners,
+          isOwner: !!currentUserId && owners.includes(currentUserId),
+          ownerCount: owners.length,
+        };
+      }),
+    );
+
+    this.permissions = {
+      canTogglePrivileged: summaries.some((s) => s.canManagePrivileges),
+    };
+
+    return summaries;
+  }
+
+  /**
+   * Cached view of fetchScriptSummaries() so the script list and the two
+   * script pickers do not each repeat the same round of engine calls.
+   * @param {boolean} [refresh]
+   * @returns {Promise<ScriptData[]>}
+   */
+  scriptSummaries(refresh) {
+    if (refresh || !this.scriptSummariesPromise) {
+      this.scriptSummariesPromise = this.fetchScriptSummaries();
+    }
+    return this.scriptSummariesPromise;
+  }
+
   async loadScripts() {
     console.log("[Editor] loadScripts() called");
     try {
-      const response = await fetch("/editor/api/scripts");
-      console.log("[Editor] API response status:", response.status);
-      const payload = await response.json();
-      const scripts = Array.isArray(payload) ? payload : payload.scripts || [];
-      const permissions = Array.isArray(payload)
-        ? this.permissions
-        : payload.permissions || {};
+      const scripts = await this.scriptSummaries(true);
 
-      this.permissions = {
-        canTogglePrivileged: !!permissions.canTogglePrivileged,
-      };
       this.scriptSecurityProfiles = {};
       this.scriptsData = scripts;
       console.log("[Editor] Loaded scripts:", scripts);
@@ -735,10 +1092,9 @@ declare var module: any;
   async loadScript(scriptName) {
     console.log("[Editor] loadScript() called for:", scriptName);
     try {
-      const encodedScriptName = encodeURIComponent(scriptName);
-      const response = await fetch(`/editor/api/scripts/${encodedScriptName}`);
-      console.log("[Editor] loadScript response status:", response.status);
-      const content = await response.text();
+      const content = await engineApi.readScript(
+        engineApi.scriptUri(scriptName),
+      );
       console.log("[Editor] Script content length:", content.length);
 
       this.currentScript = scriptName;
@@ -816,10 +1172,10 @@ declare var module: any;
 
     // Create empty script with the canonical handler pattern:
     // handlers take `context` and return a response via ResponseBuilder.
-    const encodedScriptName = encodeURIComponent(fullName);
-    fetch(`/editor/api/scripts/${encodedScriptName}`, {
-      method: "POST",
-      body: `// ${fullName}
+    engineApi
+      .upsertScript(
+        engineApi.scriptUri(fullName),
+        `// ${fullName}
 // New script created at ${new Date().toISOString()}
 
 function handler(context) {
@@ -833,7 +1189,7 @@ function init(context) {
     console.log('${fullName} endpoints registered');
     return { success: true };
 }`,
-    })
+      )
       .then(() => {
         this.loadScripts();
         this.loadScript(fullName);
@@ -849,12 +1205,9 @@ function init(context) {
     if (!this.currentScript || !this.monacoEditor) return;
 
     const content = this.monacoEditor.getValue();
-    const encodedScriptName = encodeURIComponent(this.currentScript);
 
-    fetch(`/editor/api/scripts/${encodedScriptName}`, {
-      method: "POST",
-      body: content,
-    })
+    engineApi
+      .upsertScript(engineApi.scriptUri(this.currentScript), content)
       .then(() => {
         this.showStatus("Script saved successfully", "success");
         this.updateSaveButton();
@@ -871,10 +1224,8 @@ function init(context) {
     if (!confirm(`Are you sure you want to delete ${this.currentScript}?`))
       return;
 
-    const encodedScriptName = encodeURIComponent(this.currentScript);
-    fetch(`/editor/api/scripts/${encodedScriptName}`, {
-      method: "DELETE",
-    })
+    engineApi
+      .deleteScript(engineApi.scriptUri(this.currentScript))
       .then(() => {
         this.currentScript = null;
         this.setText("current-script-name", "No script selected");
@@ -942,29 +1293,12 @@ function init(context) {
 
     const profile = this.scriptSecurityProfiles[this.currentScript];
     const nextValue = !(profile && profile.privileged);
-    const encoded = encodeURIComponent(this.currentScript);
 
     try {
-      const response = await fetch(`/editor/api/script-security/${encoded}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ privileged: nextValue }),
-      });
-
-      if (!response.ok) {
-        let message = `Failed to update privilege (status ${response.status})`;
-        try {
-          const errorBody = await response.json();
-          if (errorBody && errorBody.error) {
-            message = errorBody.error;
-          }
-        } catch (err) {
-          console.warn("[Editor] Failed to parse privilege error:", err);
-        }
-        throw new Error(message);
-      }
+      await engineApi.setScriptPrivileged(
+        engineApi.scriptUri(this.currentScript),
+        nextValue,
+      );
 
       if (!this.scriptSecurityProfiles[this.currentScript]) {
         this.scriptSecurityProfiles[this.currentScript] = {
@@ -1119,25 +1453,11 @@ function init(context) {
     if (!this.currentScript) return;
 
     try {
-      const encodedScript = encodeURIComponent(this.currentScript);
-      const response = await fetch(
-        `/editor/api/script-owners/${encodedScript}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ownerId }),
-        },
+      await engineApi.addScriptOwner(
+        engineApi.scriptUri(this.currentScript),
+        ownerId,
       );
-
-      if (response.ok) {
-        this.showStatus(`Added owner: ${ownerId}`, "success");
-      } else {
-        const error = await response.json();
-        this.showStatus(
-          `Error: ${error.error || "Failed to add owner"}`,
-          "error",
-        );
-      }
+      this.showStatus(`Added owner: ${ownerId}`, "success");
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus("Error adding owner: " + err.message, "error");
@@ -1151,25 +1471,11 @@ function init(context) {
     if (!this.currentScript) return;
 
     try {
-      const encodedScript = encodeURIComponent(this.currentScript);
-      const response = await fetch(
-        `/editor/api/script-owners/${encodedScript}`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ownerId }),
-        },
+      await engineApi.removeScriptOwner(
+        engineApi.scriptUri(this.currentScript),
+        ownerId,
       );
-
-      if (response.ok) {
-        this.showStatus(`Removed owner: ${ownerId}`, "success");
-      } else {
-        const error = await response.json();
-        this.showStatus(
-          `Error: ${error.error || "Failed to remove owner"}`,
-          "error",
-        );
-      }
+      this.showStatus(`Removed owner: ${ownerId}`, "success");
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus("Error removing owner: " + err.message, "error");
@@ -1199,33 +1505,41 @@ function init(context) {
         return;
       }
 
-      // Build URL with script URI parameter
-      const url = `/editor/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const assets = await engineApi.listAssets(this.selectedAssetScript);
+      assets.sort((/** @type {any} */ a, /** @type {any} */ b) =>
+        (a.name || a.uri)
+          .toLowerCase()
+          .localeCompare((b.name || b.uri).toLowerCase()),
+      );
+
+      this.assetMimetypes = {};
+      assets.forEach((/** @param {any} asset */ asset) => {
+        this.assetMimetypes[asset.uri] = asset.mimetype || "";
+      });
 
       assetsList.innerHTML = "";
 
-      if (data.assets.length === 0) {
+      if (assets.length === 0) {
         assetsList.innerHTML =
           '<div class="no-selection"><p>No assets found for this script</p></div>';
         return;
       }
 
-      data.assets.forEach(
+      assets.forEach(
         /** @param {any} asset */
         (asset) => {
           const assetElement = document.createElement("div");
-          const assetUri = asset.uri || asset.path;
+          const assetUri = asset.uri;
           const isText = this.isTextAsset(assetUri);
+          const mimetype = asset.mimetype || this.mimetypeForPath(assetUri);
 
           assetElement.innerHTML = this.templates["asset-item"]({
             uri: assetUri,
-            displayName: asset.displayName || assetUri,
-            size: this.formatBytes(asset.size),
-            type: asset.type,
+            displayName: asset.name || assetUri,
+            size: this.formatBytes(asset.size || 0),
+            type: mimetype,
             isText: isText,
-            icon: this.getFileIcon(asset.type, isText),
+            icon: this.getFileIcon(mimetype, isText),
             active: this.currentAsset === assetUri,
           });
 
@@ -1326,14 +1640,9 @@ function init(context) {
     if (isText) {
       // Load text asset in Monaco editor
       try {
-        // Build URL with script URI parameter if selected
-        let url = `/editor/api/assets/${path}`;
-        if (this.selectedAssetScript) {
-          url += `?uri=${encodeURIComponent(this.selectedAssetScript)}`;
-        }
-
-        const response = await fetch(url);
-        const content = await response.text();
+        const content = base64ToText(
+          await engineApi.readAsset(this.selectedAssetScript, path),
+        );
 
         this.monacoAssetEditor.setValue(content);
         const language = this.getLanguageMode(path);
@@ -1398,13 +1707,62 @@ function init(context) {
         ".svg",
       ];
       if (imageExtensions.includes(ext)) {
-        previewDiv.innerHTML = `
+        // The engine serves asset content as base64 JSON rather than as bytes
+        // at a URL of its own, so preview from a data: URL.
+        this.assetDataUrl(path)
+          .then((dataUrl) => {
+            previewDiv.innerHTML = `
           <div class="image-preview">
-            <img src="/editor/api/assets/${path}" alt="${filename}" style="max-width: 100%; max-height: 400px;">
+            <img src="${dataUrl}" alt="${filename}" style="max-width: 100%; max-height: 400px;">
           </div>
         `;
+          })
+          .catch((error) => {
+            const err = /** @type {Error} */ (error);
+            previewDiv.innerHTML = `<p>Preview unavailable: ${this.escapeHtml(err.message)}</p>`;
+          });
       }
     }
+  }
+
+  /**
+   * MIME type for an asset, from the listing when it is known and from the
+   * file extension otherwise.
+   * @param {string} path
+   * @returns {string}
+   */
+  mimetypeForPath(path) {
+    const known = this.assetMimetypes[engineApi.assetName(path)];
+    if (known) return known;
+
+    const ext = (path.split(".").pop() || "").toLowerCase();
+    /** @type {Record<string, string>} */
+    const mimeTypes = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      svg: "image/svg+xml",
+      webp: "image/webp",
+      ico: "image/x-icon",
+      txt: "text/plain",
+      html: "text/html",
+      css: "text/css",
+      js: "application/javascript",
+      json: "application/json",
+      pdf: "application/pdf",
+      zip: "application/zip",
+    };
+    return mimeTypes[ext] || "application/octet-stream";
+  }
+
+  /**
+   * @param {string} path
+   * @returns {Promise<string>}
+   */
+  async assetDataUrl(path) {
+    const base64 = await engineApi.readAsset(this.selectedAssetScript, path);
+    return `data:${this.mimetypeForPath(path)};base64,${base64}`;
   }
 
   createNewAsset() {
@@ -1476,24 +1834,12 @@ function init(context) {
       };
       const mimetype = mimeTypes[ext] || "text/plain";
 
-      // Build URL with script URI parameter
-      const url = `/editor/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          publicPath: this.currentAsset,
-          mimetype: mimetype,
-          content: base64,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Save failed with status ${response.status}`);
-      }
+      await engineApi.upsertAsset(
+        this.selectedAssetScript,
+        this.currentAsset,
+        mimetype,
+        base64,
+      );
 
       this.showStatus("Asset saved successfully", "success");
 
@@ -1520,19 +1866,7 @@ function init(context) {
       return;
 
     try {
-      // Build URL with script URI parameter
-      const url = `/editor/api/assets/${this.currentAsset}?uri=${encodeURIComponent(this.selectedAssetScript)}`;
-
-      const response = await fetch(url, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Delete failed with status ${response.status}: ${errorText}`,
-        );
-      }
+      await engineApi.deleteAsset(this.selectedAssetScript, this.currentAsset);
 
       this.showStatus("Asset deleted successfully", "success");
 
@@ -1578,22 +1912,13 @@ function init(context) {
     for (const file of files) {
       try {
         const base64 = await this.fileToBase64(file);
-        const publicPath = `/${file.name}`;
 
-        // Build URL with script URI parameter
-        const url = `/editor/api/assets?uri=${encodeURIComponent(this.selectedAssetScript)}`;
-
-        await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            publicPath: publicPath,
-            mimetype: file.type,
-            content: base64,
-          }),
-        });
+        await engineApi.upsertAsset(
+          this.selectedAssetScript,
+          file.name,
+          file.type,
+          base64,
+        );
 
         this.showStatus(`Uploaded ${file.name}`, "success");
       } catch (error) {
@@ -1614,44 +1939,37 @@ function init(context) {
   downloadAsset(path) {
     const filename = path.split("/").pop();
     if (!filename) return;
-
-    const isIco = filename.toLowerCase().endsWith(".ico");
-
-    console.log(`Downloading asset: ${path} (isIco: ${isIco})`);
-
-    if (isIco) {
-      // For ICO files, use fetch + blob to ensure proper binary handling
-      fetch(`/editor/api/assets/${path}`)
-        .then((response) => {
-          console.log(`Download response status: ${response.status}`);
-          if (!response.ok) {
-            throw new Error(`Download failed with status ${response.status}`);
-          }
-          return response.blob();
-        })
-        .then((blob) => {
-          console.log(`Blob size: ${blob.size}, type: ${blob.type}`);
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          this.showStatus(`Downloaded ${filename}`, "success");
-        })
-        .catch((error) => {
-          const err = /** @type {Error} */ (error);
-          console.error("ICO download failed:", error);
-          this.showStatus(`Download failed: ${err.message}`, "error");
-          // Fallback to window.open
-          window.open(`/editor/api/assets/${path}`, "_blank");
-        });
-    } else {
-      // For other files, use the simple window.open approach
-      window.open(`/editor/api/assets/${path}`, "_blank");
+    if (!this.selectedAssetScript) {
+      this.showStatus("No script selected for asset", "error");
+      return;
     }
+
+    console.log(`Downloading asset: ${path}`);
+
+    // The engine returns asset content as base64 JSON, so every download goes
+    // through a blob rather than pointing the browser at a URL.
+    engineApi
+      .readAsset(this.selectedAssetScript, path)
+      .then((base64) => {
+        const blob = new Blob([base64ToBytes(base64)], {
+          type: this.mimetypeForPath(path),
+        });
+        console.log(`Blob size: ${blob.size}, type: ${blob.type}`);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showStatus(`Downloaded ${filename}`, "success");
+      })
+      .catch((error) => {
+        const err = /** @type {Error} */ (error);
+        console.error("Download failed:", error);
+        this.showStatus(`Download failed: ${err.message}`, "error");
+      });
   }
 
   // Secrets Management
@@ -1678,20 +1996,20 @@ function init(context) {
         return;
       }
 
-      // Build URL with script URI parameter
-      const url = `/editor/api/secrets?uri=${encodeURIComponent(this.selectedSecretScript)}`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const keys = await engineApi.listSecrets(this.selectedSecretScript);
+      keys.sort((/** @type {string} */ a, /** @type {string} */ b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase()),
+      );
 
       secretsList.innerHTML = "";
 
-      if (data.secrets.length === 0) {
+      if (keys.length === 0) {
         secretsList.innerHTML =
           '<div class="no-selection"><p>No secrets found for this script</p></div>';
         return;
       }
 
-      data.secrets.forEach(
+      keys.forEach(
         /** @param {string} key */
         (key) => {
           const secretElement = document.createElement("div");
@@ -1827,29 +2145,13 @@ function init(context) {
         return;
       }
 
-      const response = await fetch("/editor/api/secrets", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          uri: this.selectedSecretScript,
-          key: key,
-          value: value,
-        }),
-      });
+      await engineApi.setSecret(this.selectedSecretScript, key, value);
 
-      const result = await response.json();
-
-      if (response.ok) {
-        this.showStatus(`Secret '${key}' saved successfully`, "success");
-        this.currentSecret = key;
-        this.loadSecrets();
-        // Clear the value input for security
-        this.setValue("secret-value-input", "");
-      } else {
-        this.showStatus(`Error: ${result.error}`, "error");
-      }
+      this.showStatus(`Secret '${key}' saved successfully`, "success");
+      this.currentSecret = key;
+      this.loadSecrets();
+      // Clear the value input for security
+      this.setValue("secret-value-input", "");
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus("Error saving secret: " + err.message, "error");
@@ -1871,25 +2173,17 @@ function init(context) {
     }
 
     try {
-      const response = await fetch(
-        `/editor/api/secrets/${encodeURIComponent(this.currentSecret)}?uri=${encodeURIComponent(this.selectedSecretScript)}`,
-        {
-          method: "DELETE",
-        },
+      await engineApi.deleteSecret(
+        this.selectedSecretScript,
+        this.currentSecret,
       );
 
-      const result = await response.json();
-
-      if (response.ok) {
-        this.showStatus(
-          `Secret '${this.currentSecret}' deleted successfully`,
-          "success",
-        );
-        this.clearSecretEditor();
-        this.loadSecrets();
-      } else {
-        this.showStatus(`Error: ${result.error}`, "error");
-      }
+      this.showStatus(
+        `Secret '${this.currentSecret}' deleted successfully`,
+        "success",
+      );
+      this.clearSecretEditor();
+      this.loadSecrets();
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus("Error deleting secret: " + err.message, "error");
@@ -1898,8 +2192,7 @@ function init(context) {
 
   async populateSecretsScriptSelector() {
     try {
-      const response = await fetch("/editor/api/scripts");
-      const data = await response.json();
+      const scripts = await this.scriptSummaries();
 
       const selector = this.getSelect("secrets-script-select");
       if (!selector) return;
@@ -1908,13 +2201,13 @@ function init(context) {
       selector.innerHTML = '<option value="">Select a script...</option>';
 
       // Check if user has admin privileges (can see all scripts)
-      const isAdmin = data.permissions && data.permissions.canTogglePrivileged;
+      const isAdmin = this.permissions.canTogglePrivileged;
 
       // Filter scripts based on permissions
-      let filteredScripts = data.scripts;
+      let filteredScripts = scripts;
       if (!isAdmin) {
         // Non-admin users only see scripts they own
-        filteredScripts = data.scripts.filter(
+        filteredScripts = scripts.filter(
           /** @param {any} script */ (script) => script.isOwner,
         );
       }
@@ -2124,8 +2417,7 @@ function init(context) {
 
   async populateAssetsScriptSelector() {
     try {
-      const response = await fetch("/editor/api/scripts");
-      const data = await response.json();
+      const scripts = await this.scriptSummaries();
 
       const selector = this.getSelect("assets-script-select");
       if (!selector) return;
@@ -2134,13 +2426,13 @@ function init(context) {
       selector.innerHTML = '<option value="">Select a script...</option>';
 
       // Check if user has admin privileges (can see all scripts)
-      const isAdmin = data.permissions && data.permissions.canTogglePrivileged;
+      const isAdmin = this.permissions.canTogglePrivileged;
 
       // Filter scripts based on permissions
-      let filteredScripts = data.scripts;
+      let filteredScripts = scripts;
       if (!isAdmin) {
         // Non-admin users only see scripts they own
-        filteredScripts = data.scripts.filter(
+        filteredScripts = scripts.filter(
           /** @param {any} script */ (script) => script.isOwner,
         );
       }
@@ -3373,8 +3665,7 @@ function init(context) {
           // Get the script URI from tool input or fall back to the current
           // script. Short names are namespaced under the current server host
           // to match how the server stores script URIs.
-          let scriptUri =
-            this.currentScript || `https://${window.location.host}/editor`;
+          let scriptUri = engineApi.scriptUri(this.currentScript || "editor");
 
           if (
             this.pendingToolExecution &&
@@ -3382,27 +3673,11 @@ function init(context) {
           ) {
             const scriptName = this.pendingToolExecution.toolInput.script_name;
             if (scriptName) {
-              scriptUri = `https://${window.location.host}/${scriptName}`;
+              scriptUri = engineApi.scriptUri(scriptName);
             }
           }
 
-          const scriptUriEncoded = encodeURIComponent(scriptUri);
-
-          const response = await fetch(`/assets?script=${scriptUriEncoded}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              asset: name,
-              mimetype: mimetype,
-              content: base64,
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error(`Failed to save asset: ${response.status}`);
-          }
+          await engineApi.upsertAsset(scriptUri, name, mimetype, base64);
 
           this.showStatus(
             `Asset ${action === "create" ? "created" : "updated"} successfully`,
@@ -3452,18 +3727,7 @@ function init(context) {
       } else {
         // Handle script creation/editing (existing logic)
         if (action === "create" || action === "edit") {
-          const encodedScriptName = encodeURIComponent(name);
-          const response = await fetch(
-            `/editor/api/scripts/${encodedScriptName}`,
-            {
-              method: "POST",
-              body: newCode,
-            },
-          );
-
-          if (!response.ok) {
-            throw new Error(`Failed to save script: ${response.status}`);
-          }
+          await engineApi.upsertScript(engineApi.scriptUri(name), newCode);
 
           this.showStatus(
             `Script ${action === "create" ? "created" : "updated"} successfully`,
@@ -3549,12 +3813,16 @@ function init(context) {
    * @param {string} explanation
    */
   confirmDeleteAsset(assetPath, explanation) {
+    if (!this.selectedAssetScript) {
+      this.showStatus("No script selected for asset", "error");
+      return;
+    }
+
     if (
       confirm(`${explanation}\n\nAre you sure you want to delete ${assetPath}?`)
     ) {
-      fetch(`/editor/api/assets/${assetPath}`, {
-        method: "DELETE",
-      })
+      engineApi
+        .deleteAsset(this.selectedAssetScript, assetPath)
         .then(() => {
           this.showStatus("Asset deleted successfully", "success");
           this.loadAssets();
@@ -3584,10 +3852,8 @@ function init(context) {
         `${explanation}\n\nAre you sure you want to delete ${scriptName}?`,
       )
     ) {
-      const encodedScriptName = encodeURIComponent(scriptName);
-      fetch(`/editor/api/scripts/${encodedScriptName}`, {
-        method: "DELETE",
-      })
+      engineApi
+        .deleteScript(engineApi.scriptUri(scriptName))
         .then(() => {
           this.showStatus("Script deleted successfully", "success");
           this.loadScripts();

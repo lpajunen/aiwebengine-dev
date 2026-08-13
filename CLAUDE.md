@@ -31,8 +31,8 @@ Every `make` target is a thin wrapper over the matching `npm run` script; use ei
 
 `scripts/upload-script.js` uploads a server-side script plus an optional asset directory. It reads
 the OAuth token from `schemas/token.json` (run `make oauth-login` first — the token is **not** taken
-from `.env`), uploads the script to `POST /upsert_script`, then base64-uploads each asset to
-`POST /assets`. Convenience wrappers with the correct paths already wired:
+from `.env`), uploads the script to `POST /engine/upsert_script`, then base64-uploads each asset to
+`POST /engine/assets`. Convenience wrappers with the correct paths already wired:
 
 ```bash
 npm run upload-editor            # deploy src/editor/  (add -dry-run to preview)
@@ -62,15 +62,24 @@ the script must be marked privileged on the server. They run on the server insid
 
 - No `require`/`import`, no npm packages, no Node built-ins at runtime.
 - Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,
-method)`, `userStorage`, `console`, `fetch`, etc. Handlers take a `context` and return
+method)`, `console`, `fetch`, etc. Handlers take a `context` and return
   `{ status, body, contentType, headers }`. See `src/docs/assets/guides/scripts.md` for the model.
-- Privileged APIs (e.g. `userStorage` for user/role management) are only available to scripts marked
-  privileged on the server; their types live in `types/aiwebengine-priv.d.ts`.
+- The **privileged** JavaScript globals in `types/aiwebengine-priv.d.ts` are deprecated. Script,
+  asset and secret management is now served over HTTP under `/engine/` (`/engine/scripts`,
+  `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`, `/engine/assets`,
+  `/engine/secrets`, `/engine/script_owners`, `/engine/script_security_profile`,
+  `/engine/set_script_privileged`, `/engine/script_logs`) — see `apis/openapi.json`. Prefer those
+  endpoints; the browser calls them with the signed-in user's session and the engine enforces that
+  user's permissions.
+- What is still only available as a privileged global, with no HTTP equivalent: `userStorage`
+  (user and role management), `console.listLogs()`/`console.pruneLogs()` (engine-wide logs), and
+  `routeRegistry.listRoutes()`. Scripts using those must be marked privileged on the server —
+  `src/admin/admin.js` (user roles) and `src/editor/editor.js` (logs and route listing) both are.
 
-Each script starts with a `/// <reference path="../../types/aiwebengine-priv.d.ts" />` triple-slash
-directive so the editor type-checks it against the platform API. The public API surface is
-`types/aiwebengine.d.ts`; both files are **generated** by `make fetch-types` — edit the server, not
-these files.
+Scripts that still need a privileged global start with a
+`/// <reference path="../../types/aiwebengine-priv.d.ts" />` triple-slash directive; the rest
+reference `types/aiwebengine.d.ts`. Both files are **generated** by `make fetch-types` from
+`/engine/types/v0.1.0/` — edit the server, not these files.
 
 `scripts/` is the opposite: ordinary **Node.js** CLI tooling that runs locally (CommonJS `require`,
 `dotenv`, real filesystem and network access).

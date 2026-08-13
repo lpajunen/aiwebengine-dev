@@ -809,52 +809,57 @@ utils/ - Helper scripts
 
 ## Editor API Endpoints
 
-For programmatic access:
+The editor manages scripts, assets and secrets through the engine's own HTTP
+API under `/engine/`, and those endpoints are what you use for programmatic
+access too. See the OpenAPI description at `/engine/openapi.json` for the full
+contract.
 
 ### Scripts
 
 ```bash
-# List all scripts
-GET /api/scripts
+# List all scripts with metadata
+GET /engine/scripts
 
 # Get script content
-GET /api/scripts/api/users.js
+GET /engine/read_script?uri=https://example.com/users
 
 # Create/update script
-POST /api/scripts/api/users.js
-Content-Type: application/json
-{"content": "function handler(context) {...}"}
+POST /engine/upsert_script
+Content-Type: application/x-www-form-urlencoded
+uri=https://example.com/users&content=function handler(context) {...}
 
 # Delete script
-DELETE /api/scripts/api/users.js
+POST /engine/delete_script
+Content-Type: application/x-www-form-urlencoded
+uri=https://example.com/users
 ```
 
 ### Assets
 
 ```bash
-# List all assets
-GET /api/assets
+# List a script's assets
+GET /engine/assets?script=https://example.com/users
 
-# Get asset data
-GET /api/assets/logo.png
+# Get asset data (base64 in a JSON envelope)
+GET /engine/assets?script=https://example.com/users&asset=logo.png
 
 # Upload asset
-POST /api/assets
+POST /engine/assets?script=https://example.com/users
 Content-Type: application/json
-{"path": "/logo.png", "mimetype": "image/png", "content": "base64..."}
+{"asset": "logo.png", "mimetype": "image/png", "content": "base64..."}
 
 # Delete asset
-DELETE /api/assets/logo.png
+DELETE /engine/assets?script=https://example.com/users&asset=logo.png
 ```
 
 ### Logs
 
 ```bash
-# Get all logs
-GET /api/logs
+# Get all logs (editor's own endpoint)
+GET /editor/api/logs
 
 # Get logs for specific script
-GET /script_logs?uri=/api/users
+GET /engine/script_logs?uri=https://example.com/users
 ```
 
 ## Tips and Tricks

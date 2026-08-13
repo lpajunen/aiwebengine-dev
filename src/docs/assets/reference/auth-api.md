@@ -602,6 +602,11 @@ their roles. It is only available to scripts marked privileged on the server;
 its type lives in `types/aiwebengine-priv.d.ts`. The methods that read or change
 users also require the caller to be an **Administrator** and throw otherwise.
 
+> The privileged JavaScript globals are deprecated: script, asset and secret
+> management now live on the engine's HTTP API under `/engine/` (see
+> `/engine/openapi.json`). User and role management is the one part with no HTTP
+> replacement yet, so `userStorage` remains the way to do it.
+
 Roles are `"Authenticated"` (every logged-in user, cannot be removed),
 `"Editor"`, and `"Administrator"`.
 
