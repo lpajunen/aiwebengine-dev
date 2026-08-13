@@ -19,7 +19,7 @@ function getArgs(context) {
 }
 
 // Read from the engine's own HTTP API under /engine/. These endpoints replaced
-// the privileged JavaScript globals, so the caller's credentials are forwarded
+// the legacy JavaScript globals, so the caller's credentials are forwarded
 // and the engine applies that user's permissions to the answer.
 /**
  * @param {*} context
@@ -164,10 +164,6 @@ function serveEditor(context) {
                                 <button id="save-script-btn" class="btn btn-success" disabled>Save</button>
                                 <button id="delete-script-btn" class="btn btn-danger" disabled>Delete</button>
                             </div>
-                        </div>
-                        <div class="script-security-panel">
-                          <span id="script-privileged-badge" class="privileged-badge neutral">No script selected</span>
-                          <button id="toggle-privileged-btn" class="btn btn-secondary btn-small" disabled>Toggle Privileged</button>
                         </div>
                         <div class="script-ownership-panel">
                           <div class="ownership-info">
@@ -367,9 +363,11 @@ function serveEditor(context) {
     <script src="https://unpkg.com/monaco-editor@0.45.0/min/vs/loader.js"></script>
 
     <!-- The signed-in user, which the page knows for certain. The client uses
-         it to tell which scripts the user owns. -->
+         it to tell which scripts the user owns, and whether they are an
+         administrator (who works with every script, not just their own). -->
     <script>
         window.EDITOR_USER_ID = ${JSON.stringify(req.auth.userId || null)};
+        window.EDITOR_IS_ADMIN = ${JSON.stringify(!!req.auth.isAdmin)};
     </script>
 
     <!-- Main JavaScript -->
@@ -1258,7 +1256,7 @@ AVAILABLE JAVASCRIPT APIs:
 
   schedulerService.clearAll() - Remove every scheduled job for the current script
 
-  Scheduled handlers run with admin privileges and receive context.meta.schedule containing jobId, name, type (one-off/recurring), scheduledFor (UTC timestamp), and intervalSeconds (null for one-off jobs).
+  Scheduled handlers run without an HTTP caller and receive context.meta.schedule containing jobId, name, type (one-off/recurring), scheduledFor (UTC timestamp), and intervalSeconds (null for one-off jobs).
 
 10. dispatcher - Inter-script message passing for event-driven communication
 

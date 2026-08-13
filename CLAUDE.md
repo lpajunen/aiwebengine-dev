@@ -56,27 +56,29 @@ Files matching patterns in `.uploadignore` are skipped when scanning `--assets-d
 local Node code. Each is a single `.js` entry script (the editor and docs also ship an `assets/`
 directory; admin is a single self-contained script with no assets). `src/admin/admin.js` serves the
 user-role management UI and API under the `/admin/` prefix, grouped under the "Aiwebengine
-administration" tag in Swagger; its APIs use the privileged `userStorage` role management calls, so
-the script must be marked privileged on the server. They run on the server inside a sandboxed
-**QuickJS** environment — not Node — so:
+administration" tag in Swagger; its APIs use the `userStorage` role management calls, which the
+engine only answers for an administrator. They run on the server inside a sandboxed **QuickJS**
+environment — not Node — so:
 
 - No `require`/`import`, no npm packages, no Node built-ins at runtime.
 - Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,
 method)`, `console`, `fetch`, etc. Handlers take a `context` and return
   `{ status, body, contentType, headers }`. See `src/docs/assets/guides/scripts.md` for the model.
-- The **privileged** JavaScript globals in `types/aiwebengine-priv.d.ts` are deprecated. Script,
-  asset and secret management is now served over HTTP under `/engine/` (`/engine/scripts`,
+- **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
+  depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the
+  script — and the engine enforces that.
+- The legacy JavaScript globals in `types/aiwebengine-priv.d.ts` are deprecated. Script, asset and
+  secret management is now served over HTTP under `/engine/` (`/engine/scripts`,
   `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`, `/engine/assets`,
-  `/engine/secrets`, `/engine/script_owners`, `/engine/script_security_profile`,
-  `/engine/set_script_privileged`, `/engine/script_logs`) — see `apis/openapi.json`. Prefer those
-  endpoints; the browser calls them with the signed-in user's session and the engine enforces that
-  user's permissions.
-- What is still only available as a privileged global, with no HTTP equivalent: `userStorage`
-  (user and role management), `console.listLogs()`/`console.pruneLogs()` (engine-wide logs), and
-  `routeRegistry.listRoutes()`. Scripts using those must be marked privileged on the server —
-  `src/admin/admin.js` (user roles) and `src/editor/editor.js` (logs and route listing) both are.
+  `/engine/secrets`, `/engine/script_owners`, `/engine/script_logs`) — see `apis/openapi.json`.
+  Prefer those endpoints; the browser calls them with the signed-in user's session and the engine
+  enforces that user's permissions.
+- Still only available as a global, with no HTTP equivalent: `userStorage` (user and role
+  management, administrators only), `console.listLogs()`/`console.pruneLogs()`, and
+  `routeRegistry.listRoutes()` — used by `src/admin/admin.js` (user roles) and
+  `src/editor/editor.js` (logs and route listing).
 
-Scripts that still need a privileged global start with a
+Scripts that use one of those globals start with a
 `/// <reference path="../../types/aiwebengine-priv.d.ts" />` triple-slash directive; the rest
 reference `types/aiwebengine.d.ts`. Both files are **generated** by `make fetch-types` from
 `/engine/types/v0.1.0/` — edit the server, not these files.

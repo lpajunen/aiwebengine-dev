@@ -595,14 +595,14 @@ function myHandler(context) {
 }
 ```
 
-## User & Role Management (privileged)
+## User & Role Management
 
-The `userStorage` global lets **privileged** scripts inspect users and manage
-their roles. It is only available to scripts marked privileged on the server;
-its type lives in `types/aiwebengine-priv.d.ts`. The methods that read or change
-users also require the caller to be an **Administrator** and throw otherwise.
+The `userStorage` global lets scripts inspect users and manage their roles; its
+type lives in `types/aiwebengine-priv.d.ts`. Every method that reads or changes
+users requires the calling user to be an **Administrator** and throws otherwise
+— the permission comes from who is signed in, not from the script.
 
-> The privileged JavaScript globals are deprecated: script, asset and secret
+> The legacy JavaScript globals are deprecated: script, asset and secret
 > management now live on the engine's HTTP API under `/engine/` (see
 > `/engine/openapi.json`). User and role management is the one part with no HTTP
 > replacement yet, so `userStorage` remains the way to do it.

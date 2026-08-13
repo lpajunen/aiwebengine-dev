@@ -893,12 +893,13 @@ success message, or a string starting with `Error` if unauthenticated.
 secretStorage.clear();
 ```
 
-**Privileged extensions:** privileged scripts can manage secrets for _other_
-scripts by URI — `secretStorage.listForUri(uri)`,
+**Cross-script extensions:** secrets belonging to _other_ scripts can be managed
+by URI — `secretStorage.listForUri(uri)`,
 `secretStorage.setSecretForUri(uri, key, value)`,
 `secretStorage.removeSecretForUri(uri, key)`, and
-`secretStorage.clearForUri(uri)`. These are used by tools like the editor's
-Secrets tab. See `types/aiwebengine-priv.d.ts`.
+`secretStorage.clearForUri(uri)`. The engine allows them for Administrators and
+for owners of the target script, and refuses everyone else. These are used by
+tools like the editor's Secrets tab. See `types/aiwebengine-priv.d.ts`.
 
 ## Database API
 
@@ -2258,13 +2259,13 @@ const hello = "world";
 
 ## Scheduler Service
 
-Privileged scripts can use `schedulerService` to register background jobs that run even when no HTTP requests are active. Jobs live entirely in memory and are cleared automatically whenever the script is reinitialized or deleted.
+Scripts can use `schedulerService` to register background jobs that run even when no HTTP requests are active. Jobs live entirely in memory and are cleared automatically whenever the script is reinitialized or deleted.
 
 > **Requirements:**
 >
-> - Only privileged scripts may call these methods.
 > - All timestamps must be expressed in UTC (ISO-8601 strings ending with `Z`).
-> - Scheduled handlers run with admin privileges scoped to the script.
+> - Scheduled handlers run without an HTTP caller, so `context.request` carries no
+>   authenticated user; anything they touch is scoped to the script itself.
 
 ### schedulerService.registerOnce(options)
 

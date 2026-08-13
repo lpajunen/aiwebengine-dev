@@ -9,8 +9,6 @@
  * @typedef {Object} ScriptData
  * @property {string} uri
  * @property {string} content
- * @property {boolean} privileged
- * @property {boolean} [defaultPrivileged]
  * @property {string[]} owners
  * @property {boolean} [isOwner]
  * @property {number} [ownerCount]
@@ -19,9 +17,7 @@
  */
 
 /**
- * @typedef {Object} SecurityProfile
- * @property {boolean} privileged
- * @property {boolean} [defaultPrivileged]
+ * @typedef {Object} ScriptOwnership
  * @property {string[]} [owners]
  * @property {boolean} [isOwner]
  * @property {number} [ownerCount]
@@ -29,10 +25,10 @@
 
 /**
  * The engine's own HTTP API, served under /engine/. These endpoints replaced
- * the privileged JavaScript globals (scriptStorage, assetStorage,
- * secretStorage) that the editor script used to call on the browser's behalf,
- * so the editor now talks to them directly with the signed-in user's session
- * and the engine enforces that user's permissions.
+ * the legacy JavaScript globals (scriptStorage, assetStorage, secretStorage)
+ * that the editor script used to call on the browser's behalf, so the editor
+ * now talks to them directly with the signed-in user's session and the engine
+ * enforces that user's permissions.
  */
 const engineApi = {
   /**
@@ -175,25 +171,6 @@ const engineApi = {
   },
 
   /**
-   * @param {string} uri
-   * @returns {Promise<any>}
-   */
-  securityProfile(uri) {
-    return this.json("/script_security_profile?uri=" + encodeURIComponent(uri));
-  },
-
-  /**
-   * @param {string} uri
-   * @param {boolean} privileged
-   */
-  async setScriptPrivileged(uri, privileged) {
-    await this.request(
-      "/set_script_privileged",
-      this.form({ uri, privileged: String(privileged) }),
-    );
-  },
-
-  /**
    * @param {string} script
    * @returns {Promise<any[]>}
    */
@@ -312,8 +289,8 @@ class AIWebEngineEditor {
     this.currentAsset = null;
     /** @type {ScriptData[]} */
     this.scriptsData = [];
-    /** @type {Object.<string, SecurityProfile>} */
-    this.scriptSecurityProfiles = {};
+    /** @type {Object.<string, ScriptOwnership>} */
+    this.scriptOwnership = {};
     /** @type {any} */
     this.monacoEditor = null;
     /** @type {any} */
@@ -323,8 +300,9 @@ class AIWebEngineEditor {
     this.monacoEditor = null;
     this.monacoAssetEditor = null;
     this.templates = {};
-    this.scriptSecurityProfiles = {};
-    this.permissions = { canTogglePrivileged: false };
+    this.scriptOwnership = {};
+    // Administrators see every script; everyone else only the ones they own.
+    this.isAdmin = !!window.EDITOR_IS_ADMIN;
     this.currentFilter = "all";
     this.scriptsData = [];
     this.currentUserId = null;
@@ -466,7 +444,7 @@ class AIWebEngineEditor {
     this.compileTemplates();
     console.log("[Editor] Templates compiled");
     this.setupEventListeners();
-    this.renderScriptSecurity(null);
+    this.renderScriptOwnership(null);
     console.log("[Editor] Event listeners set up");
     await this.setupMonacoEditor();
     console.log("[Editor] Monaco editor ready");
@@ -506,9 +484,6 @@ class AIWebEngineEditor {
                 <div class="script-item-name">${data.displayName}</div>
                 <div class="script-item-badges">
                   ${ownerBadge}
-                  <span class="privileged-pill ${data.privileged ? "privileged" : "restricted"}">
-                    ${data.privileged ? "P" : "R"}
-                  </span>
                 </div>
               </div>
               <div class="script-meta">
@@ -583,9 +558,6 @@ class AIWebEngineEditor {
     );
     this.addListener("delete-script-btn", "click", () =>
       this.deleteCurrentScript(),
-    );
-    this.addListener("toggle-privileged-btn", "click", () =>
-      this.togglePrivilegedFlag(),
     );
     this.addListener("manage-owners-btn", "click", () =>
       this.showManageOwnersModal(),
@@ -928,7 +900,7 @@ declare var module: any;
 
   /**
    * The script list the three script-aware views share, enriched with the
-   * ownership and security details the engine serves from separate endpoints.
+   * ownership details the engine serves from a separate endpoint.
    * @returns {Promise<ScriptData[]>}
    */
   async fetchScriptSummaries() {
@@ -941,32 +913,24 @@ declare var module: any;
 
     const summaries = await Promise.all(
       metadata.map(async (/** @type {any} */ meta) => {
-        const [owners, profile] = await Promise.all([
-          engineApi.listScriptOwners(meta.uri).catch((error) => {
+        const owners = await engineApi
+          .listScriptOwners(meta.uri)
+          .catch((error) => {
             console.log(`Error getting owners for ${meta.uri}: ${error}`);
             return [];
-          }),
-          engineApi.securityProfile(meta.uri).catch(() => null),
-        ]);
+          });
 
         return {
           uri: meta.uri,
           displayName: meta.name || meta.uri,
           size: meta.size || 0,
           lastModified: new Date(meta.updatedAt || Date.now()).toISOString(),
-          privileged: !!meta.privileged,
-          defaultPrivileged: !!(profile && profile.defaultPrivileged),
-          canManagePrivileges: !!(profile && profile.canManagePrivileges),
           owners: owners,
           isOwner: !!currentUserId && owners.includes(currentUserId),
           ownerCount: owners.length,
         };
       }),
     );
-
-    this.permissions = {
-      canTogglePrivileged: summaries.some((s) => s.canManagePrivileges),
-    };
 
     return summaries;
   }
@@ -989,15 +953,13 @@ declare var module: any;
     try {
       const scripts = await this.scriptSummaries(true);
 
-      this.scriptSecurityProfiles = {};
+      this.scriptOwnership = {};
       this.scriptsData = scripts;
       console.log("[Editor] Loaded scripts:", scripts);
 
       scripts.forEach((/** @type {any} */ script) => {
         const scriptUri = script.uri || script.name;
-        this.scriptSecurityProfiles[scriptUri] = {
-          privileged: !!script.privileged,
-          defaultPrivileged: !!script.defaultPrivileged,
+        this.scriptOwnership[scriptUri] = {
           owners: script.owners || [],
           isOwner: !!script.isOwner,
           ownerCount: script.ownerCount || 0,
@@ -1005,7 +967,6 @@ declare var module: any;
       });
 
       this.renderScripts();
-      this.renderScriptSecurity(this.currentScript);
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus("Error loading scripts: " + err.message, "error");
@@ -1028,7 +989,6 @@ declare var module: any;
         displayName: script.displayName || scriptUri,
         size: script.size || 0,
         active: scriptUri === this.currentScript,
-        privileged: !!script.privileged,
         owners: script.owners || [],
         isOwner: !!script.isOwner,
         ownerCount: script.ownerCount || 0,
@@ -1153,7 +1113,6 @@ declare var module: any;
 
       this.setDisabled("delete-script-btn", false);
 
-      this.renderScriptSecurity(scriptName);
       this.renderScriptOwnership(scriptName);
     } catch (error) {
       const err = /** @type {Error} */ (error);
@@ -1236,7 +1195,7 @@ function init(context) {
         }
 
         this.loadScripts();
-        this.renderScriptSecurity(null);
+        this.renderScriptOwnership(null);
         this.showStatus("Script deleted successfully", "success");
       })
       .catch((error) => {
@@ -1253,77 +1212,6 @@ function init(context) {
   /**
    * @param {string | null} scriptName
    */
-  renderScriptSecurity(scriptName) {
-    const badge = this.getElement("script-privileged-badge");
-    const toggleBtn = this.getButton("toggle-privileged-btn");
-
-    if (!badge || !toggleBtn) {
-      return;
-    }
-
-    if (!scriptName || !this.scriptSecurityProfiles[scriptName]) {
-      badge.textContent = "No script selected";
-      badge.className = "privileged-badge neutral";
-      toggleBtn.textContent = "Toggle Privileged";
-      toggleBtn.disabled = true;
-      return;
-    }
-
-    const profile = this.scriptSecurityProfiles[scriptName];
-    const privileged = !!profile.privileged;
-
-    badge.textContent = privileged ? "Privileged script" : "Restricted script";
-    badge.className = `privileged-badge ${privileged ? "privileged" : "restricted"}`;
-
-    if (this.permissions.canTogglePrivileged) {
-      toggleBtn.disabled = false;
-      toggleBtn.textContent = privileged
-        ? "Revoke Privileged Access"
-        : "Grant Privileged Access";
-    } else {
-      toggleBtn.disabled = true;
-      toggleBtn.textContent = "Admin only";
-    }
-  }
-
-  async togglePrivilegedFlag() {
-    if (!this.currentScript || !this.permissions.canTogglePrivileged) {
-      return;
-    }
-
-    const profile = this.scriptSecurityProfiles[this.currentScript];
-    const nextValue = !(profile && profile.privileged);
-
-    try {
-      await engineApi.setScriptPrivileged(
-        engineApi.scriptUri(this.currentScript),
-        nextValue,
-      );
-
-      if (!this.scriptSecurityProfiles[this.currentScript]) {
-        this.scriptSecurityProfiles[this.currentScript] = {
-          privileged: nextValue,
-          defaultPrivileged: false,
-        };
-      } else {
-        this.scriptSecurityProfiles[this.currentScript].privileged = nextValue;
-      }
-
-      this.showStatus(
-        `Script ${this.currentScript} is now ${nextValue ? "privileged" : "restricted"}`,
-        "success",
-      );
-      this.renderScriptSecurity(this.currentScript);
-      this.loadScripts();
-    } catch (error) {
-      const err = /** @type {Error} */ (error);
-      this.showStatus("Error updating privilege: " + err.message, "error");
-    }
-  }
-
-  /**
-   * @param {string | null} scriptName
-   */
   renderScriptOwnership(scriptName) {
     const ownersList = document.getElementById("script-owners-list");
     const manageBtn = /** @type {HTMLButtonElement | null} */ (
@@ -1334,14 +1222,14 @@ function init(context) {
       return;
     }
 
-    if (!scriptName || !this.scriptSecurityProfiles[scriptName]) {
+    if (!scriptName || !this.scriptOwnership[scriptName]) {
       ownersList.textContent = "-";
       manageBtn.disabled = true;
       return;
     }
 
-    const profile = this.scriptSecurityProfiles[scriptName];
-    const owners = profile.owners || [];
+    const ownership = this.scriptOwnership[scriptName];
+    const owners = ownership.owners || [];
 
     if (owners.length === 0) {
       ownersList.textContent = "System (no owners)";
@@ -1349,16 +1237,15 @@ function init(context) {
     } else {
       ownersList.textContent = owners.join(", ");
       // Enable manage button if user is owner or admin
-      manageBtn.disabled =
-        !profile.isOwner && !this.permissions.canTogglePrivileged;
+      manageBtn.disabled = !ownership.isOwner && !this.isAdmin;
     }
   }
 
   async showManageOwnersModal() {
     if (!this.currentScript) return;
 
-    const profile = this.scriptSecurityProfiles[this.currentScript];
-    const owners = profile.owners || [];
+    const ownership = this.scriptOwnership[this.currentScript];
+    const owners = (ownership && ownership.owners) || [];
 
     // Create modal
     const modal = document.createElement("div");
@@ -2200,12 +2087,9 @@ function init(context) {
       // Clear existing options except the first placeholder
       selector.innerHTML = '<option value="">Select a script...</option>';
 
-      // Check if user has admin privileges (can see all scripts)
-      const isAdmin = this.permissions.canTogglePrivileged;
-
       // Filter scripts based on permissions
       let filteredScripts = scripts;
-      if (!isAdmin) {
+      if (!this.isAdmin) {
         // Non-admin users only see scripts they own
         filteredScripts = scripts.filter(
           /** @param {any} script */ (script) => script.isOwner,
@@ -2217,8 +2101,7 @@ function init(context) {
         /** @param {any} script */ (script) => {
           const option = document.createElement("option");
           option.value = script.uri;
-          const badge = script.privileged ? " [P]" : " [R]";
-          option.textContent = script.displayName + badge;
+          option.textContent = script.displayName;
           selector.appendChild(option);
         },
       );
@@ -2425,12 +2308,9 @@ function init(context) {
       // Clear existing options except the first placeholder
       selector.innerHTML = '<option value="">Select a script...</option>';
 
-      // Check if user has admin privileges (can see all scripts)
-      const isAdmin = this.permissions.canTogglePrivileged;
-
       // Filter scripts based on permissions
       let filteredScripts = scripts;
-      if (!isAdmin) {
+      if (!this.isAdmin) {
         // Non-admin users only see scripts they own
         filteredScripts = scripts.filter(
           /** @param {any} script */ (script) => script.isOwner,
@@ -2442,8 +2322,7 @@ function init(context) {
         /** @param {any} script */ (script) => {
           const option = document.createElement("option");
           option.value = script.uri;
-          const badge = script.privileged ? " [P]" : " [R]";
-          option.textContent = script.displayName + badge;
+          option.textContent = script.displayName;
           selector.appendChild(option);
         },
       );

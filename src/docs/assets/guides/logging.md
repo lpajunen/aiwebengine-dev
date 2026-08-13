@@ -137,11 +137,13 @@ The easiest way to view logs:
 ### Method 2: `console.listLogs()` Function
 
 Retrieve logs programmatically in your scripts. `console.listLogs()` returns a
-JSON string (parse it), and is only available to **privileged** scripts:
+JSON string (parse it). The engine answers it based on the signed-in user: an
+**Administrator** or an owner of the script sees its entries, everyone else is
+refused.
 
 ```javascript
 function logsHandler(context) {
-  // Get logs for current script (privileged scripts only)
+  // Get logs for the current script
   const logs = JSON.parse(console.listLogs());
 
   return {
@@ -156,7 +158,8 @@ routeRegistry.registerRoute("/my-logs", "logsHandler", "GET");
 
 ### Method 3: `console.listLogsForUri()` Function
 
-Get logs for a specific script URI (privileged scripts only):
+Get logs for a specific script URI (the caller must be an Administrator or an
+owner of that script):
 
 ```javascript
 function allLogsHandler(context) {

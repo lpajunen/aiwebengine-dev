@@ -225,7 +225,7 @@ routeRegistry.registerRoute(path, handlerName, method);
 
 // Logging
 console.log(message);
-const logs = JSON.parse(console.listLogs()); // privileged scripts only
+const logs = JSON.parse(console.listLogs()); // admins and script owners
 
 // Assets (returns JSON metadata)
 const assetsJson = assetStorage.listAssets();
