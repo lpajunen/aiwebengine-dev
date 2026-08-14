@@ -603,10 +603,6 @@ these calls requires the **calling user** to be an Administrator — the
 permission comes from who is signed in, not from the script that makes the
 call.
 
-> The `userStorage` global in `types/aiwebengine-priv.d.ts` is deprecated,
-> alongside the other legacy JavaScript globals for script, asset and secret
-> management. Use the endpoints below instead.
-
 Roles are `"Authenticated"` (every logged-in user, cannot be removed),
 `"Editor"`, and `"Administrator"`.
 

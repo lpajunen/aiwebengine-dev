@@ -893,13 +893,12 @@ success message, or a string starting with `Error` if unauthenticated.
 secretStorage.clear();
 ```
 
-**Cross-script extensions:** secrets belonging to _other_ scripts can be managed
-by URI — `secretStorage.listForUri(uri)`,
-`secretStorage.setSecretForUri(uri, key, value)`,
-`secretStorage.removeSecretForUri(uri, key)`, and
-`secretStorage.clearForUri(uri)`. The engine allows them for Administrators and
-for owners of the target script, and refuses everyone else. These are used by
-tools like the editor's Secrets tab. See `types/aiwebengine-priv.d.ts`.
+**Cross-script management:** the `secretStorage` global only reaches the current
+script's secrets. To manage the secrets of _other_ scripts — what tools like the
+editor's Secrets tab do — use the engine's HTTP API at `/engine/secrets`, or the
+equivalent MCP tools. The engine allows those calls for Administrators and for
+owners of the target script, and refuses everyone else. See the OpenAPI
+description at `/engine/openapi.json` for the full contract.
 
 ## Database API
 
