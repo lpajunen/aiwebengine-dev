@@ -53,11 +53,11 @@ Learn about development tools:
 
 Complete API documentation:
 
-| Reference                                       | Content                                                                                |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [JavaScript APIs](reference/javascript-apis.md) | Routes, assets, storage, secrets, database, scheduler, GraphQL, fetch, ResponseBuilder |
-| [Authentication API](reference/auth-api.md)     | Request auth context, plus user & role management (`userStorage`)                      |
-| [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars, and base64 helpers (`convert.*`)                                 |
+| Reference                                       | Content                                                                                         |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [JavaScript APIs](reference/javascript-apis.md) | Routes, assets, storage, secrets, database, scheduler, GraphQL, fetch, ResponseBuilder          |
+| [Authentication API](reference/auth-api.md)     | Request auth context, plus user & role management over `/engine/users` and `/engine/user_roles` |
+| [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars, and base64 helpers (`convert.*`)                                          |
 
 The [JavaScript APIs](reference/javascript-apis.md) page is the single reference
 for the runtime globals — it covers **storage** (`sharedStorage`,

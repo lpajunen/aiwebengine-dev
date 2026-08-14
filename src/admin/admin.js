@@ -1,11 +1,14 @@
-/// <reference path="../../types/aiwebengine-priv.d.ts" />
+/// <reference path="../../types/aiwebengine.d.ts" />
 
 /**
  * Administration Feature Script
  *
- * Provides the UI and API for managing user roles. Routes are served under the
- * `/admin/` prefix and grouped under the "Aiwebengine administration" tag in
- * Swagger.
+ * Serves the user management UI at `/admin`, grouped under the "Aiwebengine
+ * administration" tag in Swagger. The page itself reads and writes user roles
+ * over the engine's HTTP API (`GET /engine/users`,
+ * `POST|DELETE /engine/user_roles`) with the signed-in user's session, so the
+ * engine enforces that user's administrator rights; this script no longer
+ * proxies those calls through the deprecated `userStorage` global.
  *
  * AUTHENTICATION USAGE:
  * - 'auth' is part of the request object (request.auth)
@@ -260,6 +263,61 @@ function handleManagerUI(context) {
     <script>
         let users = [];
 
+        /**
+         * The engine's own HTTP API, served under /engine/. User and role
+         * management used to run through /admin/api/* handlers that called the
+         * deprecated userStorage global; the page now calls the engine
+         * directly with the signed-in user's session, and the engine enforces
+         * that user's administrator rights.
+         */
+        const engineApi = {
+            async errorMessage(response) {
+                let detail = '';
+                try {
+                    detail = (await response.text()).trim();
+                } catch (e) {
+                    detail = '';
+                }
+                try {
+                    const parsed = JSON.parse(detail);
+                    detail = parsed.error || parsed.message || detail;
+                } catch (e) {
+                    /* not JSON - keep the raw text */
+                }
+                return detail || ('Request failed with status ' + response.status);
+            },
+
+            async request(path, options) {
+                const response = await fetch('/engine' + path, options);
+                if (!response.ok) {
+                    throw new Error(await this.errorMessage(response));
+                }
+                return response;
+            },
+
+            async listUsers() {
+                const response = await this.request('/users');
+                const data = await response.json();
+                return Array.isArray(data) ? data : (data.users || []);
+            },
+
+            async addUserRole(userId, role) {
+                await this.request('/user_roles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ user_id: userId, role: role }).toString()
+                });
+            },
+
+            async removeUserRole(userId, role) {
+                await this.request(
+                    '/user_roles?user_id=' + encodeURIComponent(userId) +
+                        '&role=' + encodeURIComponent(role),
+                    { method: 'DELETE' }
+                );
+            }
+        };
+
         // Load users on page load
         async function loadUsers() {
             const errorContainer = document.getElementById('error-container');
@@ -267,26 +325,18 @@ function handleManagerUI(context) {
             const usersContainer = document.getElementById('users-container');
 
             try {
-                const response = await fetch('/admin/api/users');
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to load users');
-                }
-
-                const data = await response.json();
-                users = data.users;
+                users = await engineApi.listUsers();
 
                 // Update stats
-                document.getElementById('total-users').textContent = data.total;
+                document.getElementById('total-users').textContent = users.length;
 
                 const adminCount = users.filter(u =>
-                    u.roles.some(r => r.toLowerCase() === 'administrator')
+                    (u.roles || []).some(r => r.toLowerCase() === 'administrator')
                 ).length;
                 document.getElementById('total-admins').textContent = adminCount;
 
                 const editorCount = users.filter(u =>
-                    u.roles.some(r => r.toLowerCase() === 'editor')
+                    (u.roles || []).some(r => r.toLowerCase() === 'editor')
                 ).length;
                 document.getElementById('total-editors').textContent = editorCount;
 
@@ -337,22 +387,24 @@ function handleManagerUI(context) {
 
         // Render a single user row
         function renderUserRow(user) {
-            const hasEditor = user.roles.some(r => r.toLowerCase() === 'editor');
-            const hasAdmin = user.roles.some(r => r.toLowerCase() === 'administrator');
+            const roles = user.roles || [];
+            const providers = user.providers || [];
+            const hasEditor = roles.some(r => r.toLowerCase() === 'editor');
+            const hasAdmin = roles.some(r => r.toLowerCase() === 'administrator');
 
             return \`
                 <tr>
                     <td><strong>\${user.email}</strong></td>
                     <td>\${user.name || '-'}</td>
                     <td>
-                        \${user.roles.map(role => {
+                        \${roles.map(role => {
                             const roleClass = role.toLowerCase();
                             return \`<span class="role-badge \${roleClass}">\${role}</span>\`;
                         }).join('')}
                     </td>
                     <td>
                         <div class="providers">
-                            \${user.providers.map(p =>
+                            \${providers.map(p =>
                                 \`<span class="provider-tag">\${p}</span>\`
                             ).join('')}
                         </div>
@@ -382,20 +434,11 @@ function handleManagerUI(context) {
             errorContainer.innerHTML = '';
 
             try {
-                const response = await fetch("/admin/api/users/" + userId + "/roles", {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ role, action })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to update role');
+                if (action === 'add') {
+                    await engineApi.addUserRole(userId, role);
+                } else {
+                    await engineApi.removeUserRole(userId, role);
                 }
-
-                const result = await response.json();
 
                 // Reload users to reflect changes
                 await loadUsers();
@@ -413,15 +456,36 @@ function handleManagerUI(context) {
         }
 
         // Format date for display
-        function formatDate(dateStr) {
-            // Parse the SystemTime debug format
-            const match = dateStr.match(/secs: (\\d+)/);
-            if (match) {
-                const secs = parseInt(match[1]);
-                const date = new Date(secs * 1000);
-                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        function formatDate(value) {
+            if (value === null || value === undefined || value === '') {
+                return '-';
             }
-            return dateStr;
+
+            const show = (millis) =>
+                new Date(millis).toLocaleDateString() + ' ' +
+                new Date(millis).toLocaleTimeString();
+
+            // Epoch timestamp, as a number or a numeric string. Values small
+            // enough to be seconds are scaled up to milliseconds.
+            const text = String(value);
+            if (/^\\d+$/.test(text)) {
+                const epoch = Number(text);
+                return show(epoch > 1e11 ? epoch : epoch * 1000);
+            }
+
+            // SystemTime debug format, e.g. "SystemTime { tv_sec: 1700000000 }"
+            const match = text.match(/(?:tv_)?secs?: (\\d+)/);
+            if (match) {
+                return show(parseInt(match[1]) * 1000);
+            }
+
+            // ISO 8601 or anything else Date can parse
+            const parsed = Date.parse(text);
+            if (!isNaN(parsed)) {
+                return show(parsed);
+            }
+
+            return text;
         }
 
         // Load users when page loads
@@ -431,111 +495,6 @@ function handleManagerUI(context) {
 </html>`;
 
   return ResponseBuilder.html(html);
-}
-
-// API endpoint to list all users
-/** @param {*} context */
-function handleListUsers(context) {
-  const request = getRequest(context);
-  // Check if user is authenticated and is an administrator
-  if (!request.auth || !request.auth.isAuthenticated) {
-    return ResponseBuilder.error(401, "Authentication required");
-  }
-
-  if (!request.auth.isAdmin) {
-    return ResponseBuilder.error(
-      403,
-      "Access denied. Administrator privileges required.",
-    );
-  }
-
-  try {
-    // Call Rust function to list users (returns JSON string)
-    const usersJson = userStorage.listUsers();
-    const users = JSON.parse(usersJson);
-
-    return ResponseBuilder.json({
-      users: users,
-      total: users.length,
-    });
-  } catch (error) {
-    return ResponseBuilder.error(500, "Failed to list users");
-  }
-}
-
-// API endpoint to update user role
-/** @param {*} context */
-function handleUpdateUserRole(context) {
-  const request = getRequest(context);
-  // Check if user is authenticated and is an administrator
-  if (!request.auth || !request.auth.isAuthenticated) {
-    return ResponseBuilder.error(401, "Authentication required");
-  }
-
-  if (!request.auth.isAdmin) {
-    return ResponseBuilder.error(
-      403,
-      "Access denied. Administrator privileges required.",
-    );
-  }
-
-  try {
-    // Parse request body
-    let body;
-    try {
-      body = JSON.parse(request.body);
-    } catch (e) {
-      return ResponseBuilder.error(400, "Invalid JSON in request body");
-    }
-
-    const { role, action } = body;
-
-    // Validate parameters
-    if (!role || !action) {
-      return ResponseBuilder.error(
-        400,
-        "Missing required fields: role, action",
-      );
-    }
-
-    if (!["add", "remove"].includes(action)) {
-      return ResponseBuilder.error(
-        400,
-        'Invalid action. Must be "add" or "remove"',
-      );
-    }
-
-    if (!["Editor", "Administrator"].includes(role)) {
-      return ResponseBuilder.error(
-        400,
-        'Invalid role. Must be "Editor" or "Administrator"',
-      );
-    }
-
-    // Extract userId from path
-    const pathParts = request.path.split("/");
-    const userId = pathParts[pathParts.indexOf("users") + 1];
-
-    if (!userId) {
-      return ResponseBuilder.error(400, "User ID is required");
-    }
-
-    // Call Rust function to update role
-    if (action === "add") {
-      userStorage.addUserRole(userId, role);
-    } else {
-      userStorage.removeUserRole(userId, role);
-    }
-
-    return ResponseBuilder.json({
-      success: true,
-      userId: userId,
-      role: role,
-      action: action,
-    });
-  } catch (error) {
-    return ResponseBuilder.error(500, "Failed to update user role");
-  }
 }
 
 /**
@@ -548,31 +507,13 @@ function init(context) {
       new Date().toISOString(),
   );
 
-  // Serve the management UI
+  // Serve the management UI. The page reads and writes user roles straight
+  // from the engine's HTTP API, so there is no /admin/api/* layer any more.
   routeRegistry.registerRoute("/admin", "handleManagerUI", "GET", {
     summary: "User management UI",
     description: "Administration interface for managing user roles",
     tags: ["Aiwebengine administration"],
   });
-
-  // API: list all users
-  routeRegistry.registerRoute("/admin/api/users", "handleListUsers", "GET", {
-    summary: "List users",
-    description: "List all users and their roles",
-    tags: ["Aiwebengine administration"],
-  });
-
-  // API: add or remove a role for a user
-  routeRegistry.registerRoute(
-    "/admin/api/users/*",
-    "handleUpdateUserRole",
-    "POST",
-    {
-      summary: "Update user role",
-      description: "Add or remove a role (Editor, Administrator) for a user",
-      tags: ["Aiwebengine administration"],
-    },
-  );
 
   console.log("[admin.js] Administration routes registered successfully");
 

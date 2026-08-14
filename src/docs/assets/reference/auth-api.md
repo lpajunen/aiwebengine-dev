@@ -597,69 +597,95 @@ function myHandler(context) {
 
 ## User & Role Management
 
-The `userStorage` global lets scripts inspect users and manage their roles; its
-type lives in `types/aiwebengine-priv.d.ts`. Every method that reads or changes
-users requires the calling user to be an **Administrator** and throws otherwise
-— the permission comes from who is signed in, not from the script.
+Users and their roles are managed over the engine's HTTP API under `/engine/`
+(see `/engine/openapi.json`), or with the equivalent MCP tools. Every one of
+these calls requires the **calling user** to be an Administrator — the
+permission comes from who is signed in, not from the script that makes the
+call.
 
-> The legacy JavaScript globals are deprecated: script, asset and secret
-> management now live on the engine's HTTP API under `/engine/` (see
-> `/engine/openapi.json`). User and role management is the one part with no HTTP
-> replacement yet, so `userStorage` remains the way to do it.
+> The `userStorage` global in `types/aiwebengine-priv.d.ts` is deprecated,
+> alongside the other legacy JavaScript globals for script, asset and secret
+> management. Use the endpoints below instead.
 
 Roles are `"Authenticated"` (every logged-in user, cannot be removed),
 `"Editor"`, and `"Administrator"`.
 
-### userStorage.listUsers()
+| Operation     | HTTP                                         | MCP tool           |
+| ------------- | -------------------------------------------- | ------------------ |
+| List users    | `GET /engine/users`                          | `list_users`       |
+| Grant a role  | `POST /engine/user_roles`                    | `add_user_role`    |
+| Revoke a role | `DELETE /engine/user_roles?user_id=…&role=…` | `remove_user_role` |
 
-Returns a JSON string array of user objects (requires admin). Parse it before
-use:
+### GET /engine/users
+
+Returns the users with their roles and linked providers. Answers `403` when the
+caller is not an administrator.
+
+Each user looks like `{ id, email, name, roles: string[], providers: string[],
+created_at }`.
+
+### POST /engine/user_roles
+
+Grants a role to a user. Takes `user_id` and `role` (`Editor`,
+`Administrator`, or `Authenticated`) as JSON or form-encoded fields, and
+returns the resulting role set. Answers `400` for a missing parameter or an
+unknown role, `403` when the caller is not an administrator, and `404` when the
+user does not exist.
+
+### DELETE /engine/user_roles
+
+Revokes a role from a user. Takes `user_id` and `role` (`Editor` or
+`Administrator`) as query parameters and returns the resulting role set.
+Besides the `400`/`403`/`404` cases above, it answers `400` for
+`"Authenticated"`, which cannot be revoked, and `409` when the removal would
+leave the deployment without an administrator.
+
+### Calling from a page
+
+A page served to a signed-in administrator can call these endpoints directly —
+the browser sends the session, and the engine enforces that user's rights. This
+is what the built-in `/admin` UI does:
+
+```javascript
+const response = await fetch("/engine/user_roles", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({ user_id: userId, role: "Editor" }).toString(),
+});
+
+if (!response.ok) {
+  const error = await response.json();
+  throw new Error(error.error || "Failed to grant the role");
+}
+```
+
+### Calling from a handler
+
+A handler has to forward the caller's credentials, otherwise the request
+arrives unauthenticated and the engine answers `403`:
 
 ```javascript
 function listUsersHandler(context) {
   const req = context.request;
+  const incoming = req.headers || {};
 
-  // Guard: only administrators may list users.
+  // Guard early so an unauthorized caller gets a clear message.
   if (!req.auth || !req.auth.isAdmin) {
     return ResponseBuilder.error(403, "Administrator access required");
   }
 
-  const users = JSON.parse(userStorage.listUsers());
-  // Each user: { id, email, roles: string[], ... }
-  return ResponseBuilder.json({ users: users });
-}
-```
+  const headers = {};
+  if (incoming.authorization) headers.Authorization = incoming.authorization;
+  if (incoming.cookie) headers.Cookie = incoming.cookie;
 
-### userStorage.addUserRole(userId, role)
-
-Grants a role to a user (requires admin). Throws if the caller is not an
-administrator or the role is invalid.
-
-```javascript
-userStorage.addUserRole("user-123", "Editor");
-```
-
-### userStorage.removeUserRole(userId, role)
-
-Removes a role from a user (requires admin). Throws for invalid roles or when
-attempting to remove `"Authenticated"`.
-
-```javascript
-userStorage.removeUserRole("user-123", "Editor");
-```
-
-Wrap these in `try/catch` — permission and validation failures surface as thrown
-errors, not return values:
-
-```javascript
-function grantEditorHandler(context) {
-  const req = context.request;
-  try {
-    userStorage.addUserRole(req.form.userId, "Editor");
-    return ResponseBuilder.json({ message: "Editor role granted" });
-  } catch (error) {
-    return ResponseBuilder.error(403, error.message);
+  const response = JSON.parse(
+    fetch("https://" + incoming.host + "/engine/users", { headers: headers }),
+  );
+  if (response.status !== 200) {
+    return ResponseBuilder.error(response.status, "Failed to list users");
   }
+
+  return ResponseBuilder.json(JSON.parse(response.body));
 }
 ```
 
