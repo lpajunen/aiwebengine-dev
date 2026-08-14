@@ -149,8 +149,6 @@ function serveEditor(context) {
                             <select id="scripts-filter-select" class="filter-select">
                                 <option value="all">All Scripts</option>
                                 <option value="mine">My Scripts</option>
-                                <option value="system">System Scripts</option>
-                                <option value="unowned">Unowned Scripts</option>
                             </select>
                         </div>
                         <div id="scripts-list" class="scripts-list">

@@ -1339,23 +1339,8 @@ body {
   white-space: nowrap;
 }
 
-.owner-badge.system {
-  background-color: var(--warning-color);
-  color: var(--dark-bg);
-}
-
-.owner-badge.unowned {
-  background-color: var(--text-muted);
-  color: white;
-}
-
 .script-item.owned {
   border-left: 3px solid var(--primary-color);
-  padding-left: 12px;
-}
-
-.script-item.system-script {
-  border-left: 3px solid var(--warning-color);
   padding-left: 12px;
 }
 

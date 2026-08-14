@@ -464,20 +464,12 @@ class AIWebEngineEditor {
     this.templates = {
       /** @param {any} data */
       "script-item": (data) => {
-        const ownerClass =
-          data.ownerCount === 0
-            ? "system-script"
-            : data.isOwner
-              ? "owned"
-              : "unowned";
-        const ownerBadge =
-          data.ownerCount === 0
-            ? '<span class="owner-badge system">SYSTEM</span>'
-            : data.isOwner
-              ? '<span class="owner-badge">MINE</span>'
-              : "";
+        const ownerClass = data.isOwner ? "owned" : "unowned";
+        const ownerBadge = data.isOwner
+          ? '<span class="owner-badge">MINE</span>'
+          : "";
         return `
-          <div class="script-item ${data.active ? "active" : ""} ${ownerClass}" data-script="${data.uri}" data-owner-count="${data.ownerCount}" data-is-owner="${data.isOwner}" title="${data.uri}">
+          <div class="script-item ${data.active ? "active" : ""} ${ownerClass}" data-script="${data.uri}" title="${data.uri}">
             <div class="script-icon">📄</div>
             <div class="script-info">
               <div class="script-item-header">
@@ -1012,10 +1004,6 @@ declare var module: any;
     switch (this.currentFilter) {
       case "mine":
         return this.scriptsData.filter((s) => s.isOwner);
-      case "system":
-        return this.scriptsData.filter((s) => s.ownerCount === 0);
-      case "unowned":
-        return this.scriptsData.filter((s) => s.ownerCount === 0);
       case "all":
       default:
         return this.scriptsData;
@@ -1262,7 +1250,7 @@ function init(context) {
           <ul class="owner-list" id="owner-list">
             ${
               owners.length === 0
-                ? "<li>No owners (system script)</li>"
+                ? "<li>No owners</li>"
                 : owners
                     .map(
                       (owner) => `
