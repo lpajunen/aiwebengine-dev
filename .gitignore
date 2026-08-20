@@ -1,5 +1,4 @@
 types/aiwebengine.d.ts
-types/aiwebengine-priv.d.ts
 apis/openapi.json
 schemas/schema.json
 schemas/token.json

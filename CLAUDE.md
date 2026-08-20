@@ -21,7 +21,7 @@ maintaining the Markdown docs, and running the Node CLI helpers under `scripts/`
 npm install                       # or: make install
 cp .env.example .env              # then edit SERVER_HOST etc.
 make oauth-login                  # authenticate; writes schemas/token.json (required before uploads)
-make fetch-types                 # refresh types/aiwebengine{,-priv}.d.ts from the server
+make fetch-types                 # refresh types/aiwebengine.d.ts from the server
 make fetch-graphql-schema        # download GraphQL schema to schemas/schema.json
 make fetch-openapi               # download OpenAPI to apis/openapi.json
 make format                      # prettier --write across js/ts/json/md
@@ -83,8 +83,10 @@ method)`, `console`, `fetch`, etc. Handlers take a `context` and return
 - **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
   depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the
   script — and the engine enforces that.
-- The legacy JavaScript globals in `types/aiwebengine-priv.d.ts` are deprecated, and every one of
-  them now has an HTTP equivalent under `/engine/` — script, asset, secret and user management
+- The legacy privileged JavaScript globals (`userStorage`, `scriptStorage`, the `*ForUri` secret
+  and asset methods, `console.listLogs`/`pruneLogs`, `routeRegistry.listRoutes`/`listStreams`)
+  are deprecated, and every one of them now has an HTTP equivalent under `/engine/` — script,
+  asset, secret and user management
   (`/engine/scripts`, `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`,
   `/engine/assets`, `/engine/secrets`, `/engine/script_owners`, `/engine/users`,
   `/engine/user_roles`), logs (`GET|DELETE /engine/script_logs`) and route introspection
@@ -92,10 +94,11 @@ method)`, `console`, `fetch`, etc. Handlers take a `context` and return
   the browser calls them with the signed-in user's session and the engine enforces that user's
   permissions. Nothing under `src/` calls a privileged global any more.
 
-Every script under `src/` references `types/aiwebengine.d.ts`; a script that still reached for a
-privileged global would reference `types/aiwebengine-priv.d.ts` instead. Both files are
-**generated** by `make fetch-types` from `/engine/types/v0.1.0/` — edit the server, not these
-files.
+Every script under `src/` starts with a `/// <reference path="../../types/aiwebengine.d.ts" />`
+triple-slash directive. That file is **generated** by `make fetch-types` from
+`/engine/types/v0.1.0/` — edit the server, not it. The engine also serves a companion
+`aiwebengine-priv.d.ts` typing the deprecated privileged globals; this repo does not fetch it,
+since nothing here calls them. A script that needed it could reference the served URL directly.
 
 `scripts/` is the opposite: ordinary **Node.js** CLI tooling that runs locally (CommonJS `require`,
 `dotenv`, real filesystem and network access).
@@ -103,9 +106,16 @@ files.
 ## Type checking
 
 `jsconfig.json` enables `checkJs` over `src/**/*.js` — the source scripts are plain JS type-checked
-via JSDoc against the `.d.ts` files. `tsconfig.json` covers `.ts/.tsx/.jsx` and configures JSX
-(`h`/`Fragment` pragma) for any TypeScript/JSX authored under `src/`. There is no `tsc` npm script;
-type errors surface in-editor.
+via JSDoc against `types/aiwebengine.d.ts`. `tsconfig.json` covers `.ts/.tsx/.jsx` and configures
+JSX (`h`/`Fragment` pragma) for any TypeScript/JSX authored under `src/`.
+
+```bash
+make typecheck                   # tsc over both configs
+make verify                      # format-check + lint + typecheck
+```
+
+`make verify` is the one to run before committing; every target wraps the matching `npm run`
+script.
 
 ## Documentation
 
