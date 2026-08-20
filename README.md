@@ -52,7 +52,9 @@ AI Web Engine is a platform for building AI-powered web applications with JavaSc
 
 Copy [.env.example](.env.example) to `.env` and configure the following variables:
 
-- `SERVER_HOST` - Your AI Web Engine server URL (default: `https://softagen.com`)
+- `SERVER_HOST` - The engine's default host for deployed solutions (default: `https://softagen.com`); individual scripts can be bound elsewhere with `make set-script-hosts`
+- `MANAGE_HOST` - Where the engine management API (`/engine/...`), MCP endpoint (`/mcp`), GraphQL endpoint (`/graphql`) and OAuth discovery are served (default: `https://manage.softagen.com`)
+- `OAUTH_ISSUER` - OAuth discovery base (defaults to `MANAGE_HOST`)
 - `OAUTH_CLIENT_ID` - Your OAuth client ID (optional, can use dynamic registration)
 - `OAUTH_SCOPE` - OAuth scope (default: `openid`)
 
@@ -86,6 +88,25 @@ Download the GraphQL schema for introspection:
 npm run fetch-graphql-schema
 # or
 make fetch-graphql-schema
+```
+
+### Set Script Hosts
+
+After deploying the admin, editor and docs scripts, publish them on the management host
+(`MANAGE_HOST`, default `manage.softagen.com`). Requires administrator privileges:
+
+```bash
+npm run set-script-hosts-dry-run   # preview
+npm run set-script-hosts
+# or
+make set-script-hosts
+```
+
+Pass `--hosts` to target something else (`*` for every configured host, empty for the engine
+default host):
+
+```bash
+node scripts/set-script-hosts.js --script-uri https://example.com/docs --hosts softagen.com
 ```
 
 ## Documentation

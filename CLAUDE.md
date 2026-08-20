@@ -7,7 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is the **developer toolkit** for AI Web Engine, a platform for building AI-powered web
 applications in JavaScript. This repo is _not_ the engine itself — it holds the tooling, type
 definitions, documentation, and example scripts used to build and deploy solutions that run on a
-remote AI Web Engine server (default `https://softagen.com`, override with `SERVER_HOST`).
+remote AI Web Engine server. Two hosts are involved: `SERVER_HOST` (default `https://softagen.com`)
+is the default host for deployed solutions, while the engine's management API (`/engine/...`),
+MCP endpoint (`/mcp`), authenticated GraphQL endpoint (`/graphql`) and OAuth discovery live on
+`MANAGE_HOST` (default `https://manage.softagen.com`).
 
 There is no build step and no test suite. Work here is: authoring server-side scripts under `src/`,
 maintaining the Markdown docs, and running the Node CLI helpers under `scripts/`.
@@ -31,8 +34,9 @@ Every `make` target is a thin wrapper over the matching `npm run` script; use ei
 
 `scripts/upload-script.js` uploads a server-side script plus an optional asset directory. It reads
 the OAuth token from `schemas/token.json` (run `make oauth-login` first — the token is **not** taken
-from `.env`), uploads the script to `POST /engine/upsert_script`, then base64-uploads each asset to
-`POST /engine/assets`. Convenience wrappers with the correct paths already wired:
+from `.env`), uploads the script to `POST $MANAGE_HOST/engine/upsert_script`, then base64-uploads
+each asset to `POST $MANAGE_HOST/engine/assets`. Convenience wrappers with the correct paths already
+wired:
 
 ```bash
 npm run upload-editor            # deploy src/editor/  (add -dry-run to preview)
@@ -49,6 +53,18 @@ node scripts/upload-script.js --script-path <file> --script-uri <uri> \
 ```
 
 Files matching patterns in `.uploadignore` are skipped when scanning `--assets-dir`.
+
+After deploying, bind the scripts to the host they should be published on with
+`scripts/set-script-hosts.js`, which calls `POST $MANAGE_HOST/engine/script_hosts?uri=…&hosts=…`
+(administrators only; `GET` reads the current binding and `DELETE` clears it):
+
+```bash
+make set-script-hosts            # admin + editor + docs → MANAGE_HOST's hostname
+make set-script-hosts-dry-run    # preview
+```
+
+`--hosts` overrides the target: a comma-separated list, `*` for every configured host, or empty for
+the engine's default host. Without it the script uses the host part of `MANAGE_HOST`.
 
 ## Two things that both live in `src/`, and how they differ
 
@@ -103,5 +119,11 @@ writing or changing a server-side script. They are served by `src/docs/docs.js` 
 
 - 2-space indentation; run `make format` (prettier) before committing. Markdown must pass
   `make lint` (config in `.markdownlint.json`).
-- Config for the local tooling comes from `.env` (see `.env.example`); `SERVER_HOST` flows into
-  every script and Makefile target and defaults to `https://softagen.com`.
+- Config for the local tooling comes from `.env` (see `.env.example`); `SERVER_HOST`
+  (default `https://softagen.com`) and `MANAGE_HOST` (default `https://manage.softagen.com`) flow
+  into every script and Makefile target. `/engine/`, `/mcp`, `/graphql` and OAuth discovery go to
+  `MANAGE_HOST`. `SERVER_HOST` is the engine's _default_ host for deployed solutions — individual
+  scripts can be bound elsewhere (see `make set-script-hosts`); the engine currently serves
+  `softagen.com`, `manage.softagen.com` and `world.softagen.com`. `make oauth-login` discovers from
+  `OAUTH_ISSUER` (defaults to `MANAGE_HOST`) and follows whatever authorization and token endpoints
+  that metadata document names — `https://manage.softagen.com/auth/oauth2/*` today.
