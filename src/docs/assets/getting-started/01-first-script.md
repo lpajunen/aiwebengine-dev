@@ -367,9 +367,8 @@ routeRegistry.registerRoute(path, handlerName, method);
 // Write to logs
 console.log(message);
 
-// List logs for current script (returns JSON string)
-const logsJson = console.listLogs();
-const logs = JSON.parse(logsJson);
+// Read logs back over the engine's HTTP API
+const { logs } = await (await fetch("/engine/script_logs")).json();
 ```
 
 ### Handler Template

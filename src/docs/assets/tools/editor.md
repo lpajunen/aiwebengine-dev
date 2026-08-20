@@ -855,11 +855,17 @@ DELETE /engine/assets?script=https://example.com/users&asset=logo.png
 ### Logs
 
 ```bash
-# Get all logs (editor's own endpoint)
-GET /editor/api/logs
+# Get logs across every script, newest first
+GET /engine/script_logs
 
-# Get logs for specific script
+# Get logs for specific script, oldest first
 GET /engine/script_logs?uri=https://example.com/users
+
+# Narrow by level, time or count
+GET /engine/script_logs?level=ERROR&limit=50
+
+# Prune every script back to its newest entries
+DELETE /engine/script_logs
 ```
 
 ## Tips and Tricks

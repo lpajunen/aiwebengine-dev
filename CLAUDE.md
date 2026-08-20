@@ -83,21 +83,19 @@ method)`, `console`, `fetch`, etc. Handlers take a `context` and return
 - **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
   depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the
   script — and the engine enforces that.
-- The legacy JavaScript globals in `types/aiwebengine-priv.d.ts` are deprecated. Script, asset,
-  secret and user management is now served over HTTP under `/engine/` (`/engine/scripts`,
-  `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`, `/engine/assets`,
-  `/engine/secrets`, `/engine/script_owners`, `/engine/script_logs`, `/engine/users`,
-  `/engine/user_roles`), with equivalent MCP tools — see `apis/openapi.json`. Prefer those
-  endpoints; the browser calls them with the signed-in user's session and the engine enforces that
-  user's permissions.
-- Still only available as a global, with no HTTP equivalent: `console.listLogs()`/
-  `console.pruneLogs()` and `routeRegistry.listRoutes()` — used by `src/editor/editor.js` for logs
-  and route listing.
+- The legacy JavaScript globals in `types/aiwebengine-priv.d.ts` are deprecated, and every one of
+  them now has an HTTP equivalent under `/engine/` — script, asset, secret and user management
+  (`/engine/scripts`, `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`,
+  `/engine/assets`, `/engine/secrets`, `/engine/script_owners`, `/engine/users`,
+  `/engine/user_roles`), logs (`GET|DELETE /engine/script_logs`) and route introspection
+  (`/engine/routes`), with equivalent MCP tools — see `apis/openapi.json`. Prefer those endpoints;
+  the browser calls them with the signed-in user's session and the engine enforces that user's
+  permissions. Nothing under `src/` calls a privileged global any more.
 
-Scripts that use one of those globals start with a
-`/// <reference path="../../types/aiwebengine-priv.d.ts" />` triple-slash directive; the rest
-reference `types/aiwebengine.d.ts`. Both files are **generated** by `make fetch-types` from
-`/engine/types/v0.1.0/` — edit the server, not these files.
+Every script under `src/` references `types/aiwebengine.d.ts`; a script that still reached for a
+privileged global would reference `types/aiwebengine-priv.d.ts` instead. Both files are
+**generated** by `make fetch-types` from `/engine/types/v0.1.0/` — edit the server, not these
+files.
 
 `scripts/` is the opposite: ordinary **Node.js** CLI tooling that runs locally (CommonJS `require`,
 `dotenv`, real filesystem and network access).

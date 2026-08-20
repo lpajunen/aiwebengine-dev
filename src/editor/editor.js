@@ -1,4 +1,4 @@
-/// <reference path="../../types/aiwebengine-priv.d.ts" />
+/// <reference path="../../types/aiwebengine.d.ts" />
 
 // Simple aiwebengine Editor script
 // This script provides basic editor functionality
@@ -662,96 +662,6 @@ function serveSwaggerUI(context) {
   };
 }
 
-// API: Get logs
-/** @param {*} context */
-function apiGetLogs(context) {
-  const req = getRequest(context);
-  try {
-    const logsJson =
-      typeof console.listLogs === "function" ? console.listLogs() : "[]";
-    const logs = JSON.parse(logsJson);
-    const formattedLogs = logs.map((/** @type {any} */ log) => ({
-      timestamp: new Date(log.timestamp),
-      level: log.level || "INFO",
-      message: log.message,
-    }));
-
-    return {
-      status: 200,
-      body: JSON.stringify(formattedLogs),
-      contentType: "application/json",
-    };
-  } catch (error) {
-    return {
-      status: 500,
-      body: JSON.stringify({ error: getErrorMessage(error) }),
-      contentType: "application/json",
-    };
-  }
-}
-
-// API: Prune logs (DELETE /editor/api/logs)
-/** @param {*} context */
-function apiPruneLogs(context) {
-  const req = getRequest(context);
-  try {
-    const result =
-      typeof console.pruneLogs === "function" ? console.pruneLogs() : "";
-    // If the console.pruneLogs() returns an error message, respond with 500
-    if (typeof result === "string" && result.startsWith("Error:")) {
-      return {
-        status: 500,
-        body: JSON.stringify({ error: result }),
-        contentType: "application/json",
-      };
-    }
-
-    return {
-      status: 200,
-      body: JSON.stringify({ message: result || "Pruned logs" }),
-      contentType: "application/json",
-    };
-  } catch (error) {
-    return {
-      status: 500,
-      body: JSON.stringify({ error: getErrorMessage(error) }),
-      contentType: "application/json",
-    };
-  }
-}
-
-// API: List all registered routes
-/** @param {*} context */
-function apiListRoutes(context) {
-  const req = getRequest(context);
-  try {
-    const routes =
-      typeof routeRegistry !== "undefined" &&
-      typeof routeRegistry.listRoutes === "function"
-        ? routeRegistry.listRoutes()
-        : "[]";
-    // Parse and re-stringify to ensure valid JSON
-    const routesData = JSON.parse(routes);
-
-    // Sort routes alphabetically by path (case-insensitive)
-    routesData.sort((/** @type {any} */ a, /** @type {any} */ b) =>
-      a.path.toLowerCase().localeCompare(b.path.toLowerCase()),
-    );
-
-    return {
-      status: 200,
-      body: JSON.stringify(routesData),
-      contentType: "application/json",
-    };
-  } catch (error) {
-    return {
-      status: 500,
-      body: JSON.stringify({ error: getErrorMessage(error) }),
-      contentType: "application/json",
-    };
-  }
-}
-
 // Tool definitions for AI Assistant
 function getAIAssistantTools() {
   return [
@@ -1103,11 +1013,12 @@ AVAILABLE JAVASCRIPT APIs:
    - Returns: string describing broadcast result with success/failure counts
    - Use for personalized broadcasting to specific users/groups on stable endpoints
 
-   routeRegistry.listRoutes() - List all registered HTTP routes
-   - Returns: JSON string with array of route metadata
-
-   routeRegistry.listStreams() - List all registered stream endpoints
-   - Returns: JSON string with array of [{path: string, uri: string}]
+   To introspect what is registered, call the engine's HTTP API rather than a
+   global: GET /engine/routes returns {host, routes: [{path, method, handler,
+   script_uri, summary, description, tags}]}, where method is the HTTP method
+   for handlers and "STREAM" or "ASSET" for stream and asset registrations.
+   Pass ?host=... to see only one host. The caller's session decides what
+   comes back.
 
 2. Console logging - Write messages to server logs and retrieve log entries
    - console.log(message) - General logging (level: LOG)
@@ -1115,10 +1026,13 @@ AVAILABLE JAVASCRIPT APIs:
    - console.info(message) - Informational logging (level: INFO)
    - console.warn(message) - Warning-level logging (level: WARN)
    - console.error(message) - Error-level logging (level: ERROR)
-   - console.listLogs() - Retrieve all log entries as JSON string (returns array of {message, level, timestamp})
-   - console.listLogsForUri(uri) - Retrieve log entries for specific script URI as JSON string
    - message: string
-   - uri: string (script URI)
+   - To read logs back, call GET /engine/script_logs, which returns
+     {uri, logs: [{scriptUri, message, level, timestamp}], count, timestamp}.
+     Omit uri for every script (newest first) or pass ?uri=... for one script
+     (oldest first); level, since and limit narrow the result. DELETE the same
+     path prunes every script back to its newest entries, or clears one
+     script's logs when given a uri.
 
 3. sharedStorage - Persistent key-value storage per script
    - sharedStorage.getItem(key) - Get stored value (returns string or null)
@@ -1888,24 +1802,6 @@ function init(context) {
   routeRegistry.registerRoute(
     "/editor/swagger",
     "serveSwaggerUI",
-    "GET",
-    editorTag,
-  );
-  routeRegistry.registerRoute(
-    "/editor/api/logs",
-    "apiGetLogs",
-    "GET",
-    editorTag,
-  );
-  routeRegistry.registerRoute(
-    "/editor/api/logs",
-    "apiPruneLogs",
-    "DELETE",
-    editorTag,
-  );
-  routeRegistry.registerRoute(
-    "/editor/api/routes",
-    "apiListRoutes",
     "GET",
     editorTag,
   );

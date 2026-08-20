@@ -225,7 +225,8 @@ routeRegistry.registerRoute(path, handlerName, method);
 
 // Logging
 console.log(message);
-const logs = JSON.parse(console.listLogs()); // admins and script owners
+// Read logs back over HTTP; admins and script owners
+const { logs } = await (await fetch("/engine/script_logs")).json();
 
 // Assets (returns JSON metadata)
 const assetsJson = assetStorage.listAssets();

@@ -188,34 +188,31 @@ routeRegistry.sendStreamMessageFiltered(
 );
 ```
 
-### routeRegistry.listRoutes()
+### Listing what is registered
 
-Lists all registered HTTP routes.
-
-**Returns:** JSON string with array of route metadata
-
-**Example:**
+Use the engine's HTTP API at `GET /engine/routes`, which returns every
+registration in the engine — script routes, SSE streams and asset routes —
+as `{host, routes}`:
 
 ```javascript
-const routes = JSON.parse(routeRegistry.listRoutes());
-console.log("Registered routes:", routes);
-```
+const { routes } = await (await fetch("/engine/routes")).json();
 
-### routeRegistry.listStreams()
-
-Lists all registered stream endpoints with their metadata.
-
-**Returns:** JSON string with array of objects containing `path` and `uri` properties
-
-**Example:**
-
-```javascript
-const streams = JSON.parse(routeRegistry.listStreams());
-// Returns: [{ path: "/chat", uri: "https://..." }, ...]
-streams.forEach((stream) => {
-  console.log("Stream path:", stream.path, "URI:", stream.uri);
+routes.forEach((route) => {
+  // method is the HTTP method for handlers, or "STREAM" / "ASSET"
+  console.log(`${route.method} ${route.path} -> ${route.handler}`);
 });
 ```
+
+Each entry carries `path`, `method`, `handler`, `script_uri`, `summary`,
+`description` and `tags`. Pass `?host=...` to see only what is live on one
+host; the listing is unfiltered by default, since the management host need not
+be a host scripts publish on.
+
+> **Superseded globals:** `routeRegistry.listRoutes()` and
+> `routeRegistry.listStreams()` still return the same registrations as a JSON
+> string, but they cannot filter by host, and `listStreams()` omits the
+> handler, summary, description and tags that the `"STREAM"` entries of
+> `/engine/routes` carry. Prefer the endpoint in new scripts.
 
 ### routeRegistry.listAssets()
 
@@ -2139,9 +2136,19 @@ Basic console logging (output goes to server logs).
 - `console.warn(message)`: Log a warning message (level: WARN)
 - `console.error(message)`: Log an error message (level: ERROR)
 - `console.debug(message)`: Log a debug message (level: DEBUG)
-- `console.listLogs()`: Retrieve all log entries as a JSON string
-- `console.listLogsForUri(uri)`: Retrieve log entries for a specific script URI as a JSON string
-- `console.pruneLogs()`: Remove old log entries to free up storage space
+  Reading logs back is the HTTP API's job: `GET /engine/script_logs` returns
+  `{uri, logs, count, timestamp}`, with each entry shaped
+  `{scriptUri, message, level, timestamp}`. Omit `uri` for every script (newest
+  first) or pass one for a single script (oldest first); `level`, `since` and
+  `limit` narrow the result. `DELETE /engine/script_logs` prunes every script
+  back to its newest entries, or clears one script's logs when given a `uri`.
+  The engine answers both as the signed-in user, so an Administrator or an owner
+  of the script sees its entries and everyone else is refused.
+
+> **Superseded globals:** `console.listLogs()`, `console.listLogsForUri(uri)`
+> and `console.pruneLogs()` still work, returning the same entries as a JSON
+> string, but they predate those endpoints and cannot filter by level, time or
+> count.
 
 **Example:**
 
@@ -2153,23 +2160,26 @@ function debugHandler(context) {
 
   return { status: 200, body: "Check logs" };
 }
+```
 
-function viewLogsHandler(context) {
-  // Get all logs
-  const allLogsJson = console.listLogs();
-  const allLogs = JSON.parse(allLogsJson);
+Reading them back from a page, with the visitor's own session:
 
-  // Get logs for a specific script
-  const scriptLogsJson = console.listLogsForUri("/api/users");
-  const scriptLogs = JSON.parse(scriptLogsJson);
+```javascript
+// Every script, newest first
+const { logs } = await (await fetch("/engine/script_logs?limit=100")).json();
 
-  // Each log entry has: message, level, timestamp (in milliseconds)
-  return {
-    status: 200,
-    body: JSON.stringify({ allLogs, scriptLogs }),
-    contentType: "application/json",
-  };
-}
+// One script's errors, oldest first
+const uri = encodeURIComponent("https://example.com/api-users");
+const errors = await (
+  await fetch(`/engine/script_logs?uri=${uri}&level=ERROR`)
+).json();
+
+// Each entry has: scriptUri, message, level, timestamp (in milliseconds)
+logs.forEach((log) => {
+  console.log(
+    `${new Date(log.timestamp).toISOString()} [${log.level}] ${log.message}`,
+  );
+});
 ```
 
 ## HTTP Status Codes

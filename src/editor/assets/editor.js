@@ -25,10 +25,11 @@
 
 /**
  * The engine's own HTTP API, served under /engine/. These endpoints replaced
- * the legacy JavaScript globals (scriptStorage, assetStorage, secretStorage)
- * that the editor script used to call on the browser's behalf, so the editor
- * now talks to them directly with the signed-in user's session and the engine
- * enforces that user's permissions.
+ * the legacy JavaScript globals (scriptStorage, assetStorage, secretStorage,
+ * console.listLogs/pruneLogs, routeRegistry.listRoutes) that the editor script
+ * used to call on the browser's behalf, so the editor now talks to them
+ * directly with the signed-in user's session and the engine enforces that
+ * user's permissions.
  */
 const engineApi = {
   /**
@@ -255,6 +256,51 @@ const engineApi = {
       `/secrets?script=${encodeURIComponent(script)}&key=${encodeURIComponent(key)}`,
       { method: "DELETE" },
     );
+  },
+
+  /**
+   * Log entries across every script, newest first. Narrowing to one script
+   * with `uri` returns that script's entries oldest first instead, the way
+   * the engine orders them.
+   * @param {{uri?: string, level?: string, since?: string|number, limit?: number}} [options]
+   * @returns {Promise<any[]>}
+   */
+  async listLogs(options) {
+    const params = new URLSearchParams();
+    const { uri, level, since, limit } = options || {};
+    if (uri) params.set("uri", uri);
+    if (level) params.set("level", level);
+    if (since !== undefined) params.set("since", String(since));
+    if (limit !== undefined) params.set("limit", String(limit));
+    const query = params.toString();
+    const data = await this.json("/script_logs" + (query ? "?" + query : ""));
+    return data.logs || [];
+  },
+
+  /**
+   * Prune every script back to its newest entries, or clear one script's logs
+   * outright when `uri` is given.
+   * @param {string} [uri]
+   */
+  async pruneLogs(uri) {
+    await this.request(
+      "/script_logs" + (uri ? "?uri=" + encodeURIComponent(uri) : ""),
+      { method: "DELETE" },
+    );
+  },
+
+  /**
+   * Every registration in the engine: script routes, SSE streams (method
+   * "STREAM") and asset routes (method "ASSET"). Unfiltered by default; pass
+   * a host to see only what is live there.
+   * @param {string} [host]
+   * @returns {Promise<any[]>}
+   */
+  async listRoutes(host) {
+    const data = await this.json(
+      "/routes" + (host ? "?host=" + encodeURIComponent(host) : ""),
+    );
+    return data.routes || [];
   },
 };
 
@@ -2102,8 +2148,7 @@ function init(context) {
   // Logs Management
   async loadLogs() {
     try {
-      const response = await fetch("/editor/api/logs");
-      const logs = await response.json();
+      const logs = await engineApi.listLogs();
 
       const logsContent = document.getElementById("logs-content");
       if (!logsContent) return;
@@ -2171,24 +2216,10 @@ function init(context) {
   async clearLogs() {
     try {
       this.showStatus("Clearing logs...", "info");
-      const response = await fetch("/editor/api/logs", { method: "DELETE" });
-      if (response.ok) {
-        this.showStatus("Logs pruned successfully", "success");
-        // Refresh logs after successful prune
-        await this.loadLogs();
-      } else {
-        /** @type {any} */
-        let body = {};
-        try {
-          body = await response.json();
-        } catch (e) {
-          /* ignore */
-        }
-        this.showStatus(
-          "Failed to prune logs: " + (body.error || response.statusText),
-          "error",
-        );
-      }
+      await engineApi.pruneLogs();
+      this.showStatus("Logs pruned successfully", "success");
+      // Refresh logs after successful prune
+      await this.loadLogs();
     } catch (error) {
       const err = /** @type {Error} */ (error);
       this.showStatus("Error pruning logs: " + err.message, "error");
@@ -2198,8 +2229,13 @@ function init(context) {
   // Routes Management
   async loadRoutes() {
     try {
-      const response = await fetch("/editor/api/routes");
-      const routes = await response.json();
+      const routes = await engineApi.listRoutes();
+      // The engine returns registrations in its own order; the panel lists
+      // them by path, the way the editor's own endpoint used to sort them.
+      routes.sort(
+        /** @param {any} a @param {any} b */
+        (a, b) => a.path.toLowerCase().localeCompare(b.path.toLowerCase()),
+      );
 
       const routesList = document.getElementById("routes-list");
       if (!routesList) return;

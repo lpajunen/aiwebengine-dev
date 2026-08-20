@@ -134,21 +134,67 @@ The easiest way to view logs:
 - Jump to latest button (scrolls view to newest entry)
 - Timestamps included
 
-### Method 2: `console.listLogs()` Function
+### Method 2: `GET /engine/script_logs`
 
-Retrieve logs programmatically in your scripts. `console.listLogs()` returns a
-JSON string (parse it). The engine answers it based on the signed-in user: an
-**Administrator** or an owner of the script sees its entries, everyone else is
-refused.
+Read logs back over the engine's HTTP API. The engine answers based on the
+signed-in user: an **Administrator** or an owner of the script sees its
+entries, everyone else is refused.
+
+| Parameter | Meaning                                                       |
+| --------- | ------------------------------------------------------------- |
+| `uri`     | One script's logs; omit for every script                      |
+| `level`   | Only entries at this level, e.g. `ERROR`                      |
+| `since`   | Only entries at or after this time (epoch millis or RFC 3339) |
+| `limit`   | Keep at most this many of the newest matching entries         |
+
+The response is `{uri, logs, count, timestamp}`, where each entry is
+`{scriptUri, message, level, timestamp}` and `timestamp` is milliseconds since
+the epoch. Entries come back **oldest first** for a single script and **newest
+first** for the all-scripts view.
+
+From a page, call it with the visitor's own session:
+
+```javascript
+const response = await fetch("/engine/script_logs?limit=100");
+const { logs } = await response.json();
+
+logs.forEach((log) => {
+  console.log(
+    `${new Date(log.timestamp).toISOString()} [${log.level}] ${log.message}`,
+  );
+});
+```
+
+To narrow to one script, pass its URI:
+
+```javascript
+const uri = "https://example.com/api-users";
+const response = await fetch(
+  `/engine/script_logs?uri=${encodeURIComponent(uri)}&level=ERROR`,
+);
+const { logs, count } = await response.json();
+```
+
+From a server-side handler, forward the caller's credentials so the engine
+applies **their** permissions rather than answering anonymously:
 
 ```javascript
 function logsHandler(context) {
-  // Get logs for the current script
-  const logs = JSON.parse(console.listLogs());
+  const req = context.request;
+  const headers = {};
+  if (req.headers.authorization)
+    headers.Authorization = req.headers.authorization;
+  if (req.headers.cookie) headers.Cookie = req.headers.cookie;
+
+  const response = JSON.parse(
+    fetch(`https://${req.headers.host}/engine/script_logs?limit=100`, {
+      headers: headers,
+    }),
+  );
 
   return {
-    status: 200,
-    body: JSON.stringify({ logs: logs }),
+    status: response.status,
+    body: response.body,
     contentType: "application/json",
   };
 }
@@ -156,37 +202,27 @@ function logsHandler(context) {
 routeRegistry.registerRoute("/my-logs", "logsHandler", "GET");
 ```
 
-### Method 3: `console.listLogsForUri()` Function
+### Pruning with `DELETE /engine/script_logs`
 
-Get logs for a specific script URI (the caller must be an Administrator or an
-owner of that script):
+`DELETE /engine/script_logs` prunes every script back to its newest entries.
+Given a `uri` it clears that one script's logs outright:
 
 ```javascript
-function allLogsHandler(context) {
-  const uri = context.request.query.uri; // e.g., "/api/users"
+// Prune every script
+await fetch("/engine/script_logs", { method: "DELETE" });
 
-  if (!uri) {
-    return {
-      status: 400,
-      body: JSON.stringify({ error: "URI parameter required" }),
-      contentType: "application/json",
-    };
-  }
-
-  const logs = JSON.parse(console.listLogsForUri(uri));
-
-  return {
-    status: 200,
-    body: JSON.stringify({ uri: uri, logs: logs }),
-    contentType: "application/json",
-  };
-}
-
-routeRegistry.registerRoute("/logs", "allLogsHandler", "GET");
-// Usage: /logs?uri=/api/users
+// Clear one script's logs
+await fetch(`/engine/script_logs?uri=${encodeURIComponent(uri)}`, {
+  method: "DELETE",
+});
 ```
 
-### Method 4: Server Logs
+> **Superseded globals:** `console.listLogs()`, `console.listLogsForUri(uri)`
+> and `console.pruneLogs()` still work and return the same entries as a JSON
+> string, but they predate the endpoints above and cannot filter by level,
+> time or count. Prefer `/engine/script_logs` in new scripts.
+
+### Method 3: Server Logs
 
 Check server console or log files:
 
@@ -206,9 +242,29 @@ tail -f /var/log/aiwebengine/server.log
 
 ### Basic Log Viewer
 
+Both viewers below share this helper, which calls `/engine/script_logs` with
+the caller's own credentials so the engine applies their permissions:
+
+```javascript
+/** Read log entries over the engine's HTTP API, as the calling user. */
+function readLogs(req, query) {
+  const headers = {};
+  if (req.headers.authorization)
+    headers.Authorization = req.headers.authorization;
+  if (req.headers.cookie) headers.Cookie = req.headers.cookie;
+
+  const response = JSON.parse(
+    fetch(`https://${req.headers.host}/engine/script_logs${query}`, {
+      headers: headers,
+    }),
+  );
+  return JSON.parse(response.body).logs || [];
+}
+```
+
 ```javascript
 function logViewerHandler(context) {
-  const logs = JSON.parse(console.listLogs());
+  const logs = readLogs(context.request, "");
 
   const logItems = logs
     .map((log) => {
@@ -252,7 +308,7 @@ function advancedLogViewerHandler(context) {
   const filter = context.request.query.filter || "";
   const level = context.request.query.level || "all";
 
-  const logs = JSON.parse(console.listLogs());
+  const logs = readLogs(context.request, "");
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
@@ -708,11 +764,17 @@ console.log(`Card ending in ${sanitizeCardNumber(cardNumber)}`);
 // Write a log message
 console.log("Message");
 
-// Get logs for current script
-const logs = JSON.parse(console.listLogs());
+// Read logs over the engine's HTTP API (every script, newest first)
+const { logs } = await (await fetch("/engine/script_logs?limit=100")).json();
 
-// Get logs for specific script URI
-const logs = JSON.parse(console.listLogsForUri("/api/users"));
+// Narrow to one script, one level, the newest 50 entries
+const uri = encodeURIComponent("https://example.com/api-users");
+const recent = await (
+  await fetch(`/engine/script_logs?uri=${uri}&level=ERROR&limit=50`)
+).json();
+
+// Prune every script back to its newest entries
+await fetch("/engine/script_logs", { method: "DELETE" });
 
 // Log helper functions
 function logError(msg) {
