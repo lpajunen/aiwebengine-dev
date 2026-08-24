@@ -1,4 +1,4 @@
-.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run upload-admin upload-admin-dry-run set-script-hosts set-script-hosts-dry-run install outdated format format-check lint typecheck verify
+.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login refresh-token token-status upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run upload-admin upload-admin-dry-run set-script-hosts set-script-hosts-dry-run install outdated format format-check lint typecheck verify
 
 # Host configuration (can be overridden via environment variables)
 # SERVER_HOST serves deployed solutions and OAuth; MANAGE_HOST serves the
@@ -21,6 +21,14 @@ fetch-graphql-schema:
 
 oauth-login:
 	npm run oauth-login
+
+# Renew the saved token without the browser login. The tooling does this
+# for itself when it finds an expired token; these are for checking.
+refresh-token:
+	npm run refresh-token
+
+token-status:
+	npm run token-status
 
 upload-editor:
 	npm run upload-editor

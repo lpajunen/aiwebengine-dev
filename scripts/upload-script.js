@@ -18,6 +18,7 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const { minimatch } = require("minimatch");
+const { loadAccessToken } = require("./lib/token.js");
 
 const manageHost = process.env.MANAGE_HOST || "https://manage.softagen.com";
 const serverHost = process.env.SERVER_HOST || "https://softagen.com";
@@ -64,33 +65,6 @@ function parseArgs() {
   }
 
   return config;
-}
-
-/**
- * Load OAuth token from schemas/token.json
- * @returns {Promise<string>}
- */
-async function loadToken() {
-  const tokenPath = path.join(__dirname, "..", "schemas", "token.json");
-  try {
-    const tokenData = await fs.promises.readFile(tokenPath, "utf8");
-    const token = JSON.parse(tokenData);
-
-    // Check if token is expired
-    if (token.expires_at && Date.now() > token.expires_at) {
-      throw new Error(
-        "Token has expired. Please run 'make oauth-login' again.",
-      );
-    }
-
-    return token.access_token;
-  } catch (err) {
-    const error = /** @type {NodeJS.ErrnoException} */ (err);
-    if (error.code === "ENOENT") {
-      throw new Error("Token not found. Please run 'make oauth-login' first.");
-    }
-    throw err;
-  }
 }
 
 /**
@@ -376,7 +350,7 @@ async function main() {
     let assetCount = 0;
 
     // Load authentication token (skip in dry-run mode)
-    const token = config.dryRun ? "" : await loadToken();
+    const token = config.dryRun ? "" : await loadAccessToken();
     if (!config.dryRun) {
       console.log("✓ Authentication token loaded");
       console.log("");

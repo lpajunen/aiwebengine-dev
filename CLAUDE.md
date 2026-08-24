@@ -21,6 +21,8 @@ maintaining the Markdown docs, and running the Node CLI helpers under `scripts/`
 npm install                       # or: make install
 cp .env.example .env              # then edit SERVER_HOST etc.
 make oauth-login                  # authenticate; writes schemas/token.json (required before uploads)
+make token-status                # how long the saved token has left
+make refresh-token               # renew by hand (--force to renew early)
 make fetch-types                 # refresh types/aiwebengine.d.ts from the server
 make fetch-graphql-schema        # download GraphQL schema to schemas/schema.json
 make fetch-openapi               # download OpenAPI to apis/openapi.json
@@ -29,6 +31,19 @@ make lint                        # markdownlint over **/*.md
 ```
 
 Every `make` target is a thin wrapper over the matching `npm run` script; use either.
+
+### Authentication
+
+The access token lasts about an hour, but **expiry does not mean logging in again**: the tooling
+scripts renew it themselves from the refresh token, so a long session is not interrupted.
+`scripts/lib/token.js` holds that logic and every script goes through its `loadAccessToken()`;
+`OAUTH_TOKEN` in the environment overrides the file and is used as-is.
+
+Renewing needs the `client_id` the login registered, which `oauth_pkce_token.js` persists into
+`schemas/token.json` alongside `token_endpoint` and `issuer`. A token file saved before that was
+added has no `client_id` and cannot be renewed — `make oauth-login` once fixes it for good. Log in
+again only when the refresh token itself is rejected; the scripts say so explicitly when that
+happens.
 
 ### Deploying scripts (the core workflow)
 
