@@ -8,7 +8,8 @@
  * over the engine's HTTP API (`GET /engine/users`,
  * `POST|DELETE /engine/user_roles`) with the signed-in user's session, so the
  * engine enforces that user's administrator rights; this script no longer
- * proxies those calls through the deprecated `userStorage` global.
+ * proxies those calls through the `userStorage` global, which the engine has
+ * removed.
  *
  * AUTHENTICATION USAGE:
  * - 'auth' is part of the request object (request.auth)
@@ -266,7 +267,7 @@ function handleManagerUI(context) {
         /**
          * The engine's own HTTP API, served under /engine/. User and role
          * management used to run through /admin/api/* handlers that called the
-         * deprecated userStorage global; the page now calls the engine
+         * since-removed userStorage global; the page now calls the engine
          * directly with the signed-in user's session, and the engine enforces
          * that user's administrator rights.
          */

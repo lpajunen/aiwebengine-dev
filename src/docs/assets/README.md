@@ -60,7 +60,7 @@ Complete API documentation:
 | [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars, and base64 helpers (`convert.*`)                                          |
 
 The [JavaScript APIs](reference/javascript-apis.md) page is the single reference
-for the runtime globals — it covers **storage** (`sharedStorage`,
+for the runtime globals — it covers **storage** (`scriptStorage`,
 `personalStorage`), **secrets** (`secretStorage`), the **database**, the
 **scheduler** (`schedulerService`), GraphQL, `fetch`, and `ResponseBuilder`.
 

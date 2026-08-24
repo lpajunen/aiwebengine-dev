@@ -191,6 +191,123 @@ function uploadHandler(context) {
 routeRegistry.registerRoute("/upload-asset", "uploadHandler", "POST");
 ```
 
+### Method 4: The engine's HTTP API (`/engine/assets`)
+
+`assetStorage` works on the assets of the script that is running. To manage
+another script's assets — from a page, a deployment tool, or a script that
+builds other scripts — call `/engine/assets`. The engine answers as the
+signed-in user, so an owner of the script, a user with the asset capability, or
+an Administrator gets through and everyone else is refused.
+
+**List, or read one asset:**
+
+```javascript
+const script = encodeURIComponent("https://example.com/my-app");
+
+// Every asset the script owns
+const list = await (await fetch(`/engine/assets?script=${script}`)).json();
+
+// One asset, whole-file base64
+const file = await (
+  await fetch(`/engine/assets?script=${script}&asset=app.css`)
+).json();
+```
+
+A read carries the `sha256`, `bytes` and `total_lines` of the whole asset
+alongside its content. For a text asset you can ask for part of it instead of
+transferring the file:
+
+| Parameter | Meaning                                                                    |
+| --------- | -------------------------------------------------------------------------- |
+| `lines`   | Inclusive 1-based line range: `120-180`, `120-` to the end, or `120` alone |
+| `grep`    | Regular expression; answers with matching line numbers and their text      |
+
+```javascript
+// Lines 120-180 as text, not base64
+const range = await (
+  await fetch(`/engine/assets?script=${script}&asset=lib/util.ts&lines=120-180`)
+).json();
+// { encoding, content, start_line, end_line, sha256, bytes, total_lines, ... }
+
+// Where is renderCart defined?
+const hits = await (
+  await fetch(
+    `/engine/assets?script=${script}&asset=lib/util.ts&grep=function%20renderCart`,
+  )
+).json();
+// { encoding, matches: [{ line, text, truncated }], match_count, sha256, ... }
+```
+
+**Write one asset** with `POST /engine/assets`, the HTTP form of
+`assetStorage.upsertAsset`.
+
+**Write several at once** with `POST /engine/assets/batch`. A script's modules
+are one unit of change, and writing them one request at a time makes the engine
+act on each partial state: every single-asset write invalidates the prepared
+program and notifies the rest of the cluster, so every other instance
+reinitializes the script once per file, each time from a tree that is still
+being uploaded. One batch is one transaction, one notification, and one
+`init()`:
+
+```javascript
+const result = await (
+  await fetch(`/engine/assets/batch?script=${script}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      files: [
+        { name: "lib/util.ts", content_base64: utilB64 },
+        {
+          name: "lib/cart.ts",
+          content_base64: cartB64,
+          mimetype: "text/plain",
+        },
+        { name: "app.css", content_base64: cssB64, sha256: cssSha },
+      ],
+      reinit: "after", // or "never" to leave init() alone
+    }),
+  })
+).json();
+```
+
+Up to 256 files and 10 MB of content per batch. `mimetype` is inferred from the
+extension when omitted, and a `sha256` that does not match the decoded content
+rejects the whole batch. Nothing is written if any file is rejected.
+
+**Edit an asset in place** with `PATCH /engine/assets` — the point of it is what
+is _not_ in the request. A caller changing three lines sends those three lines,
+not the module:
+
+```javascript
+const patched = await (
+  await fetch(`/engine/assets?script=${script}&asset=lib/util.ts`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      edits: [
+        { old_string: "const RETRIES = 3;", new_string: "const RETRIES = 5;" },
+        { old_string: "log(", new_string: "console.log(", replace_all: true },
+      ],
+      base_sha256: file.sha256,
+    }),
+  })
+).json();
+// { sha256, bytes, replacements, init: { ... } }
+```
+
+Each `old_string` must be present, and unique unless `replace_all` is set; up
+to 128 edits are checked and applied in memory before anything is stored, so a
+patch that does not match writes nothing and answers `400`. `base_sha256` is
+the precondition: pass the `sha256` a read reported and the patch is refused
+with `409` if the stored content has moved on since — a change to a known
+version rather than to whatever happens to be there.
+
+**Delete** with `DELETE /engine/assets?script=…&asset=…`.
+
+Every one of these has an equivalent MCP tool (`list_assets`, `read_asset`,
+`write_asset`, `write_assets`, `edit_asset`, `delete_asset`), which is how an
+AI assistant edits a script's modules without resending them.
+
 ## Using Assets in Scripts
 
 ### Linking Stylesheets
@@ -821,4 +938,37 @@ assetStorage.upsertAsset("new.png", "image/png", base64Content);
 
 // Delete asset
 assetStorage.deleteAsset("old.png");
+```
+
+Another script's assets, over the engine's HTTP API:
+
+```javascript
+const script = encodeURIComponent("https://example.com/my-app");
+
+// List, read a whole asset, read a line range, or search it
+await fetch(`/engine/assets?script=${script}`);
+await fetch(`/engine/assets?script=${script}&asset=app.css`);
+await fetch(`/engine/assets?script=${script}&asset=lib/util.ts&lines=120-180`);
+await fetch(
+  `/engine/assets?script=${script}&asset=lib/util.ts&grep=renderCart`,
+);
+
+// Write many files as one transaction and one init()
+await fetch(`/engine/assets/batch?script=${script}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    files: [{ name: "app.css", content_base64: cssB64 }],
+  }),
+});
+
+// Change a few lines without resending the file
+await fetch(`/engine/assets?script=${script}&asset=lib/util.ts`, {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    edits: [{ old_string: "RETRIES = 3", new_string: "RETRIES = 5" }],
+    base_sha256: sha,
+  }),
+});
 ```

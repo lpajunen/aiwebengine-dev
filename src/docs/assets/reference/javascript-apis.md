@@ -17,6 +17,19 @@ function myHandler(context) {
 
 The examples below follow this pattern—code snippets declare `const req = context.request;` when they need request data. If a snippet still shows `req`, it assumes this alias exists.
 
+Two fields say what kind of run this is and identify it:
+
+- `context.kind` (and its older name `context.invocationType`) is one of
+  `httpRoute`, `graphqlQuery`, `graphqlMutation`, `graphqlSubscription`,
+  `streamCustomization`, `messageListener`, `init`, `scheduled`, `mcpTool`,
+  `mcpPrompt`, `test` or `eval`.
+- `context.invocationId` identifies this invocation. Every log line the handler
+  writes is filed under it, so
+  `GET /engine/script_logs?request_id=<invocationId>` returns exactly the lines
+  this run produced. For an HTTP route it is the request's `x-request-id`,
+  which the response carries back to the caller — which is how a failing
+  request in a browser leads straight to its server-side log.
+
 ## Route Registry
 
 The `routeRegistry` object provides all HTTP route and streaming functionality in a unified namespace.
@@ -208,24 +221,12 @@ Each entry carries `path`, `method`, `handler`, `script_uri`, `summary`,
 host; the listing is unfiltered by default, since the management host need not
 be a host scripts publish on.
 
-> **Superseded globals:** `routeRegistry.listRoutes()` and
-> `routeRegistry.listStreams()` still return the same registrations as a JSON
-> string, but they cannot filter by host, and `listStreams()` omits the
-> handler, summary, description and tags that the `"STREAM"` entries of
-> `/engine/routes` carry. Prefer the endpoint in new scripts.
-
-### routeRegistry.listAssets()
-
-Lists all registered asset paths.
-
-**Returns:** JSON string with array of asset names
-
-**Example:**
-
-```javascript
-const assets = JSON.parse(routeRegistry.listAssets());
-console.log("Registered assets:", assets);
-```
+> **Removed globals:** `routeRegistry.listRoutes()`, `listStreams()` and
+> `listAssets()` no longer exist in the sandbox — calling one is a
+> `TypeError`. `/engine/routes` replaces the first two (and, unlike them,
+> filters by host and reports the handler, summary, description and tags for
+> stream entries); `assetStorage.listAssets()` or `GET /engine/assets`
+> replaces the third.
 
 ## Asset Storage
 
@@ -579,25 +580,53 @@ function myHandler(context) {
 
 ## Storage APIs
 
-### sharedStorage
+Two globals give a script persistent key-value storage, and both implement the
+WHATWG `Storage` interface — the same one a browser exposes as `localStorage`
+and `sessionStorage`:
 
-Provides persistent key-value storage that is shared across all requests for a specific script. Data is script-scoped but accessible to all users.
+- **`scriptStorage`** belongs to the script and is shared by everyone using it,
+  across every instance in a cluster.
+- **`personalStorage`** belongs to one authenticated user within one script.
 
-#### sharedStorage.getItem(key)
+Everything below is true of both; only the scope differs.
 
-Retrieves a value from shared storage.
+Keys and values are coerced with `String()`, so `setItem("count", 1)` stores
+`"1"`. The mutating methods return nothing — **failures throw a `DOMException`**
+rather than returning an error string:
+
+| Error name           | When                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| `QuotaExceededError` | The value exceeds 1 MB                                                                        |
+| `SecurityError`      | The store is not available to the caller — most often `personalStorage` with nobody logged in |
+
+```javascript
+try {
+  personalStorage.setItem("theme", "dark");
+} catch (e) {
+  if (e.name === "SecurityError") {
+    // nobody is logged in
+  }
+}
+```
+
+> **Renamed:** the shared store used to be called `sharedStorage`. That name is
+> gone; use `scriptStorage`.
+
+### Storage.getItem(key)
+
+Retrieves a value from the store.
 
 **Parameters:**
 
 - `key` (string): Storage key
 
-**Returns:** String value or `null` if key doesn't exist
+**Returns:** String value, or `null` if the key does not exist
 
 **Example:**
 
 ```javascript
 function getCounter(context) {
-  const count = sharedStorage.getItem("counter") || "0";
+  const count = scriptStorage.getItem("counter") ?? "0";
   return {
     status: 200,
     body: `Counter: ${count}`,
@@ -606,24 +635,24 @@ function getCounter(context) {
 }
 ```
 
-#### sharedStorage.setItem(key, value)
+### Storage.setItem(key, value)
 
-Stores a key-value pair in shared storage.
+Stores a key-value pair, replacing any existing value for that key.
 
 **Parameters:**
 
 - `key` (string): Storage key (cannot be empty)
-- `value` (string): Value to store (max 1MB)
+- `value` (string): Value to store (max 1 MB)
 
-**Returns:** Success message or error string
+**Returns:** Nothing. Throws a `DOMException` when the write cannot be made.
 
 **Example:**
 
 ```javascript
 function incrementCounter(context) {
-  const count = parseInt(sharedStorage.getItem("counter") || "0");
+  const count = parseInt(scriptStorage.getItem("counter") ?? "0");
   const newCount = count + 1;
-  sharedStorage.setItem("counter", newCount.toString());
+  scriptStorage.setItem("counter", String(newCount));
   return {
     status: 200,
     body: `New count: ${newCount}`,
@@ -632,170 +661,104 @@ function incrementCounter(context) {
 }
 ```
 
-#### sharedStorage.removeItem(key)
+### Storage.removeItem(key)
 
-Removes a key-value pair from shared storage.
+Removes a key-value pair. Removing a key that was never set is not an error.
 
 **Parameters:**
 
 - `key` (string): Storage key to remove
 
-**Returns:** Boolean - `true` if item was removed, `false` if it didn't exist
+**Returns:** Nothing
 
 **Example:**
 
 ```javascript
 function resetCounter(context) {
-  const removed = sharedStorage.removeItem("counter");
+  scriptStorage.removeItem("counter");
   return {
     status: 200,
-    body: removed ? "Counter reset" : "Counter didn't exist",
+    body: "Counter reset",
     contentType: "text/plain; charset=UTF-8",
   };
 }
 ```
 
-#### sharedStorage.clear()
+### Storage.clear()
 
-Removes all data for the current script from shared storage.
+Removes every key in the store — for `scriptStorage` the script's whole store,
+for `personalStorage` only the current user's keys in this script.
 
-**Returns:** Success message or error string
+**Returns:** Nothing
 
 **Example:**
 
 ```javascript
 function clearAllData(context) {
-  sharedStorage.clear();
+  scriptStorage.clear();
   return {
     status: 200,
-    body: "All shared storage cleared",
+    body: "Script storage cleared",
     contentType: "text/plain; charset=UTF-8",
   };
 }
 ```
 
-### personalStorage
+### Storage.length and Storage.key(index)
 
-Provides persistent key-value storage that is isolated per user. Each authenticated user has their own private storage namespace within each script. **Requires authentication** - all methods return errors or null when user is not logged in.
+`length` is how many keys the store holds; `key(index)` returns the key at that
+position, or `null` when the index is out of range. Together they enumerate a
+store:
 
-#### personalStorage.getItem(key)
+```javascript
+function dumpStorage(context) {
+  const entries = {};
+  for (let i = 0; i < scriptStorage.length; i++) {
+    const key = scriptStorage.key(i);
+    if (key !== null) entries[key] = scriptStorage.getItem(key);
+  }
+  return ResponseBuilder.json(entries);
+}
+```
 
-Retrieves a value from the current user's personal storage.
+### Named access
 
-**Parameters:**
+Both stores also support the property access a browser allows — `store.foo`,
+`"foo" in store`, `delete store.foo`, `Object.keys(store)`:
 
-- `key` (string): Storage key
+```javascript
+scriptStorage.theme = "dark"; // same as setItem("theme", "dark")
+const theme = scriptStorage.theme; // same as getItem("theme")
+delete scriptStorage.theme; // same as removeItem("theme")
+```
 
-**Returns:** String value or `null` if key doesn't exist or user is not authenticated
+Convenient, but every one of those is a database round trip, so enumerating a
+large store with `Object.keys()` costs one query per key. Prefer `getItem` /
+`setItem` in hot paths.
 
-**Example:**
+### personalStorage and authentication
+
+`personalStorage` needs a signed-in user. With nobody logged in the store is
+not available to the caller and raises a `SecurityError`, so guard on
+`req.auth.isAuthenticated` (or catch the error) around both reads and writes:
 
 ```javascript
 function getUserPreference(context) {
   const req = context.request;
-  const theme = personalStorage.getItem("theme") || "light";
-  return {
-    status: 200,
-    body: JSON.stringify({ theme }),
-    contentType: "application/json",
-  };
+  if (!req.auth.isAuthenticated) {
+    return ResponseBuilder.json({ theme: "light" });
+  }
+  const theme = personalStorage.getItem("theme") ?? "light";
+  return ResponseBuilder.json({ theme });
 }
-```
 
-#### personalStorage.setItem(key, value)
-
-Stores a key-value pair in the current user's personal storage.
-
-**Parameters:**
-
-- `key` (string): Storage key (cannot be empty)
-- `value` (string): Value to store (max 1MB)
-
-**Returns:** Success message or error string (error if not authenticated)
-
-**Example:**
-
-```javascript
 function saveUserPreference(context) {
   const req = context.request;
-
-  // Requires authentication
   if (!req.auth.isAuthenticated) {
-    return {
-      status: 401,
-      body: "Authentication required",
-      contentType: "text/plain; charset=UTF-8",
-    };
+    return ResponseBuilder.error(401, "Authentication required");
   }
-
-  const theme = req.form.theme || "light";
-  const result = personalStorage.setItem("theme", theme);
-
-  if (result.startsWith("Error:")) {
-    return {
-      status: 500,
-      body: result,
-      contentType: "text/plain; charset=UTF-8",
-    };
-  }
-
-  return {
-    status: 200,
-    body: "Preference saved",
-    contentType: "text/plain; charset=UTF-8",
-  };
-}
-```
-
-#### personalStorage.removeItem(key)
-
-Removes a key-value pair from the current user's personal storage.
-
-**Parameters:**
-
-- `key` (string): Storage key to remove
-
-**Returns:** Boolean - `true` if item was removed, `false` if it didn't exist or user is not authenticated
-
-**Example:**
-
-```javascript
-function clearUserPreference(context) {
-  const removed = personalStorage.removeItem("theme");
-  return {
-    status: 200,
-    body: removed ? "Preference cleared" : "No preference found",
-    contentType: "text/plain; charset=UTF-8",
-  };
-}
-```
-
-#### personalStorage.clear()
-
-Removes all data for the current user in the current script from personal storage.
-
-**Returns:** Success message or error string (error if not authenticated)
-
-**Example:**
-
-```javascript
-function clearAllUserData(context) {
-  const req = context.request;
-
-  if (!req.auth.isAuthenticated) {
-    return {
-      status: 401,
-      body: "Authentication required",
-      contentType: "text/plain; charset=UTF-8",
-    };
-  }
-
-  personalStorage.clear();
-  return {
-    status: 200,
-    body: "All personal data cleared",
-    contentType: "text/plain; charset=UTF-8",
-  };
+  personalStorage.setItem("theme", req.form.theme || "light");
+  return ResponseBuilder.text("Preference saved");
 }
 ```
 
@@ -901,11 +864,60 @@ description at `/engine/openapi.json` for the full contract.
 
 The global `database` object provides script-scoped table management, CRUD helpers, transactions, lease coordination, and optional GraphQL generation.
 
+Every `database` call answers with the same three-way value a `fetch` response
+has, so the shape does not depend on which host API produced it:
+
+```javascript
+database.query("tasks").json(); // parsed, no await
+(await database.query("tasks")).json(); // awaitable, like a fetch response
+JSON.parse(database.query("tasks")); // the raw JSON string, as before
+```
+
+`await` is sequencing sugar — the call has already finished by the time it
+returns — and the older `JSON.parse(...)` form keeps working, so `.json()` is a
+convenience rather than a migration.
+
 ### Common table operations
 
 - `database.createTable(tableName)` creates a script-owned table namespace.
-- `database.addIntegerColumn(tableName, columnName, nullable?, defaultValue?)`, `database.addTextColumn(...)`, `database.addBooleanColumn(...)`, `database.addTimestampColumn(...)`, and `database.addReferenceColumn(...)` extend the schema.
+- `database.ensureTable(tableName, schemaJson)` brings a table to the shape you describe, whatever shape it is in now — the idempotent form of `createTable` plus a run of `add*Column` plus `addUniqueIndex`.
+- `database.addIntegerColumn(tableName, columnName, nullable?, defaultValue?)`, `database.addBigintColumn(...)`, `database.addFloatColumn(...)`, `database.addTextColumn(...)`, `database.addBooleanColumn(...)`, `database.addTimestampColumn(...)`, and `database.addReferenceColumn(...)` extend the schema.
 - `database.dropColumn(tableName, columnName)` and `database.dropTable(tableName)` remove schema objects owned by the current script.
+
+`ensureTable` is the one to reach for in `init()`, which runs on every instance
+and every restart. Each step is checked before it is attempted rather than
+attempted and forgiven, so a table that is already correct costs one query and
+reports that it changed nothing — and an error means something other than
+"already done". The whole convergence runs under one lock keyed on the script
+and table, so a cold start where every instance's first write arrives at once
+takes turns instead of racing. Columns default to nullable, since a column
+added to a table that already holds rows cannot be `NOT NULL` without a
+default:
+
+```javascript
+function init(context) {
+  const result = database
+    .ensureTable(
+      "tasks",
+      JSON.stringify({
+        columns: [
+          { name: "title", type: "text" },
+          { name: "completed", type: "boolean", default: "false" },
+          { name: "created_at", type: "timestamp" },
+        ],
+        uniqueIndexes: [["title"]],
+      }),
+    )
+    .json();
+  // First run:      {success: true, created: true, columnsAdded: [...], ...}
+  // Every run after: {success: true, created: false, columnsAdded: [], ...}
+
+  return { success: true };
+}
+```
+
+`type` is one of `integer`, `bigint`, `float`, `text`, `boolean` or
+`timestamp`. The step-by-step equivalent:
 
 ```javascript
 function init(context) {
@@ -933,12 +945,12 @@ function init(context) {
 ```javascript
 function createTask(context) {
   const req = context.request;
-  const result = JSON.parse(
-    database.insert(
+  const result = database
+    .insert(
       "tasks",
       JSON.stringify({ title: req.form.title, completed: false }),
-    ),
-  );
+    )
+    .json();
 
   if (result.error) {
     return ResponseBuilder.error(400, result.error);
@@ -948,15 +960,15 @@ function createTask(context) {
 }
 
 function listOpenTasks(context) {
-  const rows = JSON.parse(
-    database.query(
+  const rows = database
+    .query(
       "tasks",
       JSON.stringify({ completed: false }),
       100,
       "created_at",
       "desc",
-    ),
-  );
+    )
+    .json();
 
   return ResponseBuilder.json(rows);
 }
@@ -1003,12 +1015,39 @@ Makes HTTP requests to external APIs with built-in security features including s
 - `body` (string, optional): Request body for POST/PUT/PATCH requests
 - `timeout_ms` (number, optional): Timeout in milliseconds. Default: 30000 (30 seconds)
 
-**Returns:** JSON string with response object containing:
+**Returns:** A response object with
 
 - `status` (number): HTTP status code
 - `ok` (boolean): `true` if status is 2xx
 - `headers` (object): Response headers
 - `body` (string): Response body
+- `text()`: the body as text
+- `json()`: the body parsed as JSON (throws if it is not JSON)
+
+`fetch` used to return the JSON envelope as a **string**, and the object it
+returns now is usable three ways so both styles work:
+
+```javascript
+// Browser-shaped
+const response = await fetch("https://api.example.com/data");
+const data = await response.json();
+
+// The same object, without awaiting — the request is already finished
+const response = fetch("https://api.example.com/data");
+if (response.ok) {
+  const data = response.json();
+}
+
+// Still works: toString() yields the original envelope
+const response = JSON.parse(fetch("https://api.example.com/data"));
+```
+
+`await` is sequencing sugar here: host calls block, so the request has already
+finished by the time `fetch` returns. `Promise.all` over several fetches gives
+the right answers but runs them one after another.
+
+> **Note:** the response changed shape, the **options did not** — `fetch` still
+> takes them as a JSON string, so keep the `JSON.stringify({...})` around them.
 
 **Example - Simple GET Request:**
 
@@ -1016,8 +1055,7 @@ Makes HTTP requests to external APIs with built-in security features including s
 function fetchExample(context) {
   try {
     // Make a GET request
-    const responseJson = fetch("https://api.example.com/data");
-    const response = JSON.parse(responseJson);
+    const response = fetch("https://api.example.com/data");
 
     if (response.ok) {
       console.log("Fetch successful: " + response.status);
@@ -1057,8 +1095,7 @@ function createResource(context) {
     body: JSON.stringify(requestData),
   });
 
-  const responseJson = fetch("https://api.example.com/items", options);
-  const response = JSON.parse(responseJson);
+  const response = fetch("https://api.example.com/items", options);
 
   return {
     status: response.ok ? 200 : 502,
@@ -1083,8 +1120,7 @@ function callSecureAPI(context) {
     },
   });
 
-  const responseJson = fetch("https://secure-api.example.com/data", options);
-  const response = JSON.parse(responseJson);
+  const response = fetch("https://secure-api.example.com/data", options);
 
   return {
     status: 200,
@@ -1108,8 +1144,7 @@ function callSecureAPI(context) {
 ```javascript
 function robustFetch(context) {
   try {
-    const responseJson = fetch("https://api.example.com/data");
-    const response = JSON.parse(responseJson);
+    const response = fetch("https://api.example.com/data");
 
     // Handle different response statuses
     if (response.status === 200) {
@@ -2138,17 +2173,20 @@ Basic console logging (output goes to server logs).
 - `console.debug(message)`: Log a debug message (level: DEBUG)
   Reading logs back is the HTTP API's job: `GET /engine/script_logs` returns
   `{uri, logs, count, timestamp}`, with each entry shaped
-  `{scriptUri, message, level, timestamp}`. Omit `uri` for every script (newest
-  first) or pass one for a single script (oldest first); `level`, `since` and
-  `limit` narrow the result. `DELETE /engine/script_logs` prunes every script
-  back to its newest entries, or clears one script's logs when given a `uri`.
-  The engine answers both as the signed-in user, so an Administrator or an owner
-  of the script sees its entries and everyone else is refused.
+  `{scriptUri, message, level, timestamp, seq, requestId, kind, route}`. Omit
+  `uri` for every script (newest first) or pass one for a single script (oldest
+  first); `level`, `since`, `limit`, `contains`, `request_id`, `kind`, `route`
+  and `after_seq` narrow the result. `GET /engine/script_logs/stream` follows
+  the log live over Server-Sent Events with the same filters.
+  `DELETE /engine/script_logs` prunes every script back to its newest entries,
+  or clears one script's logs when given a `uri`. The engine answers all three
+  as the signed-in user, so an Administrator or an owner of the script sees its
+  entries and everyone else is refused. See the
+  [Logging guide](../guides/logging.md) for the full parameter list.
 
-> **Superseded globals:** `console.listLogs()`, `console.listLogsForUri(uri)`
-> and `console.pruneLogs()` still work, returning the same entries as a JSON
-> string, but they predate those endpoints and cannot filter by level, time or
-> count.
+> **Removed globals:** `console.listLogs()`, `console.listLogsForUri(uri)` and
+> `console.pruneLogs()` no longer exist — reading and pruning logs is the HTTP
+> API's job.
 
 **Example:**
 
@@ -2174,11 +2212,19 @@ const errors = await (
   await fetch(`/engine/script_logs?uri=${uri}&level=ERROR`)
 ).json();
 
-// Each entry has: scriptUri, message, level, timestamp (in milliseconds)
+// Each entry has: scriptUri, message, level, timestamp (in milliseconds),
+// seq, requestId, kind and route
 logs.forEach((log) => {
   console.log(
     `${new Date(log.timestamp).toISOString()} [${log.level}] ${log.message}`,
   );
+});
+
+// Follow the log as it is written
+const source = new EventSource(`/engine/script_logs/stream?uri=${uri}`);
+source.addEventListener("log", (event) => {
+  const entry = JSON.parse(event.data);
+  console.log(`[${entry.level}] ${entry.message}`);
 });
 ```
 
@@ -2490,9 +2536,9 @@ function createUser(context) {
   const { username, email } = req.form;
 
   // Store user in database
-  const userId = sharedStorage.getItem("nextUserId") || "1";
-  sharedStorage.setItem("user:" + userId, JSON.stringify({ username, email }));
-  sharedStorage.setItem("nextUserId", String(parseInt(userId) + 1));
+  const userId = scriptStorage.getItem("nextUserId") || "1";
+  scriptStorage.setItem("user:" + userId, JSON.stringify({ username, email }));
+  scriptStorage.setItem("nextUserId", String(parseInt(userId) + 1));
 
   // Broadcast user creation event
   dispatcher.sendMessage(
@@ -2531,9 +2577,9 @@ function onUserCreated(context) {
 
   // Update metrics
   const totalUsers = parseInt(
-    sharedStorage.getItem("metrics:totalUsers") || "0",
+    scriptStorage.getItem("metrics:totalUsers") || "0",
   );
-  sharedStorage.setItem("metrics:totalUsers", String(totalUsers + 1));
+  scriptStorage.setItem("metrics:totalUsers", String(totalUsers + 1));
 }
 
 function init(context) {
@@ -2619,7 +2665,7 @@ function init(context) {
 - Broadcasting to web browsers or other HTTP consumers
 - Need Server-Sent Events (SSE) functionality
 
-**Use shared storage when:**
+**Use script storage when:**
 
 - Scripts need to persist data
 - Coordinating state across requests

@@ -135,7 +135,7 @@ mcpRegistry.registerPrompt(name, description, argumentsJson, handlerFunction);
 - Receives **context object** with mode and arguments
 - In **prompt mode** (`context.mode === "prompt"`): returns messages array
 - In **completion mode** (`context.mode === "completion"`): returns completion suggestions
-- Has access to all standard APIs (console, sharedStorage, fetch, etc.)
+- Has access to all standard APIs (console, scriptStorage, fetch, etc.)
 
 **Context Object Structure:**
 

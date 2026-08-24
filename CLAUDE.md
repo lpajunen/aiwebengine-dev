@@ -91,29 +91,37 @@ the page reads and writes roles straight from the engine's HTTP API, which only 
 administrator. They run on the server inside a sandboxed **QuickJS**
 environment — not Node — so:
 
-- No `require`/`import`, no npm packages, no Node built-ins at runtime.
+- No npm packages and no Node built-ins at runtime. `import` does work, but only for the script's
+  **own assets** — `import { x } from "./server/m.ts"` resolves `server/m.ts` against the assets of
+  the same script, and anything else is an `invalid-import` diagnostic.
 - Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,
 method)`, `console`, `fetch`, etc. Handlers take a `context` and return
   `{ status, body, contentType, headers }`. See `src/docs/assets/guides/scripts.md` for the model.
 - **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
   depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the
   script — and the engine enforces that.
-- The legacy privileged JavaScript globals (`userStorage`, `scriptStorage`, the `*ForUri` secret
-  and asset methods, `console.listLogs`/`pruneLogs`, `routeRegistry.listRoutes`/`listStreams`)
-  are deprecated, and every one of them now has an HTTP equivalent under `/engine/` — script,
-  asset, secret and user management
+- The legacy privileged JavaScript globals (`userStorage`, the cross-script `scriptStorage`, the
+  `*ForUri` secret and asset methods, `console.listLogs`/`pruneLogs`,
+  `routeRegistry.listRoutes`/`listStreams`/`listAssets`) have been **removed** — calling one is a
+  `TypeError`. Every one of them has an HTTP equivalent under `/engine/` — script, asset, secret
+  and user management
   (`/engine/scripts`, `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`,
-  `/engine/assets`, `/engine/secrets`, `/engine/script_owners`, `/engine/users`,
-  `/engine/user_roles`), logs (`GET|DELETE /engine/script_logs`) and route introspection
-  (`/engine/routes`), with equivalent MCP tools — see `apis/openapi.json`. Prefer those endpoints;
-  the browser calls them with the signed-in user's session and the engine enforces that user's
-  permissions. Nothing under `src/` calls a privileged global any more.
+  `/engine/assets` (`GET` also does `lines`/`grep`, plus `PATCH` and `POST /engine/assets/batch`),
+  `/engine/secrets`, `/engine/script_owners`, `/engine/users`, `/engine/user_roles`), logs
+  (`GET|DELETE /engine/script_logs`, plus `GET /engine/script_logs/stream` for an SSE tail), route
+  introspection (`/engine/routes`) and the pre-deploy loop (`POST /engine/check`,
+  `POST /engine/eval`, `POST /engine/run_tests`), with equivalent MCP tools — see
+  `apis/openapi.json`. The browser calls them with the signed-in user's session and the engine
+  enforces that user's permissions.
+- The script-scoped storage global is `scriptStorage` (it was `sharedStorage`), and together with
+  `personalStorage` it implements the WHATWG `Storage` interface: `setItem`/`removeItem`/`clear`
+  return nothing and throw a `DOMException` (`QuotaExceededError`, `SecurityError`) instead of
+  returning a message.
 
 Every script under `src/` starts with a `/// <reference path="../../types/aiwebengine.d.ts" />`
 triple-slash directive. That file is **generated** by `make fetch-types` from
-`/engine/types/v0.1.0/` — edit the server, not it. The engine also serves a companion
-`aiwebengine-priv.d.ts` typing the deprecated privileged globals; this repo does not fetch it,
-since nothing here calls them. A script that needed it could reference the served URL directly.
+`/engine/types/v0.1.0/` — edit the server, not it. The companion `aiwebengine-priv.d.ts` that
+typed the privileged globals is gone from the server along with the globals themselves.
 
 `scripts/` is the opposite: ordinary **Node.js** CLI tooling that runs locally (CommonJS `require`,
 `dotenv`, real filesystem and network access).

@@ -113,8 +113,8 @@ function serveBlogPost(context) {
   // Extract slug from path like /blog/my-post
   const slug = req.path.split("/").pop();
 
-  // Load markdown from shared storage
-  const markdown = sharedStorage.getItem(`blog:${slug}`);
+  // Load markdown from script storage
+  const markdown = scriptStorage.getItem(`blog:${slug}`);
 
   if (!markdown) {
     return {
@@ -308,11 +308,11 @@ function serveCachedDocs(context) {
 
   // Check cache first
   const cacheKey = `html:${docId}`;
-  let html = sharedStorage.getItem(cacheKey);
+  let html = scriptStorage.getItem(cacheKey);
 
   if (!html) {
     // Cache miss - load and convert markdown
-    const markdown = sharedStorage.getItem(`markdown:${docId}`);
+    const markdown = scriptStorage.getItem(`markdown:${docId}`);
 
     if (!markdown) {
       return {
@@ -326,7 +326,7 @@ function serveCachedDocs(context) {
 
     if (!html.startsWith("Error:")) {
       // Cache the converted HTML
-      sharedStorage.setItem(cacheKey, html);
+      scriptStorage.setItem(cacheKey, html);
       console.info(`Cached HTML for document ${docId}`);
     }
   }
@@ -359,10 +359,10 @@ function updateDocument(context) {
   const markdown = req.form.content;
 
   // Store new markdown
-  sharedStorage.setItem(`markdown:${docId}`, markdown);
+  scriptStorage.setItem(`markdown:${docId}`, markdown);
 
   // Invalidate HTML cache
-  sharedStorage.removeItem(`html:${docId}`);
+  scriptStorage.removeItem(`html:${docId}`);
 
   return {
     status: 200,
@@ -418,5 +418,5 @@ function safeUserContent(context) {
 ## See Also
 
 - [JavaScript APIs Reference](javascript-apis.md) - Complete API reference
-- [Shared Storage API](javascript-apis.md#shared-storage) - For caching converted HTML
+- [Storage APIs](javascript-apis.md#storage-apis) - For caching converted HTML
 - [HTTP Response Format](javascript-apis.md#http-response-format) - Response structure

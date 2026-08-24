@@ -990,15 +990,14 @@ function renderProfileHandler(context) {
   // Make internal HTTP request to user service
   const response = fetch(
     "http://localhost:8080/internal/users/get?id=" + userId,
-    "{}",
   );
-  const data = JSON.parse(response);
+  const data = response.json();
 
   return renderProfile(data.user);
 }
 ```
 
-**3. Shared Storage (State Sharing)**
+**3. Script Storage (State Sharing)**
 
 Best for: Configuration, simple data sharing, caching
 
@@ -1006,13 +1005,13 @@ Best for: Configuration, simple data sharing, caching
 // Writer script: config-manager.js
 function updateConfigHandler(context) {
   const config = context.request.form;
-  sharedStorage.setItem("app:config", JSON.stringify(config));
+  scriptStorage.setItem("app:config", JSON.stringify(config));
   return jsonResponse(200, { updated: true });
 }
 
 // Reader script: api-service.js
 function apiHandler(context) {
-  const configStr = sharedStorage.getItem("app:config");
+  const configStr = scriptStorage.getItem("app:config");
   const config = configStr ? JSON.parse(configStr) : {};
 
   // Use config settings
@@ -1049,7 +1048,7 @@ function sendMessageHandler(context) {
 | ------------------ | ---------------------------------------- | -------------------------------------------- | -------------------------------- |
 | **Dispatcher**     | Multiple scripts need to react to events | Loose coupling, scalable, no response needed | No return value, async-like      |
 | **HTTP Routes**    | Need synchronous response or result      | Request-response, familiar pattern           | Tighter coupling, overhead       |
-| **Shared Storage** | Simple config/state sharing              | Fast, simple                                 | No notifications, manual polling |
+| **Script Storage** | Simple config/state sharing              | Fast, simple                                 | No notifications, manual polling |
 | **Subscriptions**  | Client needs real-time updates           | WebSocket streaming                          | Client-facing only               |
 
 ### Dispatcher Best Practices

@@ -1392,47 +1392,54 @@ init();
 
 Example of integrating with external AI services:
 
+Two things to keep straight: `fetch` takes its **options as a JSON string**,
+and API keys belong in secrets, injected with `{{secret:identifier}}` so their
+values never appear in the script.
+
 ```javascript
-// Example: OpenAI Integration (conceptual)
+// Example: OpenAI Integration
 function callOpenAI(prompt) {
-  // Note: You would need to handle API keys securely
-  // This is a conceptual example
-
-  const apiKey = "your-api-key"; // Should be stored securely
-  const endpoint = "https://api.openai.com/v1/chat/completions";
-
-  const response = fetch(endpoint, {
+  const options = JSON.stringify({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer " + apiKey,
+      Authorization: "Bearer {{secret:openai_api_key}}",
     },
     body: JSON.stringify({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
     }),
   });
 
-  // Handle response
-  // Note: fetch() API usage depends on aiwebengine's implementation
+  const response = fetch("https://api.openai.com/v1/chat/completions", options);
+  if (!response.ok) {
+    throw new Error("OpenAI request failed with status " + response.status);
+  }
+  return response.json();
 }
 
 // Example: Anthropic Claude Integration
 function callClaude(prompt) {
-  // Similar pattern for Claude API
-  const response = fetch("https://api.anthropic.com/v1/messages", {
+  const options = JSON.stringify({
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": "your-api-key",
+      "x-api-key": "{{secret:anthropic_api_key}}",
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-sonnet-20240229",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       messages: [{ role: "user", content: prompt }],
     }),
   });
+
+  const response = fetch("https://api.anthropic.com/v1/messages", options);
+  if (!response.ok) {
+    throw new Error("Claude request failed with status " + response.status);
+  }
+  const data = response.json();
+  return data.content[0].text;
 }
 ```
 
@@ -1535,12 +1542,16 @@ function generateAIResponse(prompt) {
   return "AI-generated response to: " + prompt;
 }
 
-// Call external AI API
-const response = fetch(aiEndpoint, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ prompt: userInput }),
-});
+// Call external AI API (options are a JSON string; the response is an object)
+const response = fetch(
+  aiEndpoint,
+  JSON.stringify({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: userInput }),
+  }),
+);
+const data = response.ok ? response.json() : null;
 
 // Handle AI errors
 try {

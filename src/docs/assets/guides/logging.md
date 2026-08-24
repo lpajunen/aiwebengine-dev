@@ -140,17 +140,60 @@ Read logs back over the engine's HTTP API. The engine answers based on the
 signed-in user: an **Administrator** or an owner of the script sees its
 entries, everyone else is refused.
 
-| Parameter | Meaning                                                       |
-| --------- | ------------------------------------------------------------- |
-| `uri`     | One script's logs; omit for every script                      |
-| `level`   | Only entries at this level, e.g. `ERROR`                      |
-| `since`   | Only entries at or after this time (epoch millis or RFC 3339) |
-| `limit`   | Keep at most this many of the newest matching entries         |
+| Parameter    | Meaning                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `uri`        | One script's logs; omit for every script                                                  |
+| `level`      | Only entries at this level, e.g. `ERROR`                                                  |
+| `since`      | Only entries at or after this time (epoch millis or RFC 3339)                             |
+| `limit`      | Keep at most this many of the newest matching entries                                     |
+| `contains`   | Only entries whose message contains this substring                                        |
+| `request_id` | Only the entries one invocation emitted, by `x-request-id` or a non-HTTP invocation's id  |
+| `kind`       | Only entries from invocations of this kind, e.g. `httpRoute`, `scheduled`, `init`         |
+| `route`      | Only entries logged while serving this registered route pattern, e.g. `/things/:id`       |
+| `after_seq`  | Only entries written after this `seq` — read forward from where a previous response ended |
 
-The response is `{uri, logs, count, timestamp}`, where each entry is
-`{scriptUri, message, level, timestamp}` and `timestamp` is milliseconds since
-the epoch. Entries come back **oldest first** for a single script and **newest
-first** for the all-scripts view.
+The response is `{uri, logs, count, timestamp}`. Each entry is
+
+```json
+{
+  "scriptUri": "https://example.com/api-users",
+  "message": "[api-users] created user 42",
+  "level": "LOG",
+  "timestamp": 1787583751340,
+  "seq": 938,
+  "requestId": "req_1787583751296_11",
+  "kind": "httpRoute",
+  "route": "/users"
+}
+```
+
+where `timestamp` is milliseconds since the epoch and `seq` is the engine-wide
+write order. `requestId`, `kind` and `route` are what the `request_id`, `kind`
+and `route` filters match on; `route` is `null` for anything that was not
+serving a registered route. Entries come back **oldest first** for a single
+script and **newest first** for the all-scripts view.
+
+The filters are what make an interleaved log legible — one invocation's output,
+picked out of everything the cluster wrote while it ran:
+
+```javascript
+const uri = encodeURIComponent("https://example.com/api-users");
+
+// Everything one request logged, in order
+const one = await (
+  await fetch(`/engine/script_logs?uri=${uri}&request_id=req_1787583751296_11`)
+).json();
+
+// Only what the scheduled jobs said
+const ticks = await (
+  await fetch(`/engine/script_logs?uri=${uri}&kind=scheduled&limit=50`)
+).json();
+
+// One route, errors only
+const failures = await (
+  await fetch(`/engine/script_logs?uri=${uri}&route=/users/:id&level=ERROR`)
+).json();
+```
 
 From a page, call it with the visitor's own session:
 
@@ -217,12 +260,57 @@ await fetch(`/engine/script_logs?uri=${encodeURIComponent(uri)}`, {
 });
 ```
 
-> **Superseded globals:** `console.listLogs()`, `console.listLogsForUri(uri)`
-> and `console.pruneLogs()` still work and return the same entries as a JSON
-> string, but they predate the endpoints above and cannot filter by level,
-> time or count. Prefer `/engine/script_logs` in new scripts.
+> **Removed globals:** `console.listLogs()`, `console.listLogsForUri(uri)` and
+> `console.pruneLogs()` no longer exist in the sandbox — calling one is a
+> `TypeError`. Use the endpoints above; they are what the engine reads and
+> prunes logs with.
 
-### Method 3: Server Logs
+### Method 3: Following the log with `GET /engine/script_logs/stream`
+
+A listing answers what a script _did_; the stream answers what it is doing
+**now**. It is Server-Sent Events, and it takes the same `uri`, `level`,
+`contains`, `request_id`, `kind` and `route` filters as the listing:
+
+```javascript
+const uri = encodeURIComponent("https://example.com/api-users");
+const source = new EventSource(
+  `/engine/script_logs/stream?uri=${uri}&backlog=50`,
+);
+
+let lastSeq = 0;
+source.addEventListener("log", (event) => {
+  const entry = JSON.parse(event.data);
+  lastSeq = entry.seq;
+  console.log(`[${entry.level}] ${entry.message}`);
+});
+```
+
+The stream opens with an `open` event carrying `{seq, timestamp}` — the log's
+position at the moment you connected — and then delivers entries **oldest
+first** as `log` events whose data is the same JSON the listing returns. Three
+extra parameters control where the tail starts:
+
+| Parameter   | Meaning                                                           |
+| ----------- | ----------------------------------------------------------------- |
+| `backlog`   | Replay this many of the newest matching entries before going live |
+| `since`     | Start at this time instead of at the end of the log               |
+| `after_seq` | Resume after this `seq`, replaying everything written since       |
+
+Because every entry carries a `seq`, a dropped connection resumes without a
+gap — reconnect with `after_seq` set to the last one seen:
+
+```javascript
+const resumed = new EventSource(
+  `/engine/script_logs/stream?uri=${uri}&after_seq=${lastSeq}`,
+);
+```
+
+The stream polls the log table rather than being pushed to from the write path,
+so it shows the whole cluster's output — every instance writes to the same
+table — and only what was actually committed, not lines a rolled-back
+transaction never kept.
+
+### Method 4: Server Logs
 
 Check server console or log files:
 
@@ -524,6 +612,27 @@ function slowHandler(context) {
 }
 ```
 
+### 6. Evaluate a Snippet in the Sandbox
+
+Some questions are faster to ask than to log. `POST /engine/eval` runs a
+snippet against a deployed script's own sandbox and returns the value plus
+everything it logged, so you can inspect state without adding a `console.log`,
+redeploying, and taking it out again:
+
+```bash
+curl -X POST "$MANAGE_HOST/engine/eval?uri=https://example.com/my-app" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: text/plain" \
+  --data-binary 'scriptStorage.getItem("app:config")'
+```
+
+The reply is `{ok, value, valueType, console, durationMs, rolledBack}`. The
+snippet can call the script's own functions and reach any module its entrypoint
+imports. Database writes roll back unless you pass `rollback=false`, and
+registrations do nothing. See
+[Deployment Workflow](../getting-started/03-deployment-workflow.md#checking-a-script-before-it-goes-live)
+for `check` and `run_tests` alongside it.
+
 ## Log Patterns
 
 ### Request/Response Logging
@@ -772,6 +881,17 @@ const uri = encodeURIComponent("https://example.com/api-users");
 const recent = await (
   await fetch(`/engine/script_logs?uri=${uri}&level=ERROR&limit=50`)
 ).json();
+
+// Everything one invocation logged
+const trace = await (
+  await fetch(`/engine/script_logs?uri=${uri}&request_id=${requestId}`)
+).json();
+
+// Follow the log live (SSE), replaying the newest 50 entries first
+const source = new EventSource(
+  `/engine/script_logs/stream?uri=${uri}&backlog=50`,
+);
+source.addEventListener("log", (e) => console.log(JSON.parse(e.data).message));
 
 // Prune every script back to its newest entries
 await fetch("/engine/script_logs", { method: "DELETE" });

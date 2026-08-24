@@ -38,15 +38,15 @@ function engineGet(context, path) {
   if (cookie) headers.Cookie = cookie;
 
   const host = incoming.host || incoming.Host;
-  const response = JSON.parse(
-    fetch("https://" + host + "/engine" + path, { headers: headers }),
-  );
-  if (response.status < 200 || response.status >= 300) {
+  const response = fetch("https://" + host + "/engine" + path, {
+    headers: headers,
+  });
+  if (!response.ok) {
     throw new Error(
       "Engine request " + path + " failed with status " + response.status,
     );
   }
-  return JSON.parse(response.body);
+  return response.json();
 }
 
 // Serve the editor HTML page
@@ -1034,27 +1034,43 @@ AVAILABLE JAVASCRIPT APIs:
      path prunes every script back to its newest entries, or clears one
      script's logs when given a uri.
 
-3. sharedStorage - Persistent key-value storage per script
-   - sharedStorage.getItem(key) - Get stored value (returns string or null)
-   - sharedStorage.setItem(key, value) - Store key-value pair (returns success message)
-   - sharedStorage.removeItem(key) - Delete key-value pair (returns boolean)
-   - sharedStorage.clear() - Remove all data for this script (returns success message)
+3. scriptStorage - Persistent key-value storage shared by everyone using the script
+   - Implements the WHATWG Storage interface, exactly like localStorage in a browser
+   - scriptStorage.getItem(key) - Get stored value (returns string or null)
+   - scriptStorage.setItem(key, value) - Store key-value pair (returns undefined)
+   - scriptStorage.removeItem(key) - Delete key-value pair (returns undefined)
+   - scriptStorage.clear() - Remove all data for this script (returns undefined)
+   - scriptStorage.length / scriptStorage.key(index) - Enumerate the stored keys
+   - Keys and values are coerced with String(); setItem("count", 1) stores "1"
+   - Failures THROW a DOMException instead of returning a message:
+     QuotaExceededError above 1 MB per value, SecurityError when the store is
+     not available to the caller. There is no string result to inspect.
+   - Named access works (store.foo, "foo" in store, delete store.foo,
+     Object.keys(store)), but each key is a database round trip
    - Each script has its own isolated storage namespace
    - Data persists across requests and server restarts (when PostgreSQL configured)
 
 4. personalStorage - Persistent key-value storage per script per user
+   - Same WHATWG Storage interface as scriptStorage, scoped to one signed-in user
    - personalStorage.getItem(key) - Get stored value for current user (returns string or null)
-   - personalStorage.setItem(key, value) - Store key-value pair for current user (returns success message)
-   - personalStorage.removeItem(key) - Delete key-value pair for current user (returns boolean)
-   - personalStorage.clear() - Remove all data for current user in this script (returns success message)
-   - Each authenticated user has their own isolated storage namespace within each script
-   - REQUIRES AUTHENTICATION: All methods return errors/null when user is not logged in
+   - personalStorage.setItem(key, value) - Store key-value pair for current user (returns undefined)
+   - personalStorage.removeItem(key) - Delete key-value pair for current user (returns undefined)
+   - personalStorage.clear() - Remove all data for current user in this script (returns undefined)
+   - REQUIRES AUTHENTICATION: every method throws a SecurityError DOMException
+     when nobody is logged in, so guard on context.request.auth.isAuthenticated
+     or catch the error
    - User ID is handled transparently by the engine - scripts never see user IDs directly
    - Data persists across requests and server restarts (when PostgreSQL configured)
    - Use for: user preferences, shopping carts, personalized settings, per-user state
 
-5. secretStorage - Read-only access to check secret availability
-   - secretStorage.exists(identifier) - Check if a secret exists (returns boolean)
+5. secretStorage - Manage secrets without ever reading their values back
+   - secretStorage.exists(identifier) - Check if a secret exists (returns boolean);
+     looks at the signed-in user's secrets first, then the script's
+   - secretStorage.setSecret(identifier, value) - Store a secret for the signed-in
+     user (returns a message; strings starting with "Error" report the failure)
+   - secretStorage.removeSecret(identifier) - Remove one of the user's secrets (returns boolean)
+   - secretStorage.clear() - Remove all of the user's secrets for this script (returns a message)
+   - Writes REQUIRE AUTHENTICATION; they report an error string when nobody is logged in
    - SECURITY: Secret values are NEVER exposed to JavaScript
    - Use {{secret:identifier}} syntax in fetch() headers to inject secret values
    - identifier: string (secret name)
@@ -1077,9 +1093,14 @@ AVAILABLE JAVASCRIPT APIs:
 
 7. fetch(url, options) - Make HTTP requests to external APIs
    - url: string
-   - options: JSON string with {method, headers, body, timeout_ms}
+   - options: JSON string with {method, headers, body, timeout_ms} - the options
+     are a JSON STRING, not an object; wrap them in JSON.stringify(...)
    - Supports {{secret:identifier}} in headers for secure API keys
-   - Returns: JSON string with {status, ok, headers, body}
+   - Returns: a response object with {status, ok, headers, body} plus text() and
+     json(); read it directly (const r = fetch(url); if (r.ok) r.json()) or
+     await it. The request is already finished when fetch returns, so await only
+     sequences. JSON.parse(fetch(url)) still works, because toString() yields the
+     old JSON envelope.
 
 8. graphQLRegistry - Object containing all GraphQL-related functions:
    
@@ -1414,16 +1435,15 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
       }),
     });
 
-    const responseJson = /** @type {string} */ (
-      /** @type {unknown} */ (
-        // @ts-ignore - fetch is a custom runtime implementation
-        fetch("https://api.anthropic.com/v1/messages", options)
-      )
+    // The runtime takes the options as a JSON string, though the generated
+    // types declare a FetchOptions object; the response is the new object.
+    const response = fetch(
+      "https://api.anthropic.com/v1/messages",
+      /** @type {any} */ (options),
     );
-    const response = JSON.parse(responseJson);
 
     if (response.ok) {
-      const data = JSON.parse(response.body);
+      const data = /** @type {any} */ (response.json());
       let aiResponse = data.content[0].text;
       console.log(`AI Assistant: Success - Model: ${data.model}`);
       console.log(
@@ -1661,16 +1681,15 @@ CURRENT CONTEXT:`;
       }),
     });
 
-    const responseJson = /** @type {string} */ (
-      /** @type {unknown} */ (
-        // @ts-ignore - fetch is a custom runtime implementation
-        fetch("https://api.anthropic.com/v1/messages", options)
-      )
+    // The runtime takes the options as a JSON string, though the generated
+    // types declare a FetchOptions object; the response is the new object.
+    const response = fetch(
+      "https://api.anthropic.com/v1/messages",
+      /** @type {any} */ (options),
     );
-    const response = JSON.parse(responseJson);
 
     if (response.ok) {
-      const data = JSON.parse(response.body);
+      const data = /** @type {any} */ (response.json());
 
       console.log(`AI Assistant (Tools): Stop reason: ${data.stop_reason}`);
 

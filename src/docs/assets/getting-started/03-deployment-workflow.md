@@ -586,11 +586,118 @@ Deploy to production:
   --file "./scripts/api/test.js"
 ```
 
+## Checking a Script Before It Goes Live
+
+Deploying to find out whether a script works is a slow loop, and a local `tsc`
+cannot see what the engine will do with the code. Three endpoints run the
+script the way the engine would, without publishing anything. All three answer
+to an owner of the script or an Administrator.
+
+### `POST /engine/check` — what would this script do if deployed?
+
+`check` resolves the script's asset-backed imports the way the engine does,
+runs its `init()` with **every registration withheld** and database writes
+rolled back, and reports what it found:
+
+```bash
+# Check what is deployed
+curl -X POST "$MANAGE_HOST/engine/check?uri=https://example.com/my-app" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "scriptUri": "https://example.com/my-app",
+  "ok": true,
+  "diagnostics": [],
+  "init": {
+    "ran": true,
+    "durationMs": 12,
+    "budgetMs": 10000,
+    "timedOut": false
+  },
+  "registrations": [
+    {
+      "kind": "route",
+      "name": "/things",
+      "method": "GET",
+      "handler": "listThings"
+    }
+  ],
+  "timestamp": "2026-01-01T12:00:00Z"
+}
+```
+
+`ok` is false when any diagnostic is an error. Each diagnostic is
+`{file, line, severity, code, message}`, and they catch what type checking
+cannot: import cycles the bundler rejects, a registration whose handler name is
+not defined as a global, an `init()` running close to its deploy budget, and a
+path another script already claims.
+
+Pass `content` to check code **before writing it** — the script URI does not
+even have to exist yet:
+
+```bash
+curl -X POST "$MANAGE_HOST/engine/check?uri=https://example.com/my-app" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "function init() { routeRegistry.registerRoute(\"/x\", \"handleX\", \"GET\"); }"}'
+```
+
+`rollback` (default `true`) controls whether the database writes `init()` makes
+are kept, and `timeout_ms` raises the ceiling for a slow `init()`.
+
+### `POST /engine/eval` — try an expression in a deployed script's sandbox
+
+`eval` loads the script's own program, evaluates a snippet against it, and
+returns the value plus everything the snippet logged. The snippet can call the
+script's functions, use the bindings its entrypoint imported, and `import` or
+`require` any module the entrypoint reaches:
+
+```bash
+curl -X POST "$MANAGE_HOST/engine/eval?uri=https://example.com/my-app" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: text/plain" \
+  --data-binary 'JSON.parse(database.query("things", "{}"))'
+```
+
+```json
+{
+  "scriptUri": "https://example.com/my-app",
+  "ok": true,
+  "value": "[]",
+  "valueType": "string",
+  "console": [],
+  "durationMs": 19,
+  "rolledBack": true,
+  "timestamp": "2026-01-01T12:00:00Z"
+}
+```
+
+The last expression is the value. Scripts run synchronously, so do not use
+`async`/`await`. Database writes roll back unless you pass `rollback=false`,
+and registrations do nothing — which is what makes this a safe way to inspect
+data or try an expression instead of authoring, deploying and deleting a
+throwaway script.
+
+### `POST /engine/run_tests` — run the script's own tests
+
+Test modules are the script's own assets named `*.test.ts` (or `.js`, `.jsx`,
+`.tsx`), written with the `describe` / `test` / `expect` globals. `run_tests`
+runs them and reports a verdict per case; `filter` runs only the cases whose
+name contains a given string, and writes roll back by default.
+
+Each of these has an equivalent MCP tool — `check_script`, `eval_script` and
+`run_tests` — so an assistant working on a script can use the same loop.
+
 ## Best Practices
 
 ### 1. Test Before Deploying
 
-Always test scripts in a dev/staging environment:
+Run `POST /engine/check` against the candidate source first — it reports what
+the engine would reject before anything is published (see
+[Checking a Script Before It Goes Live](#checking-a-script-before-it-goes-live)).
+Then test in a dev/staging environment:
 
 ```bash
 # Test locally first
@@ -663,14 +770,18 @@ echo "✓ Deployment complete!"
 After deploying, check:
 
 ```bash
-# Check logs
-curl http://localhost:8080/api/logs
+# Check logs (add ?uri=... for one script)
+curl "$MANAGE_HOST/engine/script_logs?limit=50" -H "Authorization: Bearer $TOKEN"
+
+# Follow the log as the first requests arrive
+curl -N "$MANAGE_HOST/engine/script_logs/stream?uri=$URI" \
+  -H "Authorization: Bearer $TOKEN"
 
 # Test endpoints
-curl http://localhost:8080/api/test
+curl https://example.com/my-app/things
 
 # Check registered routes
-curl http://localhost:8080/api/scripts
+curl "$MANAGE_HOST/engine/routes" -H "Authorization: Bearer $TOKEN"
 ```
 
 ### 5. Rollback Plan
@@ -745,6 +856,7 @@ Now that you understand deployment workflows:
 
 - [ ] Test locally
 - [ ] Review code changes
+- [ ] `POST /engine/check` the candidate source
 - [ ] Check logs for errors
 - [ ] Deploy to staging
 - [ ] Test in staging
@@ -761,11 +873,14 @@ Now that you understand deployment workflows:
 # Test endpoint
 curl http://localhost:8080/api/test
 
+# Check a script without deploying it
+curl -X POST "$MANAGE_HOST/engine/check?uri=$URI" -H "Authorization: Bearer $TOKEN"
+
 # View logs
-curl http://localhost:8080/api/logs
+curl "$MANAGE_HOST/engine/script_logs?uri=$URI" -H "Authorization: Bearer $TOKEN"
 
 # List scripts
-curl http://localhost:8080/api/scripts
+curl "$MANAGE_HOST/engine/scripts" -H "Authorization: Bearer $TOKEN"
 ```
 
 Happy deploying! 🚀

@@ -25,9 +25,11 @@
 
 /**
  * The engine's own HTTP API, served under /engine/. These endpoints replaced
- * the legacy JavaScript globals (scriptStorage, assetStorage, secretStorage,
- * console.listLogs/pruneLogs, routeRegistry.listRoutes) that the editor script
- * used to call on the browser's behalf, so the editor now talks to them
+ * the privileged JavaScript globals (userStorage, the cross-script
+ * scriptStorage, the *ForUri secret and asset methods,
+ * console.listLogs/pruneLogs, routeRegistry.listRoutes/listStreams) that the
+ * editor script used to call on the browser's behalf. The engine has since
+ * removed those globals outright, so the editor talks to the endpoints
  * directly with the signed-in user's session and the engine enforces that
  * user's permissions.
  */

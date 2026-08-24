@@ -102,7 +102,7 @@ Tool handlers receive a `context` object with the following structure:
 1. Must accept a `context` parameter
 2. Must return a JSON string with the result
 3. Should handle errors gracefully
-4. Has access to all standard APIs (fetch, console, sharedStorage, etc.)
+4. Has access to all standard APIs (fetch, console, scriptStorage, etc.)
 
 **Example Handler:**
 
@@ -575,10 +575,10 @@ function searchDataHandler(context) {
   const response = fetch(
     `https://api.example.com/search?q=${encodeURIComponent(query)}`,
   );
-  const data = JSON.parse(response.body);
+  const data = response.json();
 
-  // Use sharedStorage to cache results
-  sharedStorage.setItem(`search:${query}`, response.body);
+  // Use scriptStorage to cache results
+  scriptStorage.setItem(`search:${query}`, response.body);
 
   // Log the search
   console.log(`Search performed: ${query}`);
