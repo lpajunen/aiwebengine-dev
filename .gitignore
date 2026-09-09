@@ -7,3 +7,5 @@ node_modules/
 .vscode/mcp.json
 
 .claude/settings.local.json
+
+schemas/oauth-client.json
