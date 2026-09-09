@@ -1,77 +1,56 @@
-.PHONY: all fetch-types fetch-openapi fetch-graphql-schema oauth-login refresh-token token-status upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run upload-admin upload-admin-dry-run set-script-hosts set-script-hosts-dry-run install outdated format format-check lint typecheck verify
+# Repository-specific targets. Everything generic lives in scripts/tooling.mk,
+# which is a verbatim copy of the shared tooling: `make check-tooling` reports
+# drift against TOOLING_SOURCE, `make sync-tooling` takes its version.
+# Per-script defaults live in aiwebengine.config.json.
 
-# Host configuration (can be overridden via environment variables)
-# SERVER_HOST serves deployed solutions and OAuth; MANAGE_HOST serves the
-# engine management API (/engine/...) and MCP (/mcp).
-export SERVER_HOST ?= https://softagen.com
-export MANAGE_HOST ?= https://manage.softagen.com
+.PHONY: all upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run \
+        upload-admin upload-admin-dry-run upload-all \
+        set-script-hosts set-script-hosts-dry-run
 
-# Default target: fetch types, OpenAPI, and GraphQL schema
-all:
-	npm run all
+# Fetch types, OpenAPI and the GraphQL schema, then format.
+all: fetch-types fetch-openapi fetch-graphql-schema format
 
-fetch-types:
-	npm run fetch-types
+include scripts/tooling.mk
 
-fetch-openapi:
-	npm run fetch-openapi
+# admin, editor and docs are served from the management host, not from
+# SERVER_HOST, so the binding below names it explicitly.
+MANAGE_HOSTNAME = $(shell echo "$(MANAGE_HOST)" | sed -e 's|^https\{0,1\}://||' -e 's|/.*$$||')
 
-fetch-graphql-schema:
-	npm run fetch-graphql-schema
-
-oauth-login:
-	npm run oauth-login
-
-# Renew the saved token without the browser login. The tooling does this
-# for itself when it finds an expired token; these are for checking.
-refresh-token:
-	npm run refresh-token
-
-token-status:
-	npm run token-status
-
+# Each script is its directory: main.js plus every other file under it as
+# assets, at the same relative path.
 upload-editor:
-	npm run upload-editor
+	@node scripts/upload-script.js --script-path editor/main.js \
+	  --script-uri https://example.com/editor --assets-dir editor
 
 upload-editor-dry-run:
-	npm run upload-editor-dry-run
+	@node scripts/upload-script.js --script-path editor/main.js \
+	  --script-uri https://example.com/editor --assets-dir editor --dry-run
 
 upload-docs:
-	npm run upload-docs
+	@node scripts/upload-script.js --script-path docs/main.js \
+	  --script-uri https://example.com/docs --assets-dir docs
 
 upload-docs-dry-run:
-	npm run upload-docs-dry-run
+	@node scripts/upload-script.js --script-path docs/main.js \
+	  --script-uri https://example.com/docs --assets-dir docs --dry-run
 
 upload-admin:
-	npm run upload-admin
+	@node scripts/upload-script.js --script-path admin/main.js \
+	  --script-uri https://example.com/admin --assets-dir admin
 
 upload-admin-dry-run:
-	npm run upload-admin-dry-run
+	@node scripts/upload-script.js --script-path admin/main.js \
+	  --script-uri https://example.com/admin --assets-dir admin --dry-run
 
-# Publish admin, editor and docs on MANAGE_HOST (run after deploying them)
+upload-all: upload-admin upload-editor upload-docs
+
+# Publish admin, editor and docs on the management host (run after deploying).
 set-script-hosts:
-	npm run set-script-hosts
+	@node scripts/set-script-hosts.js --script-uri https://example.com/admin \
+	  --script-uri https://example.com/editor --script-uri https://example.com/docs \
+	  --hosts $(MANAGE_HOSTNAME)
 
 set-script-hosts-dry-run:
-	npm run set-script-hosts-dry-run
-
-install:
-	npm run install
-
-outdated:
-	npm run outdated
-
-format:
-	npm run format
-
-format-check:
-	npm run format-check
-
-lint:
-	npm run lint
-
-typecheck:
-	npm run typecheck
-
-verify:
-	npm run verify
+	@node scripts/set-script-hosts.js --script-uri https://example.com/admin \
+	  --script-uri https://example.com/editor --script-uri https://example.com/docs \
+	  --hosts $(MANAGE_HOSTNAME) --dry-run

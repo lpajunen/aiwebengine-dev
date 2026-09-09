@@ -65,7 +65,7 @@ See [.env.example](.env.example) for all available configuration options.
 ### Fetch Type Definitions
 
 ```bash
-npm run fetch-types
+make fetch-types
 # or
 make fetch-types
 ```
@@ -75,7 +75,7 @@ make fetch-types
 Authenticate with your AI Web Engine server:
 
 ```bash
-npm run oauth-login
+make oauth-login
 # or
 make oauth-login
 ```
@@ -85,7 +85,7 @@ make oauth-login
 Download the GraphQL schema for introspection:
 
 ```bash
-npm run fetch-graphql-schema
+make fetch-graphql-schema
 # or
 make fetch-graphql-schema
 ```
@@ -96,8 +96,8 @@ After deploying the admin, editor and docs scripts, publish them on the manageme
 (`MANAGE_HOST`, default `manage.softagen.com`). Requires administrator privileges:
 
 ```bash
-npm run set-script-hosts-dry-run   # preview
-npm run set-script-hosts
+make set-script-hosts-dry-run   # preview
+make set-script-hosts
 # or
 make set-script-hosts
 ```
@@ -111,12 +111,12 @@ node scripts/set-script-hosts.js --script-uri https://example.com/docs --hosts s
 
 ## Documentation
 
-Comprehensive documentation is available in the [src/docs](src/docs) directory:
+Comprehensive documentation is available in the [docs](docs) directory:
 
-- **Getting Started**: [src/docs/assets/getting-started](src/docs/assets/getting-started)
-- **Guides**: [src/docs/assets/guides](src/docs/assets/guides)
-- **Examples**: [src/docs/assets/examples](src/docs/assets/examples)
-- **API Reference**: [src/docs/assets/reference](src/docs/assets/reference)
+- **Getting Started**: [docs/getting-started](docs/getting-started)
+- **Guides**: [docs/guides](docs/guides)
+- **Examples**: [docs/examples](docs/examples)
+- **API Reference**: [docs/reference](docs/reference)
 
 To serve the documentation locally, run the documentation system via the docs.js script.
 

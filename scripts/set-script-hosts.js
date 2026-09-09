@@ -10,16 +10,18 @@ require("dotenv").config();
 //   --script-uri <uri>   URI of a script to bind (required, repeatable)
 //   --hosts <hosts>      Comma-separated hosts, "*" for every configured host, or
 //                        "" for the engine default host
-//                        (default: the host part of MANAGE_HOST)
+//                        (default: the host part of SERVER_HOST)
 //   --dry-run            Show what would be changed without calling the API
 // Env:
 //   MANAGE_HOST (default: https://manage.softagen.com) - engine management API
+//   SERVER_HOST (default: https://softagen.com) - where deployed solutions are served
 
 const fs = require("fs");
 const path = require("path");
 const { loadAccessToken } = require("./lib/token.js");
 
 const manageHost = process.env.MANAGE_HOST || "https://manage.softagen.com";
+const serverHost = process.env.SERVER_HOST || "https://softagen.com";
 
 /**
  * Parse command-line arguments
@@ -30,7 +32,7 @@ function parseArgs() {
   /** @type {{scriptUris: string[], hosts: string, dryRun: boolean}} */
   const config = {
     scriptUris: [],
-    hosts: new URL(manageHost).host,
+    hosts: new URL(serverHost).host,
     dryRun: false,
   };
 
@@ -131,7 +133,7 @@ async function main() {
         "  --hosts <hosts>      Comma-separated hosts, '*' for every configured host,",
       );
       console.error(
-        "                       or '' for the engine default host (default: MANAGE_HOST)",
+        "                       or '' for the engine default host (default: SERVER_HOST)",
       );
       console.error(
         "  --dry-run            Show what would be changed (optional)",

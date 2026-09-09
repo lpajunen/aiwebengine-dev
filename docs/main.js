@@ -1,4 +1,4 @@
-/// <reference path="../../types/aiwebengine.d.ts" />
+/// <reference path="../types/aiwebengine.d.ts" />
 
 /**
  * Documentation Feature Script
@@ -31,10 +31,17 @@ function extractTitle(markdown) {
 }
 
 /**
- * Map URL path to asset name
- * /docs/ -> docs/README.md
- * /docs/guides/scripts -> docs/guides/scripts.md
- * /docs/guides/scripts/ -> docs/guides/scripts.md
+ * Map URL path to asset name.
+ *
+ * The asset name is the file's path inside this script's directory, so
+ * docs/guides/scripts.md in the repository is the asset guides/scripts.md.
+ * It used to carry a "docs/" prefix, added at upload time by --asset-prefix;
+ * that made the deployed name differ from the repository path, which the
+ * engine's git pull has no way to reproduce.
+ *
+ * /docs/ -> README.md
+ * /docs/guides/scripts -> guides/scripts.md
+ * /docs/guides/scripts/ -> guides/scripts.md
  * @param {string} docPath
  */
 function mapPathToAssetName(docPath) {
@@ -45,7 +52,7 @@ function mapPathToAssetName(docPath) {
 
   // Empty path means README
   if (docPath === "" || docPath === "/") {
-    return "docs/README.md";
+    return "README.md";
   }
 
   // Remove leading slash if present
@@ -55,11 +62,11 @@ function mapPathToAssetName(docPath) {
 
   // If path already has .md extension, use as-is
   if (docPath.endsWith(".md")) {
-    return "docs/" + docPath;
+    return docPath;
   }
 
   // Otherwise add .md extension
-  return "docs/" + docPath + ".md";
+  return docPath + ".md";
 }
 
 /**
@@ -547,7 +554,7 @@ function init(context) {
   );
 
   // Register engine stylesheet asset
-  routeRegistry.registerAssetRoute("/engine.css", "docs/engine.css", {
+  routeRegistry.registerAssetRoute("/engine.css", "engine.css", {
     tags: ["Aiwebengine documentation"],
   });
 

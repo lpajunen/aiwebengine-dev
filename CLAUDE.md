@@ -12,7 +12,7 @@ is the default host for deployed solutions, while the engine's management API (`
 MCP endpoint (`/mcp`), authenticated GraphQL endpoint (`/graphql`) and OAuth discovery live on
 `MANAGE_HOST` (default `https://manage.softagen.com`).
 
-There is no build step and no test suite. Work here is: authoring server-side scripts under `src/`,
+There is no build step and no test suite. Work here is: authoring server-side scripts in the top-level script directories,
 maintaining the Markdown docs, and running the Node CLI helpers under `scripts/`.
 
 ## Setup and common commands
@@ -54,20 +54,24 @@ each asset to `POST $MANAGE_HOST/engine/assets`. Convenience wrappers with the c
 wired:
 
 ```bash
-npm run upload-editor            # deploy src/editor/  (add -dry-run to preview)
-npm run upload-docs              # deploy src/docs/    (add -dry-run to preview)
-npm run upload-admin             # deploy src/admin/   (add -dry-run to preview)
+make upload-editor               # deploy editor/  (add -dry-run to preview)
+make upload-docs                 # deploy docs/    (add -dry-run to preview)
+make upload-admin                # deploy admin/   (add -dry-run to preview)
+make upload-all                  # all three
 ```
 
 Always run the `*-dry-run` variant first to see exactly what would be uploaded. To deploy something
 else, call the script directly:
 
 ```bash
-node scripts/upload-script.js --script-path <file> --script-uri <uri> \
-  --assets-dir <dir> --asset-prefix <prefix> [--dry-run]
+node scripts/upload-script.js --script-path <dir>/main.js --script-uri <uri> \
+  --assets-dir <dir> [--dry-run]
 ```
 
-Files matching patterns in `.uploadignore` are skipped when scanning `--assets-dir`.
+The assets directory is the script's own directory. Two things under it are not assets: `main.*`,
+which is the script itself, and whatever `.aiwebengineignore` excludes — the same file the engine
+reads when pushing a script to a repository, so an upload and a push agree on what belongs to the
+script.
 
 After deploying, bind the scripts to the host they should be published on with
 `scripts/set-script-hosts.js`, which calls `POST $MANAGE_HOST/engine/script_hosts?uri=…&hosts=…`
@@ -81,11 +85,40 @@ make set-script-hosts-dry-run    # preview
 `--hosts` overrides the target: a comma-separated list, `*` for every configured host, or empty for
 the engine's default host. Without it the script uses the host part of `MANAGE_HOST`.
 
-## Two things that both live in `src/`, and how they differ
+## Repository layout is the deployment contract
 
-`src/editor/`, `src/docs/`, and `src/admin/` are each a **deployed AI Web Engine solution**, not
-local Node code. Each is a single `.js` entry script (the editor and docs also ship an `assets/`
-directory; admin is a single self-contained script with no assets). `src/admin/admin.js` serves the
+Every script is a **top-level directory holding `main.*`**; everything else under it is one of its
+assets, at the same relative path. `docs/guides/scripts.md` is deployed as the asset
+`guides/scripts.md`, and `docs/main.js` is the entrypoint rather than an asset.
+
+This is the layout the engine's `/engine/git/*` API reads and writes, which is why there is no
+`src/` directory and no manifest: the URI a script is served at and who owns it deliberately do not
+live in the repository. `docs` used to add a `docs/` prefix to its asset names at upload time, which
+made the deployed name differ from the repository path; that prefix is gone, and `mapPathToAssetName`
+in `docs/main.js` returns the repository-relative name.
+
+## Shared tooling
+
+`scripts/` and the two TypeScript configs are a verbatim copy of the same files in
+`../aiwebengine-examples`, which is the source of truth.
+
+```bash
+make check-tooling    # diff against the source; fails on drift
+make sync-tooling     # take the source version
+```
+
+`TOOLING_SOURCE` overrides where that is. Everything repository-specific is kept out of the shared
+files: per-script defaults live in `aiwebengine.config.json` (which script `make eval` and
+`make status` talk to when none is named), and the upload and host-binding targets live in the
+`Makefile`, which includes the shared `scripts/tooling.mk` for everything generic.
+
+Fix a tooling bug in `../aiwebengine-examples`, then `make sync-tooling` here.
+
+## Scripts and tooling, and how they differ
+
+`editor/`, `docs/`, and `admin/` are each a **deployed AI Web Engine solution**, not
+local Node code. Each is a directory holding `main.js`, with every other file under it deployed as
+one of that script's assets at the same relative path (admin has none). `admin/main.js` serves the
 user-role management UI at `/admin`, grouped under the "Aiwebengine administration" tag in Swagger;
 the page reads and writes roles straight from the engine's HTTP API, which only answers an
 administrator. They run on the server inside a sandboxed **QuickJS**
@@ -96,7 +129,7 @@ environment — not Node — so:
   the same script, and anything else is an `invalid-import` diagnostic.
 - Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,
 method)`, `console`, `fetch`, etc. Handlers take a `context` and return
-  `{ status, body, contentType, headers }`. See `src/docs/assets/guides/scripts.md` for the model.
+  `{ status, body, contentType, headers }`. See `docs/guides/scripts.md` for the model.
 - **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
   depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the
   script — and the engine enforces that.
@@ -118,7 +151,7 @@ method)`, `console`, `fetch`, etc. Handlers take a `context` and return
   return nothing and throw a `DOMException` (`QuotaExceededError`, `SecurityError`) instead of
   returning a message.
 
-Every script under `src/` starts with a `/// <reference path="../../types/aiwebengine.d.ts" />`
+Every script starts with a `/// <reference path="../types/aiwebengine.d.ts" />`
 triple-slash directive. That file is **generated** by `make fetch-types` from
 `/engine/types/v0.1.0/` — edit the server, not it. The companion `aiwebengine-priv.d.ts` that
 typed the privileged globals is gone from the server along with the globals themselves.
@@ -128,9 +161,10 @@ typed the privileged globals is gone from the server along with the globals them
 
 ## Type checking
 
-`jsconfig.json` enables `checkJs` over `src/**/*.js` — the source scripts are plain JS type-checked
-via JSDoc against `types/aiwebengine.d.ts`. `tsconfig.json` covers `.ts/.tsx/.jsx` and configures
-JSX (`h`/`Fragment` pragma) for any TypeScript/JSX authored under `src/`.
+`jsconfig.json` enables `checkJs` over the script directories (`*/**/*.js`) — the source scripts are
+plain JS type-checked via JSDoc against `types/aiwebengine.d.ts`. `tsconfig.json` covers
+`.ts/.tsx/.jsx` and configures JSX (`h`/`Fragment` pragma). Both exclude `node_modules` and
+`scripts`, so the Node tooling is **not** type-checked.
 
 ```bash
 make typecheck                   # tsc over both configs
@@ -142,9 +176,9 @@ script.
 
 ## Documentation
 
-The user-facing docs under `src/docs/assets/` (getting-started, guides, examples, reference, tools)
+The user-facing docs under `docs/` (getting-started, guides, examples, reference, tools)
 are the authoritative description of the platform's scripting model and APIs — consult them before
-writing or changing a server-side script. They are served by `src/docs/docs.js` once deployed.
+writing or changing a server-side script. They are served by `docs/main.js` once deployed.
 
 ## Conventions
 
