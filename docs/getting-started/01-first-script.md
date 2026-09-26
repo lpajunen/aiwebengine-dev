@@ -190,10 +190,10 @@ curl "http://localhost:8080/api/logs?uri=/hello"
 Every handler receives a single `context` object. It always includes:
 
 - `request`: normalized HTTP request information
-- `args`: resolver or command arguments (if applicable)
-- `kind`: invocation type (`httpRoute`, `graphqlQuery`, etc.)
+- `args`: handler arguments (MCP tools and prompts; absent for plain HTTP routes)
+- `kind`: invocation type (`httpRoute`, `scheduled`, `mcpTool`, etc.)
 - `scriptUri` / `handlerName`: metadata about the running script
-- `meta` and `connectionMetadata`: optional maps for stream/subscription handlers
+- `meta` and `connectionMetadata`: optional maps for stream handlers
 
 Pattern most handlers use:
 

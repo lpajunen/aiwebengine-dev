@@ -28,16 +28,15 @@ Perfect for beginners who want a guided learning path:
 
 Deep dives into specific development areas:
 
-| Guide                                                    | What You'll Learn                                                |
-| -------------------------------------------------------- | ---------------------------------------------------------------- |
-| [Script Development](guides/scripts.md)                  | Create handlers, register routes, manage state, error handling   |
-| [MCP Tools Development](guides/mcp-tools.md)             | Create AI-discoverable tools using Model Context Protocol        |
-| [MCP Prompts Development](guides/mcp-prompts.md)         | Create reusable templates for AI-assisted code generation        |
-| [Asset Management](guides/assets.md)                     | Upload and serve images, CSS, JavaScript, and other static files |
-| [Logging & Debugging](guides/logging.md)                 | Write logs, debug issues, monitor script behavior                |
-| [Streaming & Real-time](guides/streaming.md)             | Build real-time features with Server-Sent Events                 |
-| [GraphQL Subscriptions](guides/graphql-subscriptions.md) | Real-time data updates with GraphQL                              |
-| [AI-Assisted Development](guides/ai-development.md)      | Use AI to generate, edit, and debug scripts                      |
+| Guide                                               | What You'll Learn                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
+| [Script Development](guides/scripts.md)             | Create handlers, register routes, manage state, error handling   |
+| [MCP Tools Development](guides/mcp-tools.md)        | Create AI-discoverable tools using Model Context Protocol        |
+| [MCP Prompts Development](guides/mcp-prompts.md)    | Create reusable templates for AI-assisted code generation        |
+| [Asset Management](guides/assets.md)                | Upload and serve images, CSS, JavaScript, and other static files |
+| [Logging & Debugging](guides/logging.md)            | Write logs, debug issues, monitor script behavior                |
+| [Streaming & Real-time](guides/streaming.md)        | Build real-time features with Server-Sent Events                 |
+| [AI-Assisted Development](guides/ai-development.md) | Use AI to generate, edit, and debug scripts                      |
 
 ### Tools & Workflows
 
@@ -55,14 +54,14 @@ Complete API documentation:
 
 | Reference                                       | Content                                                                                         |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [JavaScript APIs](reference/javascript-apis.md) | Routes, assets, storage, secrets, database, scheduler, GraphQL, fetch, ResponseBuilder          |
+| [JavaScript APIs](reference/javascript-apis.md) | Routes, assets, storage, secrets, database, scheduler, `fetch`, ResponseBuilder                 |
 | [Authentication API](reference/auth-api.md)     | Request auth context, plus user & role management over `/engine/users` and `/engine/user_roles` |
 | [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars, and base64 helpers (`convert.*`)                                          |
 
 The [JavaScript APIs](reference/javascript-apis.md) page is the single reference
 for the runtime globals — it covers **storage** (`scriptStorage`,
 `personalStorage`), **secrets** (`secretStorage`), the **database**, the
-**scheduler** (`schedulerService`), GraphQL, `fetch`, and `ResponseBuilder`.
+**scheduler** (`schedulerService`), `fetch`, and `ResponseBuilder`.
 
 ### Examples & Patterns
 

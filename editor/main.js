@@ -106,7 +106,6 @@ function serveEditor(context) {
             <nav class="unified-nav">
                 <a href="/docs" title="Documentation">📚 Documentation</a>
                 <a href="/editor" title="Code Editor">✏️ Editor</a>
-                <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
                 <a href="/editor/swagger" title="REST API">📖 Swagger</a>
             </nav>
         </header>
@@ -393,197 +392,6 @@ function serveEditor(context) {
   };
 }
 
-// Serve GraphiQL interface
-/** @param {*} context */
-function serveGraphiQL(context) {
-  const req = getRequest(context);
-
-  // Serve GraphiQL using CDN
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>aiwebengine GraphiQL Editor</title>
-    <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css" />
-    <link rel="stylesheet" href="/editor/header.css" />
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background: #1e1e1e;
-        }
-        #graphiql {
-            flex: 1;
-            height: calc(100vh - 50px);
-        }
-    </style>
-</head>
-<body>
-    <header class="unified-header">
-        <div class="header-left">
-            <h1>aiwebengine</h1>
-        </div>
-        <nav class="unified-nav">
-            <a href="/docs" title="Documentation">📚 Documentation</a>
-            <a href="/editor" title="Code Editor">✏️ Editor</a>
-            <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
-            <a href="/editor/swagger" title="REST API">📖 Swagger</a>
-        </nav>
-    </header>
-    <div id="graphiql">Loading...</div>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/graphiql@3/graphiql.min.js"></script>
-    <script src="https://unpkg.com/graphql-ws@5/umd/graphql-ws.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Create WebSocket client for subscriptions
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = wsProtocol + '//' + window.location.host + '/graphql/ws';
-            
-            let wsClient = null;
-            
-            // Helper function to detect if query is a subscription
-            function isSubscriptionOperation(query) {
-                if (!query) return false;
-                // Remove all comment lines and normalize whitespace
-                const normalized = query
-                    .split('\\n')
-                    .map(line => line.trim())
-                    .filter(line => !line.startsWith('#')) // Remove comment lines
-                    .join(' ')
-                    .replace(/\\s+/g, ' ') // Normalize whitespace
-                    .trim();
-                // Check if it contains subscription operation
-                return /^subscription[\\s{]/.test(normalized) || /\\bsubscription\\s+\\w+\\s*\\{/.test(normalized);
-            }
-            
-            // Create a fetcher that handles both HTTP and WebSocket
-            const fetcher = function(graphQLParams, fetcherOpts) {
-                // Check if this is a subscription
-                const isSubscription = isSubscriptionOperation(graphQLParams.query);
-                
-                if (isSubscription) {
-                    // Use WebSocket for subscriptions - return an async iterable
-                    if (!wsClient) {
-                        wsClient = graphqlWs.createClient({
-                            url: wsUrl,
-                        });
-                    }
-                    
-                    // Return an async iterable that GraphiQL expects
-                    return {
-                        [Symbol.asyncIterator]: function() {
-                            const values = [];
-                            let resolve = null;
-                            let reject = null;
-                            let done = false;
-                            
-                            const unsubscribe = wsClient.subscribe(
-                                {
-                                    query: graphQLParams.query,
-                                    variables: graphQLParams.variables,
-                                    operationName: graphQLParams.operationName,
-                                },
-                                {
-                                    next: function(data) {
-                                        if (resolve) {
-                                            resolve({ value: data, done: false });
-                                            resolve = null;
-                                        } else {
-                                            values.push(data);
-                                        }
-                                    },
-                                    error: function(error) {
-                                        if (reject) {
-                                            reject(error);
-                                        }
-                                        done = true;
-                                    },
-                                    complete: function() {
-                                        done = true;
-                                        if (resolve) {
-                                            resolve({ done: true });
-                                        }
-                                    }
-                                }
-                            );
-                            
-                            if (fetcherOpts && fetcherOpts.signal) {
-                                fetcherOpts.signal.addEventListener('abort', function() {
-                                    unsubscribe();
-                                    done = true;
-                                    if (resolve) {
-                                        resolve({ done: true });
-                                    }
-                                });
-                            }
-                            
-                            return {
-                                next: function() {
-                                    if (values.length > 0) {
-                                        return Promise.resolve({ value: values.shift(), done: false });
-                                    }
-                                    if (done) {
-                                        return Promise.resolve({ done: true });
-                                    }
-                                    return new Promise(function(res, rej) {
-                                        resolve = res;
-                                        reject = rej;
-                                    });
-                                },
-                                return: function() {
-                                    unsubscribe();
-                                    return Promise.resolve({ done: true });
-                                }
-                            };
-                        }
-                    };
-                } else {
-                    // Use HTTP for queries and mutations
-                    return fetch('/graphql', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(graphQLParams),
-                        signal: fetcherOpts ? fetcherOpts.signal : undefined,
-                    }).then(function(response) {
-                        return response.json();
-                    });
-                }
-            };
-
-            const root = ReactDOM.createRoot(document.getElementById('graphiql'));
-            root.render(React.createElement(GraphiQL, { 
-                fetcher: fetcher,
-                defaultTheme: 'dark'
-            }));
-
-            // Active state detection for unified navigation
-            const path = window.location.pathname;
-            document.querySelectorAll('.unified-nav a').forEach(function(link) {
-                const linkPath = new URL(link.href, window.location.origin).pathname;
-                if (path.startsWith(linkPath)) {
-                    link.classList.add('active');
-                }
-            });
-        });
-    </script>
-</body>
-</html>`;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html; charset=UTF-8",
-  };
-}
-
 // Serve Swagger UI interface
 /** @param {*} context */
 function serveSwaggerUI(context) {
@@ -624,7 +432,6 @@ function serveSwaggerUI(context) {
         <nav class="unified-nav">
             <a href="/docs" title="Documentation">📚 Documentation</a>
             <a href="/editor" title="Code Editor">✏️ Editor</a>
-            <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
             <a href="/editor/swagger" title="REST API">📖 Swagger</a>
         </nav>
     </header>
@@ -1102,42 +909,6 @@ AVAILABLE JAVASCRIPT APIs:
      sequences. JSON.parse(fetch(url)) still works, because toString() yields the
      old JSON envelope.
 
-8. graphQLRegistry - Object containing all GraphQL-related functions:
-   
-   graphQLRegistry.registerQuery(name, sdl, resolverName, visibility) - Register GraphQL query
-   - name: string (query name)
-   - sdl: string (GraphQL SDL schema definition)
-   - resolverName: string (name of resolver function)
-   - visibility: "internal" | "engine" | "external"
-
-   graphQLRegistry.registerMutation(name, sdl, resolverName, visibility) - Register GraphQL mutation
-   - name: string (mutation name)
-   - sdl: string (GraphQL SDL schema definition)
-   - resolverName: string (name of resolver function)
-   - visibility: "internal" | "engine" | "external"
-
-   graphQLRegistry.registerSubscription(name, sdl, resolverName, visibility) - Register GraphQL subscription
-   - name: string (subscription name)
-   - sdl: string (GraphQL SDL schema definition)
-   - resolverName: string (name of resolver function)
-   - visibility: "internal" | "engine" | "external"
-
-   graphQLRegistry.executeGraphQL(query, variables) - Execute GraphQL query
-   - query: string (GraphQL query string)
-   - variables: string (optional JSON string of variables)
-   - Returns: JSON string with GraphQL response
-
-   graphQLRegistry.sendSubscriptionMessage(subscriptionName, data) - Broadcast to all GraphQL subscription connections
-   - subscriptionName: string (name of subscription)
-   - data: string (JSON string to send to subscribers)
-   - Returns: string describing broadcast result
-
-   graphQLRegistry.sendSubscriptionMessageFiltered(subscriptionName, data, filterJson) - Send to filtered GraphQL subscription connections
-   - subscriptionName: string (name of subscription)
-   - data: string (JSON string to send to subscribers)
-   - filterJson: string (optional JSON string with metadata filter criteria, empty "{}" matches all)
-   - Returns: string describing broadcast result with success/failure counts
-
 8. mcpRegistry - Model Context Protocol (MCP) tool registry
 
    mcpRegistry.registerTool(name, description, inputSchemaJson, handlerName) - Register an MCP tool
@@ -1190,18 +961,6 @@ AVAILABLE JAVASCRIPT APIs:
   schedulerService.clearAll() - Remove every scheduled job for the current script
 
   Scheduled handlers run without an HTTP caller and receive context.meta.schedule containing jobId, name, type (one-off/recurring), scheduledFor (UTC timestamp), and intervalSeconds (null for one-off jobs).
-
-10. dispatcher - Inter-script message passing for event-driven communication
-
-  dispatcher.registerListener(messageType, handlerName) - Register handler for message type
-  - messageType: string (event identifier like 'user:created', 'order:completed')
-  - handlerName: string (name of handler function in this script)
-  
-  dispatcher.sendMessage(messageType, messageData) - Broadcast message to all registered listeners
-  - messageType: string (event identifier)
-  - messageData: string (JSON string with event data)
-  
-  Message handlers receive context.messageType and context.messageData. Use dispatcher for event-driven coordination between scripts without tight coupling. Example: user-service.js sends 'user:created' message, email-notifications.js and analytics.js both listen and react independently.
 
 RESPONSE FORMAT - YOU MUST RESPOND WITH ONLY THIS JSON STRUCTURE:
 
@@ -1290,7 +1049,6 @@ RULES:
 3. Use try-catch blocks in all handlers
 4. ALWAYS include init() function that calls at least one registration function:
    - For HTTP services: routeRegistry.registerRoute() or routeRegistry.registerStreamRoute()
-   - For GraphQL services: graphQLRegistry.registerQuery(), graphQLRegistry.registerMutation(), or graphQLRegistry.registerSubscription()
    - A script may use multiple registration types
 5. Use Response builders (ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.text(), ResponseBuilder.error(status, message)) instead of manual response objects
 6. Check context.request.auth.isAuthenticated to verify authentication; use context.request.auth.userId, .userEmail, .isAdmin for user info
@@ -1315,22 +1073,19 @@ Example 3 - Explanation:
 Example 4 - Selective Broadcasting Chat:
 {"type":"create_script","message":"Creating a chat application with selective broadcasting for personalized messages","script_name":"chat-app.js","code":"// Chat Application with Selective Broadcasting\\n\\nfunction init(context) {\\n  routeRegistry.registerStreamRoute('/chat');\\n  routeRegistry.registerRoute('/chat/send', 'sendMessage', 'POST');\\n  routeRegistry.registerRoute('/chat/personal', 'sendPersonalMessage', 'POST');\\n  return { success: true };\\n}\\n\\nfunction sendMessage(context) {\\n  const req = context.request || {};\\n  const room = req.form && req.form.room;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'room_message',\\n    room: room,\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ room: room }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}\\n\\nfunction sendPersonalMessage(context) {\\n  const req = context.request || {};\\n  const targetUser = req.form && req.form.targetUser;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'personal_message',\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: targetUser }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
 
-Example 5 - GraphQL Subscription with Selective Broadcasting:
-{"type":"create_script","message":"Creating a GraphQL subscription with selective broadcasting for personalized notifications","script_name":"notification-subscription.js","code":"// GraphQL Subscription with Selective Broadcasting\\n\\nfunction init(context) {\\n  graphQLRegistry.registerSubscription(\\n    'userNotifications',\\n    'type Subscription { userNotifications: String }',\\n    'userNotificationsResolver',\\n    'external'\\n  );\\n  routeRegistry.registerRoute('/notify/user', 'sendUserNotification', 'POST');\\n  return { success: true };\\n}\\n\\nfunction userNotificationsResolver() {\\n  return 'User notifications subscription active';\\n}\\n\\nfunction sendUserNotification(context) {\\n  const req = context.request || {};\\n  const userId = req.form && req.form.userId;\\n  const message = req.form && req.form.message;\\n  const type = (req.form && req.form.type) || 'notification';\\n  \\n  const result = graphQLRegistry.sendSubscriptionMessageFiltered('userNotifications', {\\n    type: type,\\n    message: message,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: userId }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
-
-Example 6 - Create CSS file:
+Example 5 - Create CSS file:
 {"type":"create_asset","message":"Creating a custom stylesheet","asset_path":"/styles/custom.css","code":":root {\\n  --primary-color: #007acc;\\n  --secondary-color: #5a5a5a;\\n}\\n\\nbody {\\n  font-family: 'Arial', sans-serif;\\n  color: var(--secondary-color);\\n}\\n\\n.button {\\n  background-color: var(--primary-color);\\n  color: white;\\n  padding: 10px 20px;\\n  border: none;\\n  border-radius: 4px;\\n  cursor: pointer;\\n}\\n\\n.button:hover {\\n  opacity: 0.9;\\n}"}
 
-Example 7 - Create SVG icon:
+Example 6 - Create SVG icon:
 {"type":"create_asset","message":"Creating a simple SVG icon","asset_path":"/icons/check.svg","code":"<svg xmlns=\\"http://www.w3.org/2000/svg\\" viewBox=\\"0 0 24 24\\" width=\\"24\\" height=\\"24\\">\\n  <path fill=\\"#28a745\\" d=\\"M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z\\"/>\\n</svg>"}
 
-Example 8 - Edit CSS file:
+Example 7 - Edit CSS file:
 {"type":"edit_asset","message":"Adding dark mode support to existing CSS","asset_path":"/styles/main.css","original_code":".container {\\n  background: white;\\n  color: black;\\n}","code":".container {\\n  background: white;\\n  color: black;\\n}\\n\\n@media (prefers-color-scheme: dark) {\\n  .container {\\n    background: #1e1e1e;\\n    color: #ffffff;\\n  }\\n}"}
 
-Example 9 - Protected API requiring authentication:
+Example 8 - Protected API requiring authentication:
 {"type":"create_script","message":"Creating a protected API that requires authentication","script_name":"protected-api.js","code":"// Protected API\\n\\nfunction getProfile(context) {\\n  const req = context.request || {};\\n  if (!req.auth || !req.auth.isAuthenticated) {\\n    return ResponseBuilder.error(401, 'Authentication required');\\n  }\\n  const userId = req.query && req.query.userId;\\n  if (!userId) {\\n    return ResponseBuilder.error(400, 'userId query parameter is required');\\n  }\\n  if (req.auth.userId !== userId && !req.auth.isAdmin) {\\n    return ResponseBuilder.error(403, 'Access denied');\\n  }\\n  return ResponseBuilder.json({ id: req.auth.userId, email: req.auth.userEmail });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', 'getProfile', 'GET');\\n  return { success: true };\\n}"}
 
-Example 10 - Form handling:
+Example 9 - Form handling:
 {"type":"create_script","message":"Creating a contact form handler","script_name":"contact-form.js","code":"// Contact Form\\n\\nfunction submitContact(context) {\\n  const req = context.request || {};\\n  const name = req.form && req.form.name;\\n  const email = req.form && req.form.email;\\n  const message = req.form && req.form.message;\\n  if (!name || !email || !message) {\\n    return ResponseBuilder.error(400, 'Name, email and message are required');\\n  }\\n  console.log('Contact from ' + name + ' (' + email + '): ' + message);\\n  return ResponseBuilder.html('<h1>Thank you for your message!</h1><p>We will get back to you soon.</p>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/contact', 'submitContact', 'POST');\\n  return { success: true };\\n}"}
 
 ASSET CREATION GUIDELINES:
@@ -1625,7 +1380,6 @@ IMPORTANT CONCEPTS:
 7. Same asset can be served at multiple HTTP paths via multiple registrations
 8. Asset names should NOT include path separators (no / in names)
 9. Check context.request.auth to verify authentication; use context.request.auth.userId, .userEmail, .isAdmin for user info
-10. GraphQL registration requires a visibility parameter: "internal", "engine", or "external"
 
 CURRENT CONTEXT:`;
 
@@ -1812,12 +1566,6 @@ function init(context) {
   routeRegistry.registerAssetRoute("/editor/editor.js", "editor.js", editorTag);
 
   routeRegistry.registerRoute("/editor", "serveEditor", "GET", editorTag);
-  routeRegistry.registerRoute(
-    "/editor/graphql",
-    "serveGraphiQL",
-    "GET",
-    editorTag,
-  );
   routeRegistry.registerRoute(
     "/editor/swagger",
     "serveSwaggerUI",

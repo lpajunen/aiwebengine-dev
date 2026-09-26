@@ -9,7 +9,7 @@ applications in JavaScript. This repo is _not_ the engine itself — it holds th
 definitions, documentation, and example scripts used to build and deploy solutions that run on a
 remote AI Web Engine server. Two hosts are involved: `SERVER_HOST` (default `https://softagen.com`)
 is the default host for deployed solutions, while the engine's management API (`/engine/...`),
-MCP endpoint (`/mcp`), authenticated GraphQL endpoint (`/graphql`) and OAuth discovery live on
+MCP endpoint (`/mcp`) and OAuth discovery live on
 `MANAGE_HOST` (default `https://manage.softagen.com`).
 
 There is no build step and no test suite. Work here is: authoring server-side scripts in the top-level script directories,
@@ -24,7 +24,6 @@ make oauth-login                  # authenticate; writes schemas/token.json (req
 make token-status                # how long the saved token has left
 make refresh-token               # renew by hand (--force to renew early)
 make fetch-types                 # refresh types/aiwebengine.d.ts from the server
-make fetch-graphql-schema        # download GraphQL schema to schemas/schema.json
 make fetch-openapi               # download OpenAPI to apis/openapi.json
 make format                      # prettier --write across js/ts/json/md
 make lint                        # markdownlint over **/*.md
@@ -186,7 +185,7 @@ writing or changing a server-side script. They are served by `docs/main.js` once
   `make lint` (config in `.markdownlint.json`).
 - Config for the local tooling comes from `.env` (see `.env.example`); `SERVER_HOST`
   (default `https://softagen.com`) and `MANAGE_HOST` (default `https://manage.softagen.com`) flow
-  into every script and Makefile target. `/engine/`, `/mcp`, `/graphql` and OAuth discovery go to
+  into every script and Makefile target. `/engine/`, `/mcp` and OAuth discovery go to
   `MANAGE_HOST`. `SERVER_HOST` is the engine's _default_ host for deployed solutions — individual
   scripts can be bound elsewhere (see `make set-script-hosts`); the engine currently serves
   `softagen.com`, `manage.softagen.com` and `world.softagen.com`. `make oauth-login` discovers from

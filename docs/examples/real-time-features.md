@@ -1384,8 +1384,8 @@ sendStreamMessage({
 // One-way updates: Use SSE (routeRegistry.registerStreamRoute)
 routeRegistry.registerStreamRoute("/notifications");
 
-// For bidirectional: Consider GraphQL subscriptions
-// See graphql-subscriptions guide
+// Client → server: a plain POST route alongside the stream
+routeRegistry.registerRoute("/notifications/send", "sendNotification", "POST");
 ```
 
 ### 5. Clean Up Resources
@@ -1448,7 +1448,6 @@ setInterval(() => {
 - **[Forms and Data](forms-and-data.md)** - Form handling
 - **[AI Integration](ai-integration.md)** - Add AI features
 - **[Streaming Guide](../guides/streaming.md)** - Deep dive into streams
-- **[GraphQL Subscriptions](../guides/graphql-subscriptions.md)** - GraphQL real-time
 
 ## Quick Reference
 

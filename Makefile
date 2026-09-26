@@ -7,8 +7,8 @@
         upload-admin upload-admin-dry-run upload-all \
         set-script-hosts set-script-hosts-dry-run
 
-# Fetch types, OpenAPI and the GraphQL schema, then format.
-all: fetch-types fetch-openapi fetch-graphql-schema format
+# Fetch types and OpenAPI, then format.
+all: fetch-types fetch-openapi format
 
 include scripts/tooling.mk
 

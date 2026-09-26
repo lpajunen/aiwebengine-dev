@@ -154,10 +154,10 @@ function handlerName(context) {
 Route handlers have access to the following `context` fields:
 
 - `request`: HTTP method, path, headers, query params, form/body
-- `args`: GraphQL or command arguments (null for plain HTTP routes)
-- `kind`: invocation type (`httpRoute`, `graphqlQuery`, etc.)
+- `args`: handler arguments (MCP tools and prompts; null for plain HTTP routes)
+- `kind`: invocation type (`httpRoute`, `scheduled`, `mcpTool`, etc.)
 - `scriptUri` / `handlerName`: metadata about the executing script
-- `meta`, `connectionMetadata`: populated for streaming/subscription handlers
+- `meta`, `connectionMetadata`: populated for streaming handlers
 
 ### Request Object Structure (context.request)
 
@@ -933,41 +933,7 @@ Scripts may need to coordinate with each other for:
 
 aiwebengine provides several ways for scripts to communicate:
 
-**1. Message Dispatcher (Event-Driven)**
-
-Best for: Loose coupling, broadcast events, multiple consumers
-
-```javascript
-// Producer script: user-service.js
-function createUserHandler(context) {
-  const user = createUser(context.request.form);
-
-  // Broadcast event - all listeners will receive it
-  dispatcher.sendMessage(
-    "user:created",
-    JSON.stringify({
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    }),
-  );
-
-  return jsonResponse(201, { user: user });
-}
-
-// Consumer script: email-notifications.js
-function handleUserCreated(context) {
-  const data = JSON.parse(context.messageData);
-  console.log(`Sending welcome email to ${data.email}`);
-  sendWelcomeEmail(data.email);
-}
-
-function init() {
-  dispatcher.registerListener("user:created", "handleUserCreated");
-}
-```
-
-**2. HTTP Routes (Request-Response)**
+**1. HTTP Routes (Request-Response)**
 
 Best for: Synchronous communication, return values needed
 
@@ -997,7 +963,7 @@ function renderProfileHandler(context) {
 }
 ```
 
-**3. Script Storage (State Sharing)**
+**2. Script Storage (State Sharing)**
 
 Best for: Configuration, simple data sharing, caching
 
@@ -1020,221 +986,37 @@ function apiHandler(context) {
 }
 ```
 
-**4. GraphQL Subscriptions (Real-Time Streams)**
+**3. Server-Sent Event Streams (Real-Time Updates to Clients)**
 
-Best for: Client-facing real-time updates, WebSocket streaming
+Best for: Client-facing real-time updates
 
 ```javascript
 // Publisher script: chat-service.js
 function sendMessageHandler(context) {
   const message = context.request.form;
 
-  // Broadcast to all WebSocket subscribers
-  graphQLRegistry.sendSubscriptionMessage(
-    "onNewMessage",
-    JSON.stringify({
-      message: message,
-      timestamp: new Date().toISOString(),
-    }),
-  );
+  // Broadcast to every client connected to the stream
+  routeRegistry.sendStreamMessage("/chat", {
+    message: message,
+    timestamp: new Date().toISOString(),
+  });
 
   return jsonResponse(200, { sent: true });
+}
+
+function init() {
+  routeRegistry.registerStreamRoute("/chat");
+  routeRegistry.registerRoute("/chat/send", "sendMessageHandler", "POST");
 }
 ```
 
 ### Choosing the Right Method
 
-| Method             | Use When                                 | Pros                                         | Cons                             |
-| ------------------ | ---------------------------------------- | -------------------------------------------- | -------------------------------- |
-| **Dispatcher**     | Multiple scripts need to react to events | Loose coupling, scalable, no response needed | No return value, async-like      |
-| **HTTP Routes**    | Need synchronous response or result      | Request-response, familiar pattern           | Tighter coupling, overhead       |
-| **Script Storage** | Simple config/state sharing              | Fast, simple                                 | No notifications, manual polling |
-| **Subscriptions**  | Client needs real-time updates           | WebSocket streaming                          | Client-facing only               |
-
-### Dispatcher Best Practices
-
-**Use descriptive message types:**
-
-```javascript
-// Good - namespace with colons
-dispatcher.sendMessage("user:created", data);
-dispatcher.sendMessage("order:completed", data);
-dispatcher.sendMessage("payment:failed", data);
-
-// Bad - too generic
-dispatcher.sendMessage("event", data);
-dispatcher.sendMessage("update", data);
-```
-
-**Register listeners in init():**
-
-```javascript
-function init() {
-  // Register routes
-  routeRegistry.registerRoute("/api/orders", "createOrderHandler", "POST");
-
-  // Register message listeners
-  dispatcher.registerListener("user:created", "handleNewUser");
-  dispatcher.registerListener("payment:completed", "handlePayment");
-}
-```
-
-**Always use JSON for message data:**
-
-```javascript
-// Good - structured data
-dispatcher.sendMessage(
-  "order:created",
-  JSON.stringify({
-    orderId: "12345",
-    userId: "user-456",
-    total: 99.99,
-    items: [{ sku: "ABC", qty: 2 }],
-  }),
-);
-
-// Bad - plain string (hard to parse)
-dispatcher.sendMessage("order:created", "Order 12345 created");
-```
-
-**Handle errors in message handlers:**
-
-```javascript
-function handleOrderCreated(context) {
-  try {
-    const order = JSON.parse(context.messageData);
-    processOrder(order);
-    console.log(`Processed order ${order.orderId}`);
-  } catch (error) {
-    console.error(`Failed to process order: ${error.message}`);
-    // Handler errors don't affect sender
-  }
-}
-```
-
-### Complete Example: User Registration Flow
-
-```javascript
-// ============================================
-// user-service.js - Main user management
-// ============================================
-
-function registerUserHandler(context) {
-  const req = context.request;
-
-  // Create user
-  const user = {
-    id: generateId(),
-    email: req.form.email,
-    name: req.form.name,
-    createdAt: new Date().toISOString(),
-  };
-
-  saveUser(user);
-
-  // Broadcast event - multiple scripts will react
-  dispatcher.sendMessage(
-    "user:registered",
-    JSON.stringify({
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-    }),
-  );
-
-  return jsonResponse(201, { user: user });
-}
-
-function init() {
-  routeRegistry.registerRoute(
-    "/api/users/register",
-    "registerUserHandler",
-    "POST",
-  );
-}
-
-init();
-
-// ============================================
-// email-service.js - Handles email notifications
-// ============================================
-
-function handleUserRegistered(context) {
-  const userData = JSON.parse(context.messageData);
-  console.log(`Sending welcome email to ${userData.email}`);
-
-  // Send welcome email (pseudocode)
-  sendEmail({
-    to: userData.email,
-    subject: "Welcome!",
-    body: `Hello ${userData.name}, welcome to our platform!`,
-  });
-}
-
-function init() {
-  dispatcher.registerListener("user:registered", "handleUserRegistered");
-}
-
-init();
-
-// ============================================
-// analytics-service.js - Tracks user metrics
-// ============================================
-
-function handleUserRegistered(context) {
-  const userData = JSON.parse(context.messageData);
-  console.log(`Recording analytics for user ${userData.userId}`);
-
-  // Track registration event
-  recordEvent({
-    type: "user_registration",
-    userId: userData.userId,
-    timestamp: new Date().toISOString(),
-  });
-}
-
-function init() {
-  dispatcher.registerListener("user:registered", "handleUserRegistered");
-}
-
-init();
-
-// ============================================
-// onboarding-service.js - Manages onboarding flow
-// ============================================
-
-function handleUserRegistered(context) {
-  const userData = JSON.parse(context.messageData);
-  console.log(`Starting onboarding for user ${userData.userId}`);
-
-  // Create onboarding checklist
-  createOnboardingTasks(userData.userId);
-
-  // Schedule first onboarding email
-  schedulerService.registerOnce({
-    handler: "sendOnboardingEmail",
-    runAt: getTimeOneHourFromNow(),
-    name: `onboarding-${userData.userId}`,
-  });
-}
-
-function init() {
-  dispatcher.registerListener("user:registered", "handleUserRegistered");
-}
-
-init();
-```
-
-In this example:
-
-- **user-service.js** creates users and broadcasts `user:registered` events
-- **email-service.js** sends welcome emails when users register
-- **analytics-service.js** tracks registration metrics
-- **onboarding-service.js** initiates onboarding workflows
-
-All services remain independent - they can be developed, tested, and deployed separately. The dispatcher decouples them while enabling coordination.
-
-For more examples, see **[Message Passing Examples](../examples/message-passing.md)**.
+| Method             | Use When                            | Pros                               | Cons                             |
+| ------------------ | ----------------------------------- | ---------------------------------- | -------------------------------- |
+| **HTTP Routes**    | Need synchronous response or result | Request-response, familiar pattern | Tighter coupling, overhead       |
+| **Script Storage** | Simple config/state sharing         | Fast, simple                       | No notifications, manual polling |
+| **SSE Streams**    | Client needs real-time updates      | Push updates without polling       | Client-facing, one-way only      |
 
 ## Advanced Patterns
 

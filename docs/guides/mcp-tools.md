@@ -619,7 +619,7 @@ Return well-structured JSON that's easy for AI to interpret:
 
 ### Authentication
 
-MCP tools require admin-level access (ManageGraphQL capability) to register, but execution is unrestricted by default. Consider implementing your own authorization in handlers:
+Registering an MCP tool is limited to the script's owners, Editors and Administrators, but execution is unrestricted by default. Consider implementing your own authorization in handlers:
 
 ```javascript
 function sensitiveOperationHandler(context) {

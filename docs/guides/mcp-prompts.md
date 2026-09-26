@@ -98,7 +98,7 @@ Think of prompts as "code recipes" that AI assistants can follow to create consi
 | Purpose     | Execute actions                                   | Generate templates                                     |
 | Returns     | Data/results                                      | Conversation messages                                  |
 | When to use | Reading files, modifying data, running operations | Creating code, providing workflows, guiding generation |
-| Example     | `read_file`, `write_file`, `search_files`         | `create_rest_endpoint`, `add_graphql_query`            |
+| Example     | `read_file`, `write_file`, `search_files`         | `create_rest_endpoint`, `add_form_handler`             |
 
 **Use Tools when you need to:**
 
@@ -157,7 +157,8 @@ mcpRegistry.registerPrompt(name, description, argumentsJson, handlerFunction);
 
 ### Security Requirements
 
-- Requires `ManageGraphQL` capability
+- Registration is allowed to the script's owners, Editors and Administrators —
+  the engine decides from the signed-in user, not from the script
 - All registrations are audit-logged
 - Script URI is automatically tracked
 - Prompts are cleared when scripts update
@@ -537,93 +538,7 @@ console.log("Registered ${method} ${path}");
 }
 ```
 
-### Example 2: GraphQL Query Generator
-
-```javascript
-// Register prompt
-mcpRegistry.registerPrompt(
-  "add_graphql_query",
-  "Generate a GraphQL query with schema and resolver",
-  JSON.stringify([
-    {
-      name: "queryName",
-      description: "Query name (e.g., 'getUser', 'listProducts')",
-      required: true,
-    },
-    {
-      name: "returnType",
-      description: "Return type description",
-      required: true,
-    },
-    {
-      name: "arguments",
-      description: "Query arguments (e.g., 'id: String!')",
-      required: false,
-    },
-  ]),
-  "add_graphql_query", // Handler function name
-);
-
-// Handler function (same name as prompt)
-function add_graphql_query(args) {
-  const { queryName, returnType, arguments: queryArgs } = args;
-
-  const argsStr = queryArgs ? `(${queryArgs})` : "";
-
-  const code = `
-// GraphQL query: ${queryName}
-const ${queryName}Schema = \`
-  type Query {
-    ${queryName}${argsStr}: ${returnType}
-  }
-\`;
-
-function ${queryName}Resolver(context) {
-  console.log(
-    "GraphQL query ${queryName} called with:",
-    context.args || {},
-  );
-  
-  // TODO: Implement query logic
-  
-  return {
-    success: true,
-    data: null
-  };
-}
-
-// Register the query
-graphQLRegistry.registerQuery(
-  "${queryName}",
-  ${queryName}Schema,
-  "${queryName}Resolver",
-  "external",
-);
-console.log("Registered GraphQL query: ${queryName}");
-  `.trim();
-
-  return {
-    messages: [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: `Create GraphQL query ${queryName} that returns ${returnType}`,
-        },
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: code,
-        },
-      },
-    ],
-  };
-}
-```
-
-### Example 3: Form Handler Generator
+### Example 2: Form Handler Generator
 
 ```javascript
 // Register prompt

@@ -13,7 +13,6 @@ AI Web Engine is a platform for building AI-powered web applications with JavaSc
 
 - TypeScript type definitions for the AI Web Engine APIs
 - OAuth authentication helpers
-- GraphQL schema fetching utilities
 - Comprehensive documentation and examples
 - Deployment tools
 
@@ -53,7 +52,7 @@ AI Web Engine is a platform for building AI-powered web applications with JavaSc
 Copy [.env.example](.env.example) to `.env` and configure the following variables:
 
 - `SERVER_HOST` - The engine's default host for deployed solutions (default: `https://softagen.com`); individual scripts can be bound elsewhere with `make set-script-hosts`
-- `MANAGE_HOST` - Where the engine management API (`/engine/...`), MCP endpoint (`/mcp`), GraphQL endpoint (`/graphql`) and OAuth discovery are served (default: `https://manage.softagen.com`)
+- `MANAGE_HOST` - Where the engine management API (`/engine/...`), MCP endpoint (`/mcp`) and OAuth discovery are served (default: `https://manage.softagen.com`)
 - `OAUTH_ISSUER` - OAuth discovery base (defaults to `MANAGE_HOST`)
 - `OAUTH_CLIENT_ID` - Your OAuth client ID (optional, can use dynamic registration)
 - `OAUTH_SCOPE` - OAuth scope (default: `openid`)
@@ -78,16 +77,6 @@ Authenticate with your AI Web Engine server:
 make oauth-login
 # or
 make oauth-login
-```
-
-### Fetch GraphQL Schema
-
-Download the GraphQL schema for introspection:
-
-```bash
-make fetch-graphql-schema
-# or
-make fetch-graphql-schema
 ```
 
 ### Set Script Hosts

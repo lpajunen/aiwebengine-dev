@@ -381,7 +381,6 @@ function wrapInTemplate(htmlContent, title) {
             <nav class="unified-nav">
                 <a href="/docs" title="Documentation">📚 Documentation</a>
                 <a href="/editor" title="Code Editor">✏️ Editor</a>
-                <a href="/editor/graphql" title="GraphQL API">🔗 GraphiQL</a>
                 <a href="/editor/swagger" title="REST API">📖 Swagger</a>
             </nav>
         </header>

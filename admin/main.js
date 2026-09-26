@@ -229,7 +229,6 @@ function handleManagerUI(context) {
                     <a href="/" class="nav-link">← Back to Home</a>
                     <a href="/editor" class="nav-link">Editor</a>
                     <a href="/docs" class="nav-link">Documentation</a>
-                    <a href="/editor/graphql" class="nav-link">GraphQL</a>
                 </div>
             </div>
         </header>
