@@ -553,7 +553,7 @@ function init(context) {
   );
 
   // Register engine stylesheet asset
-  routeRegistry.registerAssetRoute("/engine.css", "engine.css", {
+  routeRegistry.registerAssetRoute("/engine.css", "public/engine.css", {
     tags: ["Aiwebengine documentation"],
   });
 

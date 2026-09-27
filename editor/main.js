@@ -1555,15 +1555,19 @@ function init(context) {
   // Register editor assets under the editor Swagger tag
   routeRegistry.registerAssetRoute(
     "/editor/header.css",
-    "header.css",
+    "public/header.css",
     editorTag,
   );
   routeRegistry.registerAssetRoute(
     "/editor/editor.css",
-    "editor.css",
+    "public/editor.css",
     editorTag,
   );
-  routeRegistry.registerAssetRoute("/editor/editor.js", "editor.js", editorTag);
+  routeRegistry.registerAssetRoute(
+    "/editor/editor.js",
+    "public/editor.js",
+    editorTag,
+  );
 
   routeRegistry.registerRoute("/editor", "serveEditor", "GET", editorTag);
   routeRegistry.registerRoute(
