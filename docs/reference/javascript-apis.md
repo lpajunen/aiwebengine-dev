@@ -630,131 +630,101 @@ description at `/engine/openapi.json` for the full contract.
 
 ## Database API
 
-The global `database` object provides script-scoped table management, CRUD helpers, transactions, and lease coordination.
+`database` is the script's own tables: described with `ensureTable`, read and
+written with six row calls, grouped with `transaction(fn)`. Every call takes
+objects, answers with a value, and throws when it fails.
 
-Every `database` call answers with the same three-way value a `fetch` response
-has, so the shape does not depend on which host API produced it:
+| call                              | answers                                           |
+| --------------------------------- | ------------------------------------------------- |
+| `ensureTable(name, schema)`       | `{ created, columnsAdded, uniqueIndexesEnsured }` |
+| `dropTable(name)`                 | `{ tableName, dropped }`                          |
+| `dropColumn(name, column)`        | `{ tableName, columnName, dropped }`              |
+| `query(name, options?)`           | the rows                                          |
+| `insert(name, row)`               | the row as stored, with its `id`                  |
+| `update(name, id, changes)`       | the row as stored                                 |
+| `delete(name, id)`                | `{ deleted }`                                     |
+| `upsert(name, keyColumns, row)`   | the row as stored                                 |
+| `deleteWhere(name, where)`        | `{ deleted }` — how many                          |
+| `transaction(fn, { timeoutMs? })` | what `fn` returned                                |
 
-```javascript
-database.query("tasks").json(); // parsed, no await
-(await database.query("tasks")).json(); // awaitable, like a fetch response
-JSON.parse(database.query("tasks")); // the raw JSON string, as before
-```
+### Describing a table
 
-`await` is sequencing sugar — the call has already finished by the time it
-returns — and the older `JSON.parse(...)` form keeps working, so `.json()` is a
-convenience rather than a migration.
-
-### Common table operations
-
-- `database.createTable(tableName)` creates a script-owned table namespace.
-- `database.ensureTable(tableName, schemaJson)` brings a table to the shape you describe, whatever shape it is in now — the idempotent form of `createTable` plus a run of `add*Column` plus `addUniqueIndex`.
-- `database.addIntegerColumn(tableName, columnName, nullable?, defaultValue?)`, `database.addBigintColumn(...)`, `database.addFloatColumn(...)`, `database.addTextColumn(...)`, `database.addBooleanColumn(...)`, `database.addTimestampColumn(...)`, and `database.addReferenceColumn(...)` extend the schema.
-- `database.dropColumn(tableName, columnName)` and `database.dropTable(tableName)` remove schema objects owned by the current script.
-
-`ensureTable` is the one to reach for in `init()`, which runs on every instance
-and every restart. Each step is checked before it is attempted rather than
-attempted and forgiven, so a table that is already correct costs one query and
-reports that it changed nothing — and an error means something other than
-"already done". The whole convergence runs under one lock keyed on the script
-and table, so a cold start where every instance's first write arrives at once
-takes turns instead of racing. Columns default to nullable, since a column
-added to a table that already holds rows cannot be `NOT NULL` without a
-default:
+`ensureTable` brings a table to the shape you describe, whatever shape it is in
+now: created if missing, missing columns added, unique indexes made. A table
+that is already right costs one query and changes nothing, so it belongs at the
+top of `init()`. Columns default to nullable, since a column added to a table
+that already has rows cannot be `NOT NULL` without a default. Every table has
+an `id` column of its own.
 
 ```javascript
 function init(context) {
-  const result = database
-    .ensureTable(
-      "tasks",
-      JSON.stringify({
-        columns: [
-          { name: "title", type: "text" },
-          { name: "completed", type: "boolean", default: "false" },
-          { name: "created_at", type: "timestamp" },
-        ],
-        uniqueIndexes: [["title"]],
-      }),
-    )
-    .json();
-  // First run:      {success: true, created: true, columnsAdded: [...], ...}
-  // Every run after: {success: true, created: false, columnsAdded: [], ...}
-
-  return { success: true };
+  database.ensureTable("tasks", {
+    columns: [
+      { name: "title", type: "text" },
+      { name: "completed", type: "boolean", default: "false" },
+      { name: "created_at", type: "timestamp" },
+      { name: "owner_id", type: "reference", references: "people" },
+    ],
+    uniqueIndexes: [["title"]],
+  });
 }
 ```
 
-`type` is one of `integer`, `bigint`, `float`, `text`, `boolean` or
-`timestamp`. The step-by-step equivalent:
-
-```javascript
-function init(context) {
-  database.createTable("tasks");
-  database.addTextColumn("tasks", "title", false);
-  database.addBooleanColumn("tasks", "completed", false, "false");
-  database.addTimestampColumn(
-    "tasks",
-    "created_at",
-    false,
-    "CURRENT_TIMESTAMP",
-  );
-
-  return { success: true };
-}
-```
+`type` is `integer`, `bigint`, `float`, `text`, `boolean`, `timestamp` or
+`reference` (an `id` in the table named by `references`, with a foreign key).
 
 ### Querying and mutations
 
-- `database.query(tableName, filters?, limit?, orderBy?, orderDir?)` returns a JSON string array of matching rows.
-- `database.insert(tableName, dataJson)`, `database.update(tableName, id, dataJson)`, and `database.delete(tableName, id)` perform row-level CRUD.
-- `database.upsert(tableName, keyColumnsJson, dataJson)` performs atomic insert-or-update when the conflict target has a unique index.
-- `database.deleteWhere(tableName, filtersJson)` removes multiple rows using the same filter syntax as `query()`.
+`query`'s options are `where`, `limit`, `orderBy`, `order` (`"asc"` or
+`"desc"`) and `forUpdate`. A `where` is `{ col: value }` for equality or
+`{ col: { $gt, $gte, $lt, $lte, $ne } }` for a comparison. `upsert`'s key
+columns need a unique index — `ensureTable`'s `uniqueIndexes`.
 
 ```javascript
 function createTask(context) {
-  const req = context.request;
-  const result = database
-    .insert(
-      "tasks",
-      JSON.stringify({ title: req.form.title, completed: false }),
-    )
-    .json();
-
-  if (result.error) {
-    return ResponseBuilder.error(400, result.error);
+  try {
+    const row = database.insert("tasks", {
+      title: context.request.form.title,
+      completed: false,
+    });
+    return ResponseBuilder.json(row, 201);
+  } catch (error) {
+    return ResponseBuilder.error(400, error.message);
   }
-
-  return ResponseBuilder.json(result, 201);
 }
 
 function listOpenTasks(context) {
-  const rows = database
-    .query(
-      "tasks",
-      JSON.stringify({ completed: false }),
-      100,
-      "created_at",
-      "desc",
-    )
-    .json();
-
+  const rows = database.query("tasks", {
+    where: { completed: false },
+    limit: 100,
+    orderBy: "created_at",
+    order: "desc",
+  });
   return ResponseBuilder.json(rows);
 }
 ```
 
-### Transactions and leases
+### Transactions
 
-- `database.beginTransaction(timeout_ms?)`, `database.commitTransaction()`, and `database.rollbackTransaction()` manage transactional work. Nested flows can use `database.createSavepoint(name?)`, `database.rollbackToSavepoint(name)`, and `database.releaseSavepoint(name)`.
-- `database.createLeaseTable(tableName)` and `database.acquireLease(tableName, leaseId, owner, ttlMs)` support distributed lease acquisition for scheduled or multi-instance work.
-- `database.addUniqueIndex(tableName, columnsJson)` prepares columns for `database.upsert(...)`.
+`database.transaction(fn)` commits what `fn` did when it returns and rolls it
+back when it throws; inside another transaction it is a savepoint. A read whose
+value decides a later write takes `forUpdate`, or two concurrent callers can
+both act on what they read:
 
 ```javascript
-function init(context) {
-  database.createLeaseTable("job_leases");
-
-  return { success: true };
-}
+database.transaction(
+  () => {
+    const [row] = database.query("counters", { limit: 1, forUpdate: true });
+    database.update("counters", row.id, { value: row.value + 1 });
+  },
+  { timeoutMs: 5000 },
+);
 ```
+
+For "only one instance does this", use a row as the lock — read it
+`forUpdate` in a transaction and take it when it is missing, expired or yours —
+or queue the work with `scriptTasks` and a `lane`, which runs one at a time per
+lane.
 
 ## HTTP Fetch
 

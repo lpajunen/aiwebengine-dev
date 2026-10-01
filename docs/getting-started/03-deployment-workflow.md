@@ -661,7 +661,7 @@ script's functions, use the bindings its entrypoint imported, and `import` or
 curl -X POST "$MANAGE_HOST/engine/eval?uri=https://example.com/my-app" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: text/plain" \
-  --data-binary 'JSON.parse(database.query("things", "{}"))'
+  --data-binary 'database.query("things")'
 ```
 
 ```json
