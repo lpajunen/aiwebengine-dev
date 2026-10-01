@@ -70,7 +70,10 @@ function helloHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/api/hello", "helloHandler", "GET");
+  routeRegistry.registerRoute("/api/hello", {
+    handler: "helloHandler",
+    method: "GET",
+  });
 }
 
 init();
@@ -146,7 +149,7 @@ function usersHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/api/users", "usersHandler", "GET");
+  routeRegistry.registerRoute("/api/users", { handler: "usersHandler", method: "GET" });
 }
 
 init();
@@ -335,7 +338,7 @@ aiwebengine exposes REST APIs for script management (if editor is enabled):
 curl -X POST "http://localhost:8080/api/scripts/api/hello.js" \
   -H "Content-Type: application/json" \
   -d '{
-    "content": "function helloHandler(context) { return { status: 200, body: \"Hello\" }; } function init() { routeRegistry.registerRoute(\"/api/hello\", \"helloHandler\", \"GET\"); } init();"
+    "content": "function helloHandler(context) { return { status: 200, body: \"Hello\" }; } function init() { routeRegistry.registerRoute(\"/api/hello\", { handler: \"helloHandler\", method: \"GET\" }); } init();"
   }'
 ```
 
@@ -641,7 +644,7 @@ even have to exist yet:
 curl -X POST "$MANAGE_HOST/engine/check?uri=https://example.com/my-app" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"content": "function init() { routeRegistry.registerRoute(\"/x\", \"handleX\", \"GET\"); }"}'
+  -d '{"content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
 ```
 
 `rollback` (default `true`) controls whether the database writes `init()` makes

@@ -220,7 +220,7 @@ Real-world code examples:
 
 ```javascript
 // Route registration
-routeRegistry.registerRoute(path, handlerName, method);
+routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" });
 
 // Logging
 console.log(message);
@@ -236,7 +236,7 @@ const assetContent = assetStorage.fetchAsset(name);
 const response = fetch(url, options);
 
 // Streaming
-routeRegistry.registerStreamRoute(path);
+routeRegistry.registerRoute(path, { stream: true });
 routeRegistry.sendStreamMessage(path, data);
 
 // Response builders (preferred over hand-built response objects)
@@ -278,7 +278,10 @@ function myHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/my-endpoint", "myHandler", "GET");
+  routeRegistry.registerRoute("/my-endpoint", {
+    handler: "myHandler",
+    method: "GET",
+  });
 }
 
 init();

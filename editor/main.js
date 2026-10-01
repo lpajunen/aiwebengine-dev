@@ -562,7 +562,7 @@ function getAIAssistantTools() {
     {
       name: "create_asset",
       description:
-        "Create a new asset file (CSS, SVG, HTML, JSON, etc.). Assets are static files served to clients. Note: Assets are stored by name (e.g., 'logo.svg', 'main.css') and must be registered to HTTP paths using routeRegistry.registerAssetRoute().",
+        "Create a new asset file (CSS, SVG, HTML, JSON, etc.). Assets are static files served to clients. Note: Assets are stored by name (e.g., 'logo.svg', 'main.css') and are served by registering a file route: routeRegistry.registerRoute(path, { file: 'public/...' }). Only files under public/ may be served.",
       input_schema: {
         type: "object",
         properties: {
@@ -795,29 +795,25 @@ WHAT ARE aiwebengine SCRIPTS?
 AVAILABLE JAVASCRIPT APIs:
 1. routeRegistry - Object containing all HTTP route and stream-related functions:
    
-   routeRegistry.registerRoute(path, handlerName, method) - Register HTTP routes
-   - path: string (e.g., "/api/users" or "/hello")
-   - handlerName: string (name of your handler function)
-   - method: "GET" | "POST" | "PUT" | "DELETE"
-
-   routeRegistry.registerStreamRoute(path) - Register SSE (Server-Sent Events) stream endpoint
-   - path: string (must start with /)
-   - Returns: string describing registration result
-
-   routeRegistry.registerAssetRoute(assetPath) - Register static asset for serving
-   - assetPath: string (path to asset file)
-   - Returns: string describing registration result
+   routeRegistry.registerRoute(path, spec) - Publish a path. The spec says what it leads to:
+   - { handler: "fnName", method: "GET" } - an HTTP handler (method defaults to GET)
+   - { stream: true, authorize: "fnName" } - an SSE stream; authorize (optional) names the function deciding who may connect
+   - { file: "public/app.css" } - a file of the script's tree; only files under public/ may be served
+   - optional for all: summary, description, tags; for handlers: parameters, requestBody (objects)
+   - Returns { ok: true }, or { ok: false, reason } for a refusal; throws on a malformed spec
+   - Only takes effect inside init()
 
    routeRegistry.sendStreamMessage(path, data) - Broadcast message to all connections on a stream path
    - path: string (must start with /)
    - data: object (will be JSON serialized)
-   - Returns: string describing broadcast result
+   - Returns { delivered, connections, failed }; throws on failure
 
-   routeRegistry.sendStreamMessageFiltered(path, data, filterJson) - Send message to filtered connections based on metadata
+   routeRegistry.sendStreamMessageFiltered(path, data, filter, matchMode) - Send message to filtered connections based on metadata
    - path: string (must start with /)
    - data: object (will be JSON serialized)
-   - filterJson: string (optional JSON string with metadata filter criteria, empty "{}" matches all)
-   - Returns: string describing broadcast result with success/failure counts
+   - filter: object of strings, matched against what each connection's authorize function returned
+   - matchMode: "subset" (default) or "overlap"
+   - Returns { delivered, connections, failed }; throws on failure
    - Use for personalized broadcasting to specific users/groups on stable endpoints
 
    To introspect what is registered, call the engine's HTTP API rather than a
@@ -1010,7 +1006,7 @@ function handlerName(context) {
 /** @param {*} context */
 function init(context) {
   console.log('Initializing script');
-  routeRegistry.registerRoute('/your-path', 'handlerName', 'GET');
+  routeRegistry.registerRoute('/your-path', { handler: 'handlerName', method: 'GET' });
   return { success: true };
 }
 
@@ -1039,7 +1035,7 @@ IMPORTANT CONCEPTS:
 5. Scripts don't have access to browser APIs or Node.js APIs
 6. Use fetch() to call external APIs
 7. Use routeRegistry.registerRoute() in init() to map URLs to handler functions
-8. For real-time features, use routeRegistry.registerStreamRoute() and routeRegistry.sendStreamMessage()
+8. For real-time features, register a stream with routeRegistry.registerRoute(path, { stream: true }) and send with routeRegistry.sendStreamMessage()
 9. For personalized broadcasting, use routeRegistry.sendStreamMessageFiltered() with metadata filters
 10. Selective broadcasting enables chat apps and user-specific notifications without dynamic endpoints
 
@@ -1048,7 +1044,7 @@ RULES:
 2. Include complete, working JavaScript code
 3. Use try-catch blocks in all handlers
 4. ALWAYS include init() function that calls at least one registration function:
-   - For HTTP services: routeRegistry.registerRoute() or routeRegistry.registerStreamRoute()
+   - For HTTP services and streams: routeRegistry.registerRoute(path, spec)
    - A script may use multiple registration types
 5. Use Response builders (ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.text(), ResponseBuilder.error(status, message)) instead of manual response objects
 6. Check context.request.auth.isAuthenticated to verify authentication; use context.request.auth.userId, .userEmail, .isAdmin for user info
@@ -1062,16 +1058,16 @@ RULES:
 EXAMPLES OF CORRECT RESPONSES:
 
 Example 1 - Create web page:
-{"type":"create_script","message":"Creating a script that serves an HTML page","script_name":"hello-page.js","code":"// Hello page\\n\\nfunction servePage(context) {\\n  return ResponseBuilder.html('<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello World!</h1></body></html>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/hello', 'servePage', 'GET');\\n  return { success: true };\\n}"}
+{"type":"create_script","message":"Creating a script that serves an HTML page","script_name":"hello-page.js","code":"// Hello page\\n\\nfunction servePage(context) {\\n  return ResponseBuilder.html('<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello World!</h1></body></html>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/hello', { handler: 'servePage', method: 'GET' });\\n  return { success: true };\\n}"}
 
 Example 2 - Create JSON API:
-{"type":"create_script","message":"Creating a REST API endpoint","script_name":"users-api.js","code":"// Users API\\n\\nfunction getUsers(context) {\\n  const users = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}];\\n  return ResponseBuilder.json(users);\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/users', 'getUsers', 'GET');\\n  return { success: true };\\n}"}
+{"type":"create_script","message":"Creating a REST API endpoint","script_name":"users-api.js","code":"// Users API\\n\\nfunction getUsers(context) {\\n  const users = [{id: 1, name: 'Alice'}, {id: 2, name: 'Bob'}];\\n  return ResponseBuilder.json(users);\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/users', { handler: 'getUsers', method: 'GET' });\\n  return { success: true };\\n}"}
 
 Example 3 - Explanation:
 {"type":"explanation","message":"This script registers a GET endpoint that returns JSON user data using ResponseBuilder.json() builder."}
 
 Example 4 - Selective Broadcasting Chat:
-{"type":"create_script","message":"Creating a chat application with selective broadcasting for personalized messages","script_name":"chat-app.js","code":"// Chat Application with Selective Broadcasting\\n\\nfunction init(context) {\\n  routeRegistry.registerStreamRoute('/chat');\\n  routeRegistry.registerRoute('/chat/send', 'sendMessage', 'POST');\\n  routeRegistry.registerRoute('/chat/personal', 'sendPersonalMessage', 'POST');\\n  return { success: true };\\n}\\n\\nfunction sendMessage(context) {\\n  const req = context.request || {};\\n  const room = req.form && req.form.room;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'room_message',\\n    room: room,\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ room: room }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}\\n\\nfunction sendPersonalMessage(context) {\\n  const req = context.request || {};\\n  const targetUser = req.form && req.form.targetUser;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'personal_message',\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, JSON.stringify({ user_id: targetUser }));\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
+{"type":"create_script","message":"Creating a chat application with selective broadcasting for personalized messages","script_name":"chat-app.js","code":"// Chat Application with Selective Broadcasting\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/chat', { stream: true });\\n  routeRegistry.registerRoute('/chat/send', { handler: 'sendMessage', method: 'POST' });\\n  routeRegistry.registerRoute('/chat/personal', { handler: 'sendPersonalMessage', method: 'POST' });\\n  return { success: true };\\n}\\n\\nfunction sendMessage(context) {\\n  const req = context.request || {};\\n  const room = req.form && req.form.room;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'room_message',\\n    room: room,\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, { room: room });\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}\\n\\nfunction sendPersonalMessage(context) {\\n  const req = context.request || {};\\n  const targetUser = req.form && req.form.targetUser;\\n  const message = req.form && req.form.message;\\n  const sender = req.form && req.form.sender;\\n  \\n  const result = routeRegistry.sendStreamMessageFiltered('/chat', {\\n    type: 'personal_message',\\n    message: message,\\n    sender: sender,\\n    timestamp: new Date().toISOString()\\n  }, { user_id: targetUser });\\n  \\n  return ResponseBuilder.json({ success: true, result: result });\\n}"}
 
 Example 5 - Create CSS file:
 {"type":"create_asset","message":"Creating a custom stylesheet","asset_path":"/styles/custom.css","code":":root {\\n  --primary-color: #007acc;\\n  --secondary-color: #5a5a5a;\\n}\\n\\nbody {\\n  font-family: 'Arial', sans-serif;\\n  color: var(--secondary-color);\\n}\\n\\n.button {\\n  background-color: var(--primary-color);\\n  color: white;\\n  padding: 10px 20px;\\n  border: none;\\n  border-radius: 4px;\\n  cursor: pointer;\\n}\\n\\n.button:hover {\\n  opacity: 0.9;\\n}"}
@@ -1083,10 +1079,10 @@ Example 7 - Edit CSS file:
 {"type":"edit_asset","message":"Adding dark mode support to existing CSS","asset_path":"/styles/main.css","original_code":".container {\\n  background: white;\\n  color: black;\\n}","code":".container {\\n  background: white;\\n  color: black;\\n}\\n\\n@media (prefers-color-scheme: dark) {\\n  .container {\\n    background: #1e1e1e;\\n    color: #ffffff;\\n  }\\n}"}
 
 Example 8 - Protected API requiring authentication:
-{"type":"create_script","message":"Creating a protected API that requires authentication","script_name":"protected-api.js","code":"// Protected API\\n\\nfunction getProfile(context) {\\n  const req = context.request || {};\\n  if (!req.auth || !req.auth.isAuthenticated) {\\n    return ResponseBuilder.error(401, 'Authentication required');\\n  }\\n  const userId = req.query && req.query.userId;\\n  if (!userId) {\\n    return ResponseBuilder.error(400, 'userId query parameter is required');\\n  }\\n  if (req.auth.userId !== userId && !req.auth.isAdmin) {\\n    return ResponseBuilder.error(403, 'Access denied');\\n  }\\n  return ResponseBuilder.json({ id: req.auth.userId, email: req.auth.userEmail });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', 'getProfile', 'GET');\\n  return { success: true };\\n}"}
+{"type":"create_script","message":"Creating a protected API that requires authentication","script_name":"protected-api.js","code":"// Protected API\\n\\nfunction getProfile(context) {\\n  const req = context.request || {};\\n  if (!req.auth || !req.auth.isAuthenticated) {\\n    return ResponseBuilder.error(401, 'Authentication required');\\n  }\\n  const userId = req.query && req.query.userId;\\n  if (!userId) {\\n    return ResponseBuilder.error(400, 'userId query parameter is required');\\n  }\\n  if (req.auth.userId !== userId && !req.auth.isAdmin) {\\n    return ResponseBuilder.error(403, 'Access denied');\\n  }\\n  return ResponseBuilder.json({ id: req.auth.userId, email: req.auth.userEmail });\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/api/profile', { handler: 'getProfile', method: 'GET' });\\n  return { success: true };\\n}"}
 
 Example 9 - Form handling:
-{"type":"create_script","message":"Creating a contact form handler","script_name":"contact-form.js","code":"// Contact Form\\n\\nfunction submitContact(context) {\\n  const req = context.request || {};\\n  const name = req.form && req.form.name;\\n  const email = req.form && req.form.email;\\n  const message = req.form && req.form.message;\\n  if (!name || !email || !message) {\\n    return ResponseBuilder.error(400, 'Name, email and message are required');\\n  }\\n  console.log('Contact from ' + name + ' (' + email + '): ' + message);\\n  return ResponseBuilder.html('<h1>Thank you for your message!</h1><p>We will get back to you soon.</p>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/contact', 'submitContact', 'POST');\\n  return { success: true };\\n}"}
+{"type":"create_script","message":"Creating a contact form handler","script_name":"contact-form.js","code":"// Contact Form\\n\\nfunction submitContact(context) {\\n  const req = context.request || {};\\n  const name = req.form && req.form.name;\\n  const email = req.form && req.form.email;\\n  const message = req.form && req.form.message;\\n  if (!name || !email || !message) {\\n    return ResponseBuilder.error(400, 'Name, email and message are required');\\n  }\\n  console.log('Contact from ' + name + ' (' + email + '): ' + message);\\n  return ResponseBuilder.html('<h1>Thank you for your message!</h1><p>We will get back to you soon.</p>');\\n}\\n\\nfunction init(context) {\\n  routeRegistry.registerRoute('/contact', { handler: 'submitContact', method: 'POST' });\\n  return { success: true };\\n}"}
 
 ASSET CREATION GUIDELINES:
 - For CSS files: Use modern CSS features (variables, flexbox, grid), include proper formatting
@@ -1376,7 +1372,7 @@ IMPORTANT CONCEPTS:
 3. Always include init() function that registers at least one route
 4. Use Response builders: ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.error(status, message), etc.
 5. Assets are stored by NAME (e.g., "logo.svg", "main.css") not by HTTP path
-6. Assets must be registered to HTTP paths using routeRegistry.registerAssetRoute(path, assetName)
+6. Assets must be registered to HTTP paths using routeRegistry.registerRoute(path, { file: assetName })
 7. Same asset can be served at multiple HTTP paths via multiple registrations
 8. Asset names should NOT include path separators (no / in names)
 9. Check context.request.auth to verify authentication; use context.request.auth.userId, .userEmail, .isAdmin for user info
@@ -1553,41 +1549,39 @@ function init(context) {
   const editorTag = { tags: ["Aiwebengine editor"] };
 
   // Register editor assets under the editor Swagger tag
-  routeRegistry.registerAssetRoute(
-    "/editor/header.css",
-    "public/header.css",
-    editorTag,
-  );
-  routeRegistry.registerAssetRoute(
-    "/editor/editor.css",
-    "public/editor.css",
-    editorTag,
-  );
-  routeRegistry.registerAssetRoute(
-    "/editor/editor.js",
-    "public/editor.js",
-    editorTag,
-  );
+  routeRegistry.registerRoute("/editor/header.css", {
+    file: "public/header.css",
+    ...editorTag,
+  });
+  routeRegistry.registerRoute("/editor/editor.css", {
+    file: "public/editor.css",
+    ...editorTag,
+  });
+  routeRegistry.registerRoute("/editor/editor.js", {
+    file: "public/editor.js",
+    ...editorTag,
+  });
 
-  routeRegistry.registerRoute("/editor", "serveEditor", "GET", editorTag);
-  routeRegistry.registerRoute(
-    "/editor/swagger",
-    "serveSwaggerUI",
-    "GET",
-    editorTag,
-  );
-  routeRegistry.registerRoute(
-    "/editor/api/ai-assistant",
-    "apiAIAssistant",
-    "POST",
-    editorTag,
-  );
-  routeRegistry.registerRoute(
-    "/editor/api/ai-assistant/tools",
-    "apiAIAssistantWithTools",
-    "POST",
-    editorTag,
-  );
+  routeRegistry.registerRoute("/editor", {
+    handler: "serveEditor",
+    method: "GET",
+    ...editorTag,
+  });
+  routeRegistry.registerRoute("/editor/swagger", {
+    handler: "serveSwaggerUI",
+    method: "GET",
+    ...editorTag,
+  });
+  routeRegistry.registerRoute("/editor/api/ai-assistant", {
+    handler: "apiAIAssistant",
+    method: "POST",
+    ...editorTag,
+  });
+  routeRegistry.registerRoute("/editor/api/ai-assistant/tools", {
+    handler: "apiAIAssistantWithTools",
+    method: "POST",
+    ...editorTag,
+  });
   console.log("Editor endpoints registered");
   return { success: true };
 }

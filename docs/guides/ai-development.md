@@ -506,7 +506,7 @@ Step 5: "Add rate limiting for registration attempts"
 ```text
 Use the aiwebengine fetch() function to call the API
 
-Use Server-Sent Events (routeRegistry.registerStreamRoute) for real-time updates
+Use Server-Sent Events (routeRegistry.registerRoute(path, { stream: true })) for real-time updates
 
 Use the built-in console.log() for logging
 
@@ -552,14 +552,14 @@ web application engine. Scripts are server-side handlers that:
 
 - Receive a `req` object with method, path, query, form, headers
 - Must return an object with status, body, contentType
-- Use routeRegistry.registerRoute(path, handlerName, method) to map routes
+- Use routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" }) to map routes
 - Can use console.log(message) for logging
 - Can use fetch(url, options) for external API calls
-- Can use routeRegistry.registerStreamRoute(path) and routeRegistry.sendStreamMessage(data) for SSE
+- Can use routeRegistry.registerRoute(path, { stream: true }) and routeRegistry.sendStreamMessage(data) for SSE
 
 Available functions:
 - routeRegistry.registerRoute(), console.log(), GET /engine/script_logs to read logs back
-- fetch(), routeRegistry.registerStreamRoute(), routeRegistry.sendStreamMessage()
+- fetch(), routeRegistry.registerRoute(path, { stream: true }), routeRegistry.sendStreamMessage()
 - assetStorage.listAssets(), assetStorage.fetchAsset(), assetStorage.upsertAsset(), assetStorage.deleteAsset()
 
 Can you help me create a [your request]?

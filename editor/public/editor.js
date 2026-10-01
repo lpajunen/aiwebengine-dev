@@ -1180,7 +1180,7 @@ function handler(context) {
 
 function init(context) {
     console.log('Initializing ${fullName} at ' + new Date().toISOString());
-    routeRegistry.registerRoute('${routePath}', 'handler', 'GET');
+    routeRegistry.registerRoute('${routePath}', { handler: 'handler', method: 'GET' });
     console.log('${fullName} endpoints registered');
     return { success: true };
 }`,

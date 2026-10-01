@@ -126,8 +126,7 @@ environment — not Node — so:
 - No npm packages and no Node built-ins at runtime. `import` does work, but only for the script's
   **own assets** — `import { x } from "./server/m.ts"` resolves `server/m.ts` against the assets of
   the same script, and anything else is an `invalid-import` diagnostic.
-- Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, handlerName,
-method)`, `console`, `fetch`, etc. Handlers take a `context` and return
+- Behavior is driven by server-provided globals: `routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" })`, `console`, `fetch`, etc. Handlers take a `context` and return
   `{ status, body, contentType, headers }`. See `docs/guides/scripts.md` for the model.
 - **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
   depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the

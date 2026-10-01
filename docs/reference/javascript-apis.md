@@ -33,77 +33,68 @@ Two fields say what kind of run this is and identify it:
 
 The `routeRegistry` object provides all HTTP route and streaming functionality in a unified namespace.
 
-### routeRegistry.registerRoute(path, handlerName, method)
+### routeRegistry.registerRoute(path, spec)
 
-Registers a route that maps a URL path to a handler function.
+Publishes a path. The spec says what the path leads to — exactly one of
+`handler`, `stream` or `file`:
 
-**Parameters:**
+| spec                                   | what the path leads to                                    |
+| -------------------------------------- | --------------------------------------------------------- |
+| `{ handler: "fnName", method: "GET" }` | a handler function; `method` defaults to `"GET"`          |
+| `{ stream: true, authorize: "fn" }`    | a Server-Sent Events stream; `authorize` is optional      |
+| `{ file: "public/app.css" }`           | a file of the script's tree; only `public/` may be served |
 
-- `path` (string): URL path to register (e.g., `"/api/users"`)
-- `handlerName` (string): Name of your handler function
-- `method` (string): HTTP method (`"GET"`, `"POST"`, `"PUT"`, `"DELETE"`)
+Every kind may also carry `summary`, `description` and `tags` for the OpenAPI
+document. A handler route may carry `parameters` (an array) and `requestBody`
+(an object) — objects, not JSON strings. Streams and files may carry
+`authorize`, naming the function that decides who may connect or read; it
+answers `{ deny: 403, reason }` to refuse, or for a stream the filter
+criteria `sendStreamMessageFiltered` matches against. A handler decides for
+itself, so a handler spec takes no `authorize`.
 
-**Returns:** String describing registration result
+`:param` and a trailing `/*` work for all three.
+
+**Returns:** `{ ok: true }`, or `{ ok: false, reason }` when the registration
+was refused — a file outside `public/` or not in the tree, or any call made
+outside `init()`. A mistake in the call throws: a spec naming no target or
+two, an unknown key, a path not starting with `/`, a reserved path, a
+capability you do not hold.
 
 **Example:**
 
 ```javascript
 function getUsers(context) {
-  const req = context.request;
-  return {
-    status: 200,
-    body: "User list",
-    contentType: "text/plain; charset=UTF-8",
-  };
+  return ResponseBuilder.json({ users: [] });
 }
 
-routeRegistry.registerRoute("/api/users", "getUsers", "GET");
-```
+function mayWatch(context) {
+  if (!context.request.auth.isAuthenticated) return { deny: 401 };
+  return { user_id: context.request.auth.userId };
+}
 
-### routeRegistry.registerStreamRoute(path)
-
-Registers a Server-Sent Events (SSE) stream endpoint that clients can connect to for real-time updates.
-
-**Parameters:**
-
-- `path` (string): Stream path to register (must start with `/`, max 200 characters)
-
-**Returns:** String describing registration result
-
-**Example:**
-
-```javascript
-// Register a stream for live notifications
-routeRegistry.registerStreamRoute("/notifications");
-
-// Register a stream for chat messages
-routeRegistry.registerStreamRoute("/chat/room1");
+function init() {
+  routeRegistry.registerRoute("/api/users", { handler: "getUsers" });
+  routeRegistry.registerRoute("/api/users/:id", {
+    handler: "updateUser",
+    method: "PUT",
+    parameters: [{ name: "id", in: "path", required: true }],
+  });
+  routeRegistry.registerRoute("/notifications", {
+    stream: true,
+    authorize: "mayWatch",
+  });
+  routeRegistry.registerRoute("/styles/main.css", {
+    file: "public/main.css",
+  });
+}
 ```
 
 **Notes:**
 
-- Stream paths must be unique
-- Multiple clients can connect to the same stream
-- Streams persist until the server restarts or the script is reloaded
-- Use meaningful, descriptive paths for better organization
-
-### routeRegistry.registerAssetRoute(httpPath, assetName)
-
-Registers a static asset for serving via HTTP.
-
-**Parameters:**
-
-- `httpPath` (string): Public HTTP path to register (must start with `/`)
-- `assetName` (string): Asset name in the asset repository
-
-**Returns:** String describing registration result
-
-**Example:**
-
-```javascript
-routeRegistry.registerAssetRoute("/styles/main.css", "main.css");
-routeRegistry.registerAssetRoute("/images/logo.svg", "logo.svg");
-```
+- Registration only takes effect inside `init()`.
+- Multiple clients can connect to the same stream.
+- A file route serves the file as it is now: rewriting the file needs no
+  redeploy.
 
 ### routeRegistry.sendStreamMessage(path, data)
 
@@ -114,7 +105,10 @@ Sends a message to all clients connected to a specific stream path.
 - `path` (string): Stream path to send to (must start with `/`)
 - `data` (object): Data object to send (will be JSON serialized)
 
-**Returns:** String describing broadcast result
+**Returns:** `{ delivered, connections, failed }` — how many connections the
+message reached, how many were open, and how many could not be written to. A
+stream nobody is connected to answers `{ delivered: 0, connections: 0 }`; a
+failure throws.
 
 **Example:**
 
@@ -132,14 +126,17 @@ function notifyHandler(context) {
 }
 
 // Register the handler
-routeRegistry.registerRoute("/notify", "notifyHandler", "POST");
+routeRegistry.registerRoute("/notify", {
+  handler: "notifyHandler",
+  method: "POST",
+});
 ```
 
 **Real-time Chat Example:**
 
 ```javascript
 // Register a chat stream
-routeRegistry.registerStreamRoute("/chat");
+routeRegistry.registerRoute("/chat", { stream: true });
 
 function sendMessage(context) {
   const req = context.request;
@@ -160,10 +157,13 @@ function sendMessage(context) {
   return { status: 200, body: "Message sent" };
 }
 
-routeRegistry.registerRoute("/chat/send", "sendMessage", "POST");
+routeRegistry.registerRoute("/chat/send", {
+  handler: "sendMessage",
+  method: "POST",
+});
 ```
 
-### routeRegistry.sendStreamMessageFiltered(path, data, filterJson)
+### routeRegistry.sendStreamMessageFiltered(path, data, filter, matchMode)
 
 Sends a message to specific connections on a stream based on metadata filtering. This enables personalized broadcasting to subsets of users on stable endpoints.
 
@@ -171,9 +171,12 @@ Sends a message to specific connections on a stream based on metadata filtering.
 
 - `path` (string): Stream path to send to (must start with `/`)
 - `data` (object): Data object to send (will be JSON serialized)
-- `filterJson` (string): JSON string with metadata filter criteria (empty `"{}"` matches all connections)
+- `filter` (object): string values matched against what each connection's
+  `authorize` function returned; omit it to reach every connection
+- `matchMode` (string, optional): `"subset"` (default) — every filter entry
+  must match — or `"overlap"`, where any one may
 
-**Returns:** String describing broadcast result with success/failure counts
+**Returns:** `{ delivered, connections, failed }`, as `sendStreamMessage`
 
 **Example:**
 
@@ -186,7 +189,7 @@ routeRegistry.sendStreamMessageFiltered(
     message: "Hello room!",
     timestamp: new Date().toISOString(),
   },
-  JSON.stringify({ room: "general" }),
+  { room: "general" },
 );
 
 // Send to specific user by ID
@@ -196,7 +199,7 @@ routeRegistry.sendStreamMessageFiltered(
     type: "personal",
     message: "You have a new message",
   },
-  JSON.stringify({ user_id: "user123" }),
+  { user_id: "user123" },
 );
 ```
 
@@ -273,7 +276,10 @@ function listAllAssets(context) {
   };
 }
 
-routeRegistry.registerRoute("/assets", "listAllAssets", "GET");
+routeRegistry.registerRoute("/assets", {
+  handler: "listAllAssets",
+  method: "GET",
+});
 ```
 
 ### assetStorage.fetchAsset(asset_name)
@@ -322,7 +328,7 @@ function getAsset(context) {
   };
 }
 
-routeRegistry.registerRoute("/asset", "getAsset", "GET");
+routeRegistry.registerRoute("/asset", { handler: "getAsset", method: "GET" });
 ```
 
 ### assetStorage.upsertAsset(asset_name, mimetype, content_b64)
@@ -378,7 +384,10 @@ function uploadAsset(context) {
   };
 }
 
-routeRegistry.registerRoute("/upload-asset", "uploadAsset", "POST");
+routeRegistry.registerRoute("/upload-asset", {
+  handler: "uploadAsset",
+  method: "POST",
+});
 ```
 
 **Example - Upload from form data:**
@@ -460,7 +469,10 @@ function removeAsset(context) {
   }
 }
 
-routeRegistry.registerRoute("/delete-asset", "removeAsset", "DELETE");
+routeRegistry.registerRoute("/delete-asset", {
+  handler: "removeAsset",
+  method: "DELETE",
+});
 ```
 
 ### Asset Management Example
@@ -530,9 +542,18 @@ function assetHandler(context) {
   return { status: 404, body: "Not found" };
 }
 
-routeRegistry.registerRoute("/assets", "assetHandler", "GET");
-routeRegistry.registerRoute("/assets", "assetHandler", "POST");
-routeRegistry.registerRoute("/assets", "assetHandler", "DELETE");
+routeRegistry.registerRoute("/assets", {
+  handler: "assetHandler",
+  method: "GET",
+});
+routeRegistry.registerRoute("/assets", {
+  handler: "assetHandler",
+  method: "POST",
+});
+routeRegistry.registerRoute("/assets", {
+  handler: "assetHandler",
+  method: "DELETE",
+});
 ```
 
 ### Asset Security
@@ -1202,14 +1223,14 @@ eventSource.onerror = function (event) {
 
 ### Stream Lifecycle
 
-1. **Registration**: Use `routeRegistry.registerStreamRoute()` to create a stream endpoint
+1. **Registration**: Use `routeRegistry.registerRoute(path, { stream: true })` to create a stream endpoint
 2. **Connection**: Clients connect using EventSource or compatible SSE clients
 3. **Broadcasting**: Use `routeRegistry.sendStreamMessage()` or `routeRegistry.sendStreamMessageFiltered()` to send data to connected clients
 4. **Cleanup**: Connections are automatically cleaned up when clients disconnect
 
 ### Best Practices for Streaming
 
-- **Register streams early**: Call `routeRegistry.registerStreamRoute()` when your script loads
+- **Register streams in init()**: Call `routeRegistry.registerRoute(path, { stream: true })` from `init()`
 - **Structure your data**: Use consistent message formats with `type` fields
 - **Handle disconnections**: Clients should implement reconnection logic
 - **Limit message frequency**: Avoid overwhelming clients with too many messages
@@ -1533,7 +1554,10 @@ function userHandler(context) {
 }
 
 // Register with path parameter
-routeRegistry.registerRoute("/users/:id", "userHandler", "GET");
+routeRegistry.registerRoute("/users/:id", {
+  handler: "userHandler",
+  method: "GET",
+});
 ```
 
 ### validateString(value, minLength, maxLength)

@@ -11,17 +11,19 @@ SSE allows servers to push updates to clients over HTTP. Perfect for one-way rea
 ```javascript
 function init() {
   // Register a WebSocket stream
-  routeRegistry.registerStreamRoute("/notifications");
+  routeRegistry.registerRoute("/notifications", { stream: true });
 
   // Page to display notifications
-  routeRegistry.registerRoute(
-    "GET",
-    "/notifications-demo",
-    showNotificationsPage,
-  );
+  routeRegistry.registerRoute("GET", {
+    handler: "/notifications-demo",
+    method: showNotificationsPage,
+  });
 
   // Endpoint to send a notification
-  routeRegistry.registerRoute("POST", "/send-notification", sendNotification);
+  routeRegistry.registerRoute("POST", {
+    handler: "/send-notification",
+    method: sendNotification,
+  });
 }
 
 function showNotificationsPage(request) {
@@ -230,10 +232,19 @@ A complete real-time chat system:
 
 ```javascript
 function init() {
-  routeRegistry.registerStreamRoute("/chat");
-  routeRegistry.registerRoute("GET", "/chat", showChatPage);
-  routeRegistry.registerRoute("POST", "/chat/send", sendMessage);
-  routeRegistry.registerRoute("POST", "/chat/typing", sendTypingIndicator);
+  routeRegistry.registerRoute("/chat", { stream: true });
+  routeRegistry.registerRoute("GET", {
+    handler: "/chat",
+    method: showChatPage,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/chat/send",
+    method: sendMessage,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/chat/typing",
+    method: sendTypingIndicator,
+  });
 }
 
 function showChatPage(request) {
@@ -582,9 +593,15 @@ Real-time system monitoring dashboard:
 
 ```javascript
 function init() {
-  routeRegistry.registerStreamRoute("/system-stats");
-  routeRegistry.registerRoute("GET", "/dashboard", showDashboard);
-  routeRegistry.registerRoute("POST", "/update-stats", updateSystemStats);
+  routeRegistry.registerRoute("/system-stats", { stream: true });
+  routeRegistry.registerRoute("GET", {
+    handler: "/dashboard",
+    method: showDashboard,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/update-stats",
+    method: updateSystemStats,
+  });
 }
 
 function showDashboard(request) {
@@ -881,9 +898,15 @@ Real-time stock price updates:
 
 ```javascript
 function init() {
-  routeRegistry.registerStreamRoute("/stock-prices");
-  routeRegistry.registerRoute("GET", "/stocks", showStockTicker);
-  routeRegistry.registerRoute("POST", "/update-prices", updatePrices);
+  routeRegistry.registerRoute("/stock-prices", { stream: true });
+  routeRegistry.registerRoute("GET", {
+    handler: "/stocks",
+    method: showStockTicker,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/update-prices",
+    method: updatePrices,
+  });
 }
 
 function showStockTicker(request) {
@@ -1126,9 +1149,15 @@ Real-time user activity stream:
 
 ```javascript
 function init() {
-  routeRegistry.registerStreamRoute("/activity");
-  routeRegistry.registerRoute("GET", "/activity-feed", showActivityFeed);
-  routeRegistry.registerRoute("POST", "/activity/log", logActivity);
+  routeRegistry.registerRoute("/activity", { stream: true });
+  routeRegistry.registerRoute("GET", {
+    handler: "/activity-feed",
+    method: showActivityFeed,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/activity/log",
+    method: logActivity,
+  });
 }
 
 function showActivityFeed(request) {
@@ -1381,11 +1410,14 @@ sendStreamMessage({
 ### 4. Use Appropriate Stream Types
 
 ```javascript
-// One-way updates: Use SSE (routeRegistry.registerStreamRoute)
-routeRegistry.registerStreamRoute("/notifications");
+// One-way updates: Use SSE (routeRegistry.registerRoute(path, { stream: true }))
+routeRegistry.registerRoute("/notifications", { stream: true });
 
 // Client → server: a plain POST route alongside the stream
-routeRegistry.registerRoute("/notifications/send", "sendNotification", "POST");
+routeRegistry.registerRoute("/notifications/send", {
+  handler: "sendNotification",
+  method: "POST",
+});
 ```
 
 ### 5. Clean Up Resources
@@ -1453,7 +1485,7 @@ setInterval(() => {
 
 ```javascript
 // Register stream
-routeRegistry.registerStreamRoute("/my-stream");
+routeRegistry.registerRoute("/my-stream", { stream: true });
 
 // Send message to all connected clients
 routeRegistry.sendStreamMessage("/my-stream", { type: "update", data: value });

@@ -33,7 +33,10 @@ function myHandler(context) {
 
 // 2. Initialization Function - registers routes
 function init() {
-  routeRegistry.registerRoute("/hello", "myHandler", "GET");
+  routeRegistry.registerRoute("/hello", {
+    handler: "myHandler",
+    method: "GET",
+  });
 }
 
 // 3. Init call - runs when script loads
@@ -45,7 +48,7 @@ init();
 - **Handler functions** receive a single `context` object; the HTTP request is `context.request`
 - **`ResponseBuilder`** helpers (`.text`, `.json`, `.html`, `.error`, `.redirect`) build the response and set its `Content-Type`
 - **`init()` function** registers your routes when the script loads
-- **`routeRegistry.registerRoute(path, handlerName, method)`** maps URLs to handler functions
+- **`routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" })`** maps URLs to handler functions
 
 ## Step 2: Create Your First Script
 
@@ -96,7 +99,10 @@ function helloHandler(context) {
 
 function init() {
   // Register the route
-  routeRegistry.registerRoute("/hello", "helloHandler", "GET");
+  routeRegistry.registerRoute("/hello", {
+    handler: "helloHandler",
+    method: "GET",
+  });
   console.log("Hello script initialized successfully");
 }
 
@@ -272,7 +278,10 @@ function helloHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/hello", "helloHandler", "GET");
+  routeRegistry.registerRoute("/hello", {
+    handler: "helloHandler",
+    method: "GET",
+  });
   console.log("Enhanced hello script initialized");
 }
 
@@ -301,7 +310,10 @@ Response:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("/hello", "helloHandler", "GET");
+  routeRegistry.registerRoute("/hello", {
+    handler: "helloHandler",
+    method: "GET",
+  });
 }
 // Forgot to call init()!
 ```
@@ -317,7 +329,7 @@ function helloHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/hello", "hello", "GET"); // Wrong name!
+  routeRegistry.registerRoute("/hello", { handler: "hello", method: "GET" }); // Wrong name!
 }
 ```
 
@@ -362,7 +374,7 @@ Now that you've created your first script, you can:
 
 ```javascript
 // Register a route
-routeRegistry.registerRoute(path, handlerName, method);
+routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" });
 
 // Write to logs
 console.log(message);
@@ -388,7 +400,10 @@ function myHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/my-path", "myHandler", "GET");
+  routeRegistry.registerRoute("/my-path", {
+    handler: "myHandler",
+    method: "GET",
+  });
 }
 
 init();
@@ -438,7 +453,10 @@ function helloHandler(context) {
 
 function init() {
   // Autocomplete for routeRegistry methods
-  routeRegistry.registerRoute("/hello", "helloHandler", "GET");
+  routeRegistry.registerRoute("/hello", {
+    handler: "helloHandler",
+    method: "GET",
+  });
 }
 
 init();

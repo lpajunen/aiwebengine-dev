@@ -58,8 +58,14 @@ function my_handler(context) {
 }
 
 // Register routes
-routeRegistry.registerRoute("/my-endpoint", "my_handler", "GET");
-routeRegistry.registerRoute("/my-endpoint", "my_handler", "POST");
+routeRegistry.registerRoute("/my-endpoint", {
+  handler: "my_handler",
+  method: "GET",
+});
+routeRegistry.registerRoute("/my-endpoint", {
+  handler: "my_handler",
+  method: "POST",
+});
 ```
 
 ## Request Object
@@ -82,10 +88,10 @@ Return an object with:
 
 ## Built-in Functions
 
-- `routeRegistry.registerRoute(path, handlerFunction, method)`: Register a route
-- `routeRegistry.registerStreamRoute(path)`: Register a Server-Sent Events stream
+- `routeRegistry.registerRoute(path, { handler: handlerFunction, method: method })`: Register a route
+- `routeRegistry.registerRoute(path, { stream: true })`: Register a Server-Sent Events stream
 - `routeRegistry.sendStreamMessage(path, data)`: Broadcast to all stream connections
-- `routeRegistry.sendStreamMessageFiltered(path, data, filterJson)`: Broadcast to filtered connections
+- `routeRegistry.sendStreamMessageFiltered(path, data, filter)`: Broadcast to filtered connections
 - `console.log(message)`: Write to the server log
 - `JSON.stringify(obj)`: Convert objects to JSON strings
 

@@ -629,7 +629,10 @@ function myHandler(context) {
 
 // Type: init
 function init() {
-  routeRegistry.registerRoute("/path", "handlerName", "GET");
+  routeRegistry.registerRoute("/path", {
+    handler: "handlerName",
+    method: "GET",
+  });
 }
 
 init();

@@ -5,7 +5,7 @@
 As of November 2025, aiwebengine has been refactored to use a more flexible asset registration system. Assets are now:
 
 1. **Stored by name** in the repository (not by HTTP path)
-2. **Registered to HTTP paths at runtime** using `routeRegistry.registerAssetRoute()`
+2. **Registered to HTTP paths at runtime** with a file route: `routeRegistry.registerRoute(path, { file })`
 3. **Managed through JavaScript** in init() functions, similar to route registration
 
 ## Key Changes
@@ -19,296 +19,76 @@ As of November 2025, aiwebengine has been refactored to use a more flexible asse
 ### After (New System)
 
 - Assets stored with `asset_name` (e.g., `logo.svg`)
-- HTTP paths registered dynamically using `routeRegistry.registerAssetRoute(httpPath, assetName)`
+- HTTP paths registered dynamically using `routeRegistry.registerRoute(path, { file })`
 - Same asset can be served at multiple HTTP paths
 - Paths can be changed without touching the database
 
 ## Asset Functions
 
-### routeRegistry.registerAssetRoute(httpPath, assetName)
+### routeRegistry.registerRoute(path, { file, authorize? })
 
-Registers an HTTP path to serve a specific asset.
+Registers an HTTP path to serve one file of the script's tree.
 
-**Parameters:**
+**Spec:**
 
-- `httpPath` (string): The HTTP path (must start with `/`, max 500 characters)
-- `assetName` (string): The name of the asset in the repository (1-255 characters, no path separators)
+- `file` (string): the file's path in the tree. It must be under `public/` —
+  a file's directory is what says whether the world may read it, so
+  publishing a file means moving it there.
+- `authorize` (string, optional): name of the function that decides who may
+  read the file. It answers `{ deny: 401 }` (or any 4xx) to refuse and any
+  other object to allow. Without one, the file is served to anyone who can
+  reach the host.
+- `summary`, `description`, `tags` (optional): OpenAPI documentation.
+
+`path` must start with `/` (max 500 characters); `:param` and a trailing `/*`
+work.
 
 **Example:**
 
 ```javascript
 function init(context) {
-  // Register built-in assets
-  routeRegistry.registerAssetRoute("/logo.svg", "logo.svg");
-  routeRegistry.registerAssetRoute("/favicon.ico", "favicon.ico");
-
-  // Register custom assets
-  routeRegistry.registerAssetRoute("/css/main.css", "main.css");
-  routeRegistry.registerAssetRoute("/css/theme.css", "theme.css");
-  routeRegistry.registerAssetRoute("/js/app.js", "app.js");
-
-  // Same asset at multiple paths
-  routeRegistry.registerAssetRoute("/img/logo.svg", "logo.svg"); // Same logo at different path
-
-  return { success: true };
-}
-```
-
-### assetStorage.upsertAsset(assetName, mimetype, contentBase64)
-
-Creates or updates an asset in the repository.
-
-**Parameters:**
-
-- `assetName` (string): Name of the asset (e.g., `"logo.svg"`, `"app.css"`)
-- `mimetype` (string): MIME type (e.g., `"image/svg+xml"`, `"text/css"`)
-- `contentBase64` (string): Base64-encoded content
-
-**Example:**
-
-```javascript
-function uploadAsset(context) {
-  const req = context.request;
-  const name = req.form.name; // "my-image.png"
-  const content = req.form.content; // Base64 string
-  const mimetype = req.form.mimetype; // "image/png"
-
-  assetStorage.upsertAsset(name, mimetype, content);
-
-  return {
-    status: 201,
-    body: JSON.stringify({ message: "Asset uploaded", name: name }),
-    contentType: "application/json",
-  };
-}
-```
-
-### assetStorage.fetchAsset(asset_name)
-
-Retrieves an asset by name from the repository.
-
-**Parameters:**
-
-- `asset_name` (string): Name of the asset
-
-**Returns:**
-
-- Base64-encoded content, or error message if not found
-
-**Example:**
-
-```javascript
-function getAssetInfo(context) {
-  const req = context.request;
-  const name = req.query.name; // "logo.svg"
-  const content = assetStorage.fetchAsset(name);
-
-  if (content && !content.startsWith("Asset")) {
-    return {
-      status: 200,
-      body: content, // Base64
-      contentType: "application/json",
-    };
-  } else {
-    return {
-      status: 404,
-      body: "Asset not found",
-      contentType: "text/plain",
-    };
-  }
-}
-```
-
-### assetStorage.deleteAsset(asset_name)
-
-Deletes an asset from the repository.
-
-**Parameters:**
-
-- `asset_name` (string): Name of the asset
-
-**Returns:**
-
-- Operation result message
-
-**Example:**
-
-```javascript
-function removeAsset(context) {
-  const req = context.request;
-  const name = req.query.name;
-  const result = assetStorage.deleteAsset(name);
-
-  return {
-    status: result.includes("deleted") ? 200 : 404,
-    body: result,
-    contentType: "text/plain",
-  };
-}
-```
-
-### assetStorage.listAssets()
-
-Lists all assets with metadata in the repository.
-
-**Returns:**
-
-- JSON string with array of asset metadata objects containing:
-  - `uri`: Asset URI/name
-  - `name`: Asset name/identifier
-  - `size`: Size in bytes
-  - `mimetype`: MIME type
-  - `created_at`: Creation timestamp (ISO 8601)
-  - `updated_at`: Last update timestamp (ISO 8601)
-
-**Example:**
-
-```javascript
-function listAllAssets(context) {
-  const assetsJson = assetStorage.listAssets();
-  const assets = JSON.parse(assetsJson);
-
-  return {
-    status: 200,
-    body: JSON.stringify({
-      assets: assets,
-      count: assets.length,
-    }),
-    contentType: "application/json",
-  };
-}
-```
-
-## Complete Example
-
-Here's a complete script that demonstrates the new asset system:
-
-```javascript
-// Asset demo script
-
-function homePage(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Asset Demo</title>
-      <link rel="stylesheet" href="/styles/main.css">
-      <link rel="icon" href="/favicon.ico">
-    </head>
-    <body>
-      <img src="/images/logo.svg" alt="Logo">
-      <h1>Welcome</h1>
-      <script src="/scripts/app.js"></script>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html; charset=UTF-8",
-  };
-}
-
-function init(context) {
-  console.log("Initializing asset demo");
-
-  // Register HTTP routes
-  routeRegistry.registerRoute("/", "homePage", "GET");
-
-  // Register asset paths
-  // Built-in assets
-  routeRegistry.registerAssetRoute("/favicon.ico", "favicon.ico");
-  routeRegistry.registerAssetRoute("/images/logo.svg", "logo.svg");
-
-  // Custom assets (must be uploaded first via upsertAsset)
-  routeRegistry.registerAssetRoute("/styles/main.css", "main.css");
-  routeRegistry.registerAssetRoute("/scripts/app.js", "app.js");
-
-  console.log("Asset paths registered");
-  return { success: true };
-}
-```
-
-## Migration Guide
-
-If you have existing scripts that reference assets:
-
-### Old Code
-
-```javascript
-// Assets were referenced by their full path
-const assetPath = "/css/main.css";
-// No registration needed - path was in database
-```
-
-### New Code
-
-```javascript
-function init(context) {
-  // Register the asset path in init()
-  routeRegistry.registerAssetRoute("/css/main.css", "main.css");
-
-  return { success: true };
-}
-```
-
-## Built-in Assets
-
-The following assets are provided by the system and should be registered in your init() function:
-
-- `logo.svg` - aiwebengine logo
-- `favicon.ico` - Favicon
-- `editor.css` - Editor styles
-- `editor.js` - Editor JavaScript
-- `engine.css` - Engine styles
-
-**Recommended registration (in core.js or your main script):**
-
-```javascript
-function init(context) {
-  routeRegistry.registerAssetRoute("/logo.svg", "logo.svg");
-  routeRegistry.registerAssetRoute("/favicon.ico", "favicon.ico");
-  routeRegistry.registerAssetRoute("/editor.css", "editor.css");
-  routeRegistry.registerAssetRoute("/editor.js", "editor.js");
-  routeRegistry.registerAssetRoute("/engine.css", "engine.css");
-
-  // ... rest of your init code
+  routeRegistry.registerRoute("/logo.svg", { file: "public/logo.svg" });
+  routeRegistry.registerRoute("/editor.css", { file: "public/editor.css" });
+  routeRegistry.registerRoute("/invoice.pdf", {
+    file: "public/invoice.pdf",
+    authorize: "mayReadInvoice",
+  });
 }
 ```
 
 ## Best Practices
 
-1. **Register in init()**: Always call `routeRegistry.registerAssetRoute()` in your script's `init()` function
+1. **Register in init()**: Always register file routes in your script's `init()` function
 2. **Use descriptive names**: Asset names should be descriptive (e.g., `logo.svg`, `main.css`)
 3. **Organize paths**: Use logical HTTP paths (e.g., `/css/`, `/js/`, `/images/`)
 4. **One asset, multiple paths**: You can serve the same asset at multiple HTTP paths
-5. **Asset names vs paths**: Keep asset names simple (no slashes), use paths for organization
+5. **Served files live in `public/`**: a file anywhere else is private to the script and is refused
 
 ## Error Handling
 
-The `routeRegistry.registerAssetRoute()` function will return an error message if:
+A mistake in the call **throws**:
 
-- Path doesn't start with `/`
-- Path is too long (>500 characters)
-- Asset name is empty or too long (>255 characters)
-- Asset name contains path separators (`/`, `\`, or `..`)
-- User lacks WriteAssets capability
+- Path doesn't start with `/`, or is too long (>500 characters)
+- The file path is empty, too long (>255 characters) or contains `..` or `\`
+- The caller lacks the `WriteAssets` capability
+
+A **refusal** is returned as `{ ok: false, reason }`, so one bad path does not
+cost the script its other registrations:
+
+- The file is not in the script's tree
+- The file is not under `public/`
+- The call was made outside `init()`
 
 **Example with error checking:**
 
 ```javascript
 function init(context) {
-  const result = routeRegistry.registerAssetRoute("/logo.svg", "logo.svg");
-
-  // Result is a string, check for success
-  if (result.includes("registered")) {
-    console.log("Asset registered successfully");
-  } else {
-    console.error("Failed to register asset: " + result);
+  const result = routeRegistry.registerRoute("/logo.svg", {
+    file: "public/logo.svg",
+  });
+  if (!result.ok) {
+    console.error("logo not published: " + result.reason);
   }
-
-  return { success: true };
 }
 ```
 

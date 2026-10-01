@@ -242,7 +242,10 @@ function logsHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/my-logs", "logsHandler", "GET");
+routeRegistry.registerRoute("/my-logs", {
+  handler: "logsHandler",
+  method: "GET",
+});
 ```
 
 ### Pruning with `DELETE /engine/script_logs`
@@ -386,7 +389,10 @@ function logViewerHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/logs-viewer", "logViewerHandler", "GET");
+routeRegistry.registerRoute("/logs-viewer", {
+  handler: "logViewerHandler",
+  method: "GET",
+});
 ```
 
 ### Advanced Log Viewer with Filtering
@@ -484,11 +490,10 @@ function advancedLogViewerHandler(context) {
   };
 }
 
-routeRegistry.registerRoute(
-  "/advanced-logs",
-  "advancedLogViewerHandler",
-  "GET",
-);
+routeRegistry.registerRoute("/advanced-logs", {
+  handler: "advancedLogViewerHandler",
+  method: "GET",
+});
 ```
 
 ## Debugging Techniques
@@ -728,7 +733,10 @@ function statsHandler(context) {
   return jsonResponse(200, stats);
 }
 
-routeRegistry.registerRoute("/stats", "statsHandler", "GET");
+routeRegistry.registerRoute("/stats", {
+  handler: "statsHandler",
+  method: "GET",
+});
 ```
 
 ## Best Practices

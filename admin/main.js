@@ -509,7 +509,9 @@ function init(context) {
 
   // Serve the management UI. The page reads and writes user roles straight
   // from the engine's HTTP API, so there is no /admin/api/* layer any more.
-  routeRegistry.registerRoute("/admin", "handleManagerUI", "GET", {
+  routeRegistry.registerRoute("/admin", {
+    handler: "handleManagerUI",
+    method: "GET",
     summary: "User management UI",
     description: "Administration interface for managing user roles",
     tags: ["Aiwebengine administration"],

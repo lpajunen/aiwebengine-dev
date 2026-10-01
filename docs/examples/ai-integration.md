@@ -12,8 +12,14 @@ Create a content generation tool:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/ai-writer", showAIWriter);
-  routeRegistry.registerRoute("POST", "/api/generate", generateContent);
+  routeRegistry.registerRoute("GET", {
+    handler: "/ai-writer",
+    method: showAIWriter,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/api/generate",
+    method: generateContent,
+  });
 }
 
 function showAIWriter(request) {
@@ -416,8 +422,14 @@ Create an interactive AI chatbot:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/chatbot", showChatbot);
-  routeRegistry.registerRoute("POST", "/api/chat", handleChat);
+  routeRegistry.registerRoute("GET", {
+    handler: "/chatbot",
+    method: showChatbot,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/api/chat",
+    method: handleChat,
+  });
 }
 
 function showChatbot(request) {
@@ -787,8 +799,14 @@ Generate descriptions for images:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/image-analyzer", showImageAnalyzer);
-  routeRegistry.registerRoute("POST", "/api/analyze-image", analyzeImage);
+  routeRegistry.registerRoute("GET", {
+    handler: "/image-analyzer",
+    method: showImageAnalyzer,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/api/analyze-image",
+    method: analyzeImage,
+  });
 }
 
 function showImageAnalyzer(request) {
@@ -1101,8 +1119,14 @@ Intelligent search with AI:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/smart-search", showSmartSearch);
-  routeRegistry.registerRoute("POST", "/api/search", performSearch);
+  routeRegistry.registerRoute("GET", {
+    handler: "/smart-search",
+    method: showSmartSearch,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/api/search",
+    method: performSearch,
+  });
 }
 
 function showSmartSearch(request) {

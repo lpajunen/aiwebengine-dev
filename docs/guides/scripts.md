@@ -36,7 +36,10 @@ function helloHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/hello", "helloHandler", "GET");
+  routeRegistry.registerRoute("/hello", {
+    handler: "helloHandler",
+    method: "GET",
+  });
 }
 
 init();
@@ -106,8 +109,8 @@ return createResponse(201, { item: item });
 
 function init() {
 // Register routes
-routeRegistry.registerRoute("/api/items", "listItemsHandler", "GET");
-routeRegistry.registerRoute("/api/items", "createItemHandler", "POST");
+routeRegistry.registerRoute("/api/items", { handler: "listItemsHandler", method: "GET" });
+routeRegistry.registerRoute("/api/items", { handler: "createItemHandler", method: "POST" });
 
 // Log initialization
 console.log("Items API initialized");
@@ -269,14 +272,23 @@ function errorHandler(context) {
 ### The `routeRegistry.registerRoute()` Function
 
 ```javascript
-routeRegistry.registerRoute(path, handlerName, method);
+routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" });
+routeRegistry.registerRoute(path, { stream: true, authorize: "fnName" });
+routeRegistry.registerRoute(path, { file: "public/app.css" });
 ```
 
 **Parameters:**
 
 - `path` (string) - URL path starting with `/`
-- `handlerName` (string) - Name of the handler function
-- `method` (string) - HTTP method: `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, `"PATCH"`
+- `spec` (object) - exactly one of:
+  - `handler` (string) - name of the handler function, with `method`
+    (`"GET"` by default, or `"POST"`, `"PUT"`, `"DELETE"`, `"PATCH"`)
+  - `stream: true` - a Server-Sent Events stream
+  - `file` (string) - a file under `public/` in the script's tree
+
+It returns `{ ok: true }`, or `{ ok: false, reason }` when the registration
+was refused, and throws when the call itself is malformed. See the JavaScript
+API reference for the rest of the spec.
 
 ### Route Specificity and Matching
 
@@ -301,10 +313,22 @@ Routes are scored based on their pattern:
 ```javascript
 function init() {
   // Register multiple overlapping routes
-  routeRegistry.registerRoute("/api/scripts/*", "getScript", "GET"); // Score: 1990
-  routeRegistry.registerRoute("/api/scripts/*/owners", "manageOwners", "GET"); // Score: 2990
-  routeRegistry.registerRoute("/api/scripts/:name", "getByName", "GET"); // Score: 2100
-  routeRegistry.registerRoute("/api/scripts/search", "search", "GET"); // Score: 3000
+  routeRegistry.registerRoute("/api/scripts/*", {
+    handler: "getScript",
+    method: "GET",
+  }); // Score: 1990
+  routeRegistry.registerRoute("/api/scripts/*/owners", {
+    handler: "manageOwners",
+    method: "GET",
+  }); // Score: 2990
+  routeRegistry.registerRoute("/api/scripts/:name", {
+    handler: "getByName",
+    method: "GET",
+  }); // Score: 2100
+  routeRegistry.registerRoute("/api/scripts/search", {
+    handler: "search",
+    method: "GET",
+  }); // Score: 3000
 }
 
 // Request routing:
@@ -327,16 +351,31 @@ function init() {
 **Basic route:**
 
 ```javascript
-routeRegistry.registerRoute("/api/hello", "helloHandler", "GET");
+routeRegistry.registerRoute("/api/hello", {
+  handler: "helloHandler",
+  method: "GET",
+});
 ```
 
 **Multiple methods on same path:**
 
 ```javascript
-routeRegistry.registerRoute("/api/users", "listUsers", "GET");
-routeRegistry.registerRoute("/api/users", "createUser", "POST");
-routeRegistry.registerRoute("/api/users", "updateUser", "PUT");
-routeRegistry.registerRoute("/api/users", "deleteUser", "DELETE");
+routeRegistry.registerRoute("/api/users", {
+  handler: "listUsers",
+  method: "GET",
+});
+routeRegistry.registerRoute("/api/users", {
+  handler: "createUser",
+  method: "POST",
+});
+routeRegistry.registerRoute("/api/users", {
+  handler: "updateUser",
+  method: "PUT",
+});
+routeRegistry.registerRoute("/api/users", {
+  handler: "deleteUser",
+  method: "DELETE",
+});
 ```
 
 **RESTful API:**
@@ -344,13 +383,28 @@ routeRegistry.registerRoute("/api/users", "deleteUser", "DELETE");
 ```javascript
 function init() {
   // Collection endpoints
-  routeRegistry.registerRoute("/api/users", "listUsers", "GET");
-  routeRegistry.registerRoute("/api/users", "createUser", "POST");
+  routeRegistry.registerRoute("/api/users", {
+    handler: "listUsers",
+    method: "GET",
+  });
+  routeRegistry.registerRoute("/api/users", {
+    handler: "createUser",
+    method: "POST",
+  });
 
   // Resource endpoints
-  routeRegistry.registerRoute("/api/users/:id", "getUser", "GET");
-  routeRegistry.registerRoute("/api/users/:id", "updateUser", "PUT");
-  routeRegistry.registerRoute("/api/users/:id", "deleteUser", "DELETE");
+  routeRegistry.registerRoute("/api/users/:id", {
+    handler: "getUser",
+    method: "GET",
+  });
+  routeRegistry.registerRoute("/api/users/:id", {
+    handler: "updateUser",
+    method: "PUT",
+  });
+  routeRegistry.registerRoute("/api/users/:id", {
+    handler: "deleteUser",
+    method: "DELETE",
+  });
 }
 ```
 
@@ -358,7 +412,10 @@ Note: Path parameters like `:id` are now automatically extracted and available v
 
 ```javascript
 // New approach - access path parameters directly
-routeRegistry.registerRoute("/api/users/:id", "getUser", "GET");
+routeRegistry.registerRoute("/api/users/:id", {
+  handler: "getUser",
+  method: "GET",
+});
 
 function getUser(context) {
   const req = context.request;
@@ -367,7 +424,10 @@ function getUser(context) {
 }
 
 // Query parameters still work for additional filtering
-routeRegistry.registerRoute("/api/users/:id/posts", "getUserPosts", "GET");
+routeRegistry.registerRoute("/api/users/:id/posts", {
+  handler: "getUserPosts",
+  method: "GET",
+});
 
 function getUserPosts(context) {
   const req = context.request;
@@ -385,16 +445,31 @@ function getUserPosts(context) {
 ```javascript
 function init() {
   // User routes
-  routeRegistry.registerRoute("/api/users", "listUsers", "GET");
-  routeRegistry.registerRoute("/api/users", "createUser", "POST");
+  routeRegistry.registerRoute("/api/users", {
+    handler: "listUsers",
+    method: "GET",
+  });
+  routeRegistry.registerRoute("/api/users", {
+    handler: "createUser",
+    method: "POST",
+  });
 
   // Product routes
-  routeRegistry.registerRoute("/api/products", "listProducts", "GET");
-  routeRegistry.registerRoute("/api/products", "createProduct", "POST");
+  routeRegistry.registerRoute("/api/products", {
+    handler: "listProducts",
+    method: "GET",
+  });
+  routeRegistry.registerRoute("/api/products", {
+    handler: "createProduct",
+    method: "POST",
+  });
 
   // Page routes
-  routeRegistry.registerRoute("/", "homePage", "GET");
-  routeRegistry.registerRoute("/about", "aboutPage", "GET");
+  routeRegistry.registerRoute("/", { handler: "homePage", method: "GET" });
+  routeRegistry.registerRoute("/about", {
+    handler: "aboutPage",
+    method: "GET",
+  });
 }
 ```
 
@@ -423,7 +498,10 @@ function searchHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/search", "searchHandler", "GET");
+routeRegistry.registerRoute("/search", {
+  handler: "searchHandler",
+  method: "GET",
+});
 // Test: /search?q=javascript&page=2&limit=20
 ```
 
@@ -458,7 +536,10 @@ function createUserHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/api/users", "createUserHandler", "POST");
+routeRegistry.registerRoute("/api/users", {
+  handler: "createUserHandler",
+  method: "POST",
+});
 ```
 
 ### JSON Request Body
@@ -946,7 +1027,10 @@ function getUserHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/internal/users/get", "getUserHandler", "GET");
+  routeRegistry.registerRoute("/internal/users/get", {
+    handler: "getUserHandler",
+    method: "GET",
+  });
 }
 
 // Consumer script: profile-page.js
@@ -1005,8 +1089,11 @@ function sendMessageHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerStreamRoute("/chat");
-  routeRegistry.registerRoute("/chat/send", "sendMessageHandler", "POST");
+  routeRegistry.registerRoute("/chat", { stream: true });
+  routeRegistry.registerRoute("/chat/send", {
+    handler: "sendMessageHandler",
+    method: "POST",
+  });
 }
 ```
 
@@ -1083,8 +1170,14 @@ const users = [];
 const userHandlers = createCrudHandlers("users", users);
 
 function init() {
-  routeRegistry.registerRoute("/api/users", "listUsersHandler", "GET");
-  routeRegistry.registerRoute("/api/users", "createUserHandler", "POST");
+  routeRegistry.registerRoute("/api/users", {
+    handler: "listUsersHandler",
+    method: "GET",
+  });
+  routeRegistry.registerRoute("/api/users", {
+    handler: "createUserHandler",
+    method: "POST",
+  });
 }
 
 function listUsersHandler(context) {
@@ -1138,7 +1231,7 @@ function paginatedHandler(context) {
 ### Essential Functions
 
 ```javascript
-routeRegistry.registerRoute(path, handlerName, method); // Register route
+routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" }); // Register route
 console.log(message); // Write to logs
 ```
 
@@ -1180,7 +1273,10 @@ function myHandler(context) {
 }
 
 function init() {
-  routeRegistry.registerRoute("/my-endpoint", "myHandler", "GET");
+  routeRegistry.registerRoute("/my-endpoint", {
+    handler: "myHandler",
+    method: "GET",
+  });
 }
 
 init();

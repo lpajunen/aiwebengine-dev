@@ -553,26 +553,33 @@ function init(context) {
   );
 
   // Register engine stylesheet asset
-  routeRegistry.registerAssetRoute("/engine.css", "public/engine.css", {
+  routeRegistry.registerRoute("/engine.css", {
+    file: "public/engine.css",
     tags: ["Aiwebengine documentation"],
   });
 
   // Register redirect route
-  routeRegistry.registerRoute("/docs", "handleDocsRedirect", "GET", {
+  routeRegistry.registerRoute("/docs", {
+    handler: "handleDocsRedirect",
+    method: "GET",
     summary: "Documentation redirect",
     description: "Redirects to /docs/",
     tags: ["Aiwebengine documentation"],
   });
 
   // Register main documentation route
-  routeRegistry.registerRoute("/docs/", "handleDocsRequest", "GET", {
+  routeRegistry.registerRoute("/docs/", {
+    handler: "handleDocsRequest",
+    method: "GET",
     summary: "Documentation home",
     description: "Main documentation page",
     tags: ["Aiwebengine documentation"],
   });
 
   // Register wildcard route for all doc pages
-  routeRegistry.registerRoute("/docs/*", "handleDocsRequest", "GET", {
+  routeRegistry.registerRoute("/docs/*", {
+    handler: "handleDocsRequest",
+    method: "GET",
     summary: "Documentation pages",
     description: "Serve documentation markdown as HTML",
     tags: ["Aiwebengine documentation"],

@@ -2,7 +2,7 @@
 
 Learn how to work with static files like images, CSS, JavaScript, and other assets in aiwebengine.
 
-Current engine versions store assets by name and expose them over HTTP after you register a route with `routeRegistry.registerAssetRoute(httpPath, assetName)`. Use `assetStorage` to manage file contents and the route registry to choose public URLs.
+Current engine versions store assets by name and expose them over HTTP after you register a route with `routeRegistry.registerRoute(httpPath, { file: assetName })`. Use `assetStorage` to manage file contents and the route registry to choose public URLs.
 
 ## Overview
 
@@ -188,7 +188,10 @@ function uploadHandler(context) {
   }
 }
 
-routeRegistry.registerRoute("/upload-asset", "uploadHandler", "POST");
+routeRegistry.registerRoute("/upload-asset", {
+  handler: "uploadHandler",
+  method: "POST",
+});
 ```
 
 ### Method 4: The engine's HTTP API (`/engine/assets`)
@@ -541,7 +544,7 @@ function assetGalleryHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/assets-gallery", "assetGalleryHandler", "GET");
+routeRegistry.registerRoute("/assets-gallery", { handler: "assetGalleryHandler", method: "GET" });
 ```
 
 ### Asset Upload Form
@@ -615,7 +618,10 @@ function uploadFormHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/upload-form", "uploadFormHandler", "GET");
+routeRegistry.registerRoute("/upload-form", {
+  handler: "uploadFormHandler",
+  method: "GET",
+});
 ```
 
 ## Asset API Reference
@@ -875,7 +881,10 @@ function pwaManifestHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/manifest.json", "pwaManifestHandler", "GET");
+routeRegistry.registerRoute("/manifest.json", {
+  handler: "pwaManifestHandler",
+  method: "GET",
+});
 ```
 
 ## Troubleshooting

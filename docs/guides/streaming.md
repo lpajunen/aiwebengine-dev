@@ -39,7 +39,7 @@ aiwebengine provides built-in support for real-time streaming through Server-Sen
 
 1. **Stream Registry**: Manages registered stream paths and active connections
 2. **Connection Manager**: Handles client connections and cleanup
-3. **JavaScript Engine Integration**: Provides `routeRegistry.registerStreamRoute()` and `routeRegistry.sendStreamMessage()` functions
+3. **JavaScript Engine Integration**: Provides `routeRegistry.registerRoute(path, { stream: true })` and `routeRegistry.sendStreamMessage()`
 4. **SSE Server**: Handles HTTP connections and message broadcasting
 
 ### Flow Diagram
@@ -48,7 +48,8 @@ aiwebengine provides built-in support for real-time streaming through Server-Sen
 JavaScript Script          Stream Registry          Connected Clients
      |                          |                         |
      | routeRegistry.           |                         |
-     | registerStreamRoute()    |                         |
+     | registerRoute(path,      |                         |
+     |   { stream: true })      |                         |
      |------------------------->|                         |
      |                          |                         |
      |                          | <--- Client connects ---|
@@ -62,9 +63,9 @@ JavaScript Script          Stream Registry          Connected Clients
 
 ### Connection Lifecycle
 
-1. **Registration**: Script calls `routeRegistry.registerStreamRoute('/path')` to create a stream endpoint
+1. **Registration**: Script calls `routeRegistry.registerRoute('/path', { stream: true })` to create a stream endpoint
 2. **Client Connection**: Browser connects using `new EventSource('/path')`
-3. **Broadcasting**: Script calls `routeRegistry.sendStreamMessage('/path', data)` or `routeRegistry.sendStreamMessageFiltered('/path', data, filterJson)` to send data to clients
+3. **Broadcasting**: Script calls `routeRegistry.sendStreamMessage('/path', data)` or `routeRegistry.sendStreamMessageFiltered('/path', data, filter)` to send data to clients
 4. **Cleanup**: Connections automatically cleaned up when clients disconnect
 
 ## Quick Start
@@ -73,7 +74,7 @@ JavaScript Script          Stream Registry          Connected Clients
 
 ```javascript
 // Register a stream endpoint
-routeRegistry.registerStreamRoute("/events");
+routeRegistry.registerRoute("/events", { stream: true });
 
 // Handler to send events
 function triggerEvent(context) {
@@ -86,7 +87,10 @@ function triggerEvent(context) {
   return { status: 200, body: "Event sent" };
 }
 
-routeRegistry.registerRoute("/trigger", "triggerEvent", "POST");
+routeRegistry.registerRoute("/trigger", {
+  handler: "triggerEvent",
+  method: "POST",
+});
 ```
 
 ### 2. Client-Side Connection
@@ -127,30 +131,36 @@ routeRegistry.registerRoute("/trigger", "triggerEvent", "POST");
 
 ### routeRegistry Stream Functions
 
-#### routeRegistry.registerStreamRoute(path)
+#### routeRegistry.registerRoute(path, { stream: true })
 
 Registers a Server-Sent Events endpoint that clients can connect to.
 
 **Parameters:**
 
-- `path` (string): Stream path (must start with `/`, max 200 characters)
+- `path` (string): Stream path (must start with `/`, max 500 characters)
+- `authorize` (string, optional): name of the function that decides who may
+  connect. It answers `{ deny: 401 }` (or any 4xx) to refuse, or the filter
+  criteria — a flat object of strings — that `sendStreamMessageFiltered`
+  matches against. Without one, anyone who can reach the host may connect.
 
-**Returns:** String describing registration result
+**Returns:** `{ ok: true }`, or `{ ok: false, reason }` when called outside
+`init()`
 
-**Throws:** Error if path is invalid or registration fails
+**Throws:** if the path is malformed or reserved, or the caller lacks the
+`ManageStreams` capability
 
 **Example:**
 
 ```javascript
-routeRegistry.registerStreamRoute("/notifications");
-routeRegistry.registerStreamRoute("/chat/room1");
-routeRegistry.registerStreamRoute("/status/server1");
+routeRegistry.registerRoute("/notifications", { stream: true });
+routeRegistry.registerRoute("/chat/room1", { stream: true });
+routeRegistry.registerRoute("/status/server1", { stream: true });
 ```
 
 **Path Requirements:**
 
 - Must start with `/`
-- Maximum 200 characters
+- Maximum 500 characters
 - Should be unique per script
 - Case-sensitive
 
@@ -163,7 +173,8 @@ Sends a message to all clients connected to a specific stream path.
 - `path` (string): Stream path to send to (must start with `/`)
 - `data` (object): Data to send (will be JSON serialized)
 
-**Returns:** String describing broadcast result
+**Returns:** `{ delivered, connections, failed }`. A stream nobody is
+connected to answers zeros; a failure throws.
 
 **Example:**
 
@@ -184,7 +195,7 @@ routeRegistry.sendStreamMessage("/notifications", {
 - Use consistent field names across your application
 - Keep messages reasonably sized (< 1MB recommended)
 
-#### routeRegistry.sendStreamMessageFiltered(path, data, filterJson) [Advanced]
+#### routeRegistry.sendStreamMessageFiltered(path, data, filter, matchMode) [Advanced]
 
 Sends a message to specific clients connected to a stream path based on connection metadata filtering.
 
@@ -192,9 +203,13 @@ Sends a message to specific clients connected to a stream path based on connecti
 
 - `path` (string): Stream path to send to (must start with `/`)
 - `data` (object): Data to send (will be JSON serialized)
-- `filterJson` (string, optional): JSON string containing metadata filter criteria. Empty string `{}` matches all connections.
+- `filter` (object, optional): string values matched against the criteria
+  each connection's `authorize` function returned. Omit it, or pass `{}`, to
+  reach every connection.
+- `matchMode` (string, optional): `"subset"` (default) — every entry must
+  match — or `"overlap"`, where any one may.
 
-**Returns:** String describing the broadcast result including success/failure counts
+**Returns:** `{ delivered, connections, failed }`
 
 **Example:**
 
@@ -207,10 +222,10 @@ routeRegistry.sendStreamMessageFiltered(
     message: "Hello everyone in general!",
     timestamp: new Date().toISOString(),
   },
-  JSON.stringify({
+  {
     user_id: "user123",
     room: "general",
-  }),
+  },
 );
 
 // Send to all connections (empty filter)
@@ -220,19 +235,20 @@ routeRegistry.sendStreamMessageFiltered(
     type: "system_alert",
     message: "System maintenance starting",
   },
-  "{}",
+  {},
 );
 ```
 
 **Filter Format:**
 
-The `filterJson` parameter should be a JSON string containing key-value pairs that must match the connection's metadata:
+The `filter` is an object of string values that must match the
+connection's criteria:
 
 ```javascript
 // Filter examples
-JSON.stringify({ user_id: "user123" }); // Match specific user
-JSON.stringify({ room: "general", role: "admin" }); // Match room AND role
-JSON.stringify({}); // Match all connections (empty filter)
+({ user_id: "user123" }); // Match specific user
+({ room: "general", role: "admin" }); // Match room AND role
+({}); // Match all connections (empty filter)
 ```
 
 **Use Cases:**
@@ -272,7 +288,7 @@ Selective broadcasting allows you to send messages to specific clients based on 
 
 ```javascript
 // Register one stream for all chat messages
-routeRegistry.registerStreamRoute("/chat");
+routeRegistry.registerRoute("/chat", { stream: true });
 
 // Send personalized messages using metadata filtering
 function sendPersonalMessage(context) {
@@ -296,7 +312,10 @@ function sendPersonalMessage(context) {
   return { status: 200, body: result };
 }
 
-routeRegistry.registerRoute("/chat/personal", "sendPersonalMessage", "POST");
+routeRegistry.registerRoute("/chat/personal", {
+  handler: "sendPersonalMessage",
+  method: "POST",
+});
 ```
 
 ### Advanced Filtering
@@ -460,7 +479,7 @@ testConnection.onmessage = (event) => {
 #### 1. Chat Applications
 
 ```javascript
-routeRegistry.registerStreamRoute("/chat");
+routeRegistry.registerRoute("/chat", { stream: true });
 
 function sendRoomMessage(context) {
   const req = context.request;
@@ -495,14 +514,20 @@ function sendPrivateMessage(context) {
   );
 }
 
-routeRegistry.registerRoute("/chat/room", "sendRoomMessage", "POST");
-routeRegistry.registerRoute("/chat/private", "sendPrivateMessage", "POST");
+routeRegistry.registerRoute("/chat/room", {
+  handler: "sendRoomMessage",
+  method: "POST",
+});
+routeRegistry.registerRoute("/chat/private", {
+  handler: "sendPrivateMessage",
+  method: "POST",
+});
 ```
 
 #### 2. Role-Based Notifications
 
 ```javascript
-routeRegistry.registerStreamRoute("/notifications");
+routeRegistry.registerRoute("/notifications", { stream: true });
 
 function sendAdminAlert(context) {
   const req = context.request;
@@ -535,14 +560,20 @@ function sendUserNotification(context) {
   );
 }
 
-routeRegistry.registerRoute("/notify/admin", "sendAdminAlert", "POST");
-routeRegistry.registerRoute("/notify/user", "sendUserNotification", "POST");
+routeRegistry.registerRoute("/notify/admin", {
+  handler: "sendAdminAlert",
+  method: "POST",
+});
+routeRegistry.registerRoute("/notify/user", {
+  handler: "sendUserNotification",
+  method: "POST",
+});
 ```
 
 #### 3. Multi-Tenant Applications
 
 ```javascript
-routeRegistry.registerStreamRoute("/tenant-updates");
+routeRegistry.registerRoute("/tenant-updates", { stream: true });
 
 function broadcastTenantUpdate(context) {
   const req = context.request;
@@ -559,11 +590,10 @@ function broadcastTenantUpdate(context) {
   );
 }
 
-routeRegistry.registerRoute(
-  "/tenant/broadcast",
-  "broadcastTenantUpdate",
-  "POST",
-);
+routeRegistry.registerRoute("/tenant/broadcast", {
+  handler: "broadcastTenantUpdate",
+  method: "POST",
+});
 ```
 
 ### Best Practices for Selective Broadcasting
@@ -743,7 +773,7 @@ curl -X POST http://localhost:3000/trigger-notification
 Perfect for alerting users about important events:
 
 ```javascript
-routeRegistry.registerStreamRoute("/notifications");
+routeRegistry.registerRoute("/notifications", { stream: true });
 
 function sendAlert(context) {
   const req = context.request;
@@ -760,7 +790,10 @@ function sendAlert(context) {
   return { status: 200, body: "Alert sent" };
 }
 
-routeRegistry.registerRoute("/send-alert", "sendAlert", "POST");
+routeRegistry.registerRoute("/send-alert", {
+  handler: "sendAlert",
+  method: "POST",
+});
 ```
 
 ### 2. Real-Time Dashboard
@@ -768,7 +801,7 @@ routeRegistry.registerRoute("/send-alert", "sendAlert", "POST");
 Stream live metrics and status updates:
 
 ```javascript
-routeRegistry.registerStreamRoute("/dashboard");
+routeRegistry.registerRoute("/dashboard", { stream: true });
 
 function updateMetrics(context) {
   // Simulate gathering metrics
@@ -784,7 +817,10 @@ function updateMetrics(context) {
   return { status: 200, body: "Metrics updated" };
 }
 
-routeRegistry.registerRoute("/update-metrics", "updateMetrics", "POST");
+routeRegistry.registerRoute("/update-metrics", {
+  handler: "updateMetrics",
+  method: "POST",
+});
 ```
 
 ### 3. Chat System
@@ -792,7 +828,7 @@ routeRegistry.registerRoute("/update-metrics", "updateMetrics", "POST");
 Build real-time communication:
 
 ```javascript
-routeRegistry.registerStreamRoute("/chat");
+routeRegistry.registerRoute("/chat", { stream: true });
 
 function sendMessage(context) {
   const req = context.request;
@@ -809,7 +845,10 @@ function sendMessage(context) {
   return { status: 200, body: "Message sent" };
 }
 
-routeRegistry.registerRoute("/chat/send", "sendMessage", "POST");
+routeRegistry.registerRoute("/chat/send", {
+  handler: "sendMessage",
+  method: "POST",
+});
 ```
 
 ### 4. Live Data Feed
@@ -817,7 +856,7 @@ routeRegistry.registerRoute("/chat/send", "sendMessage", "POST");
 Stream continuous data updates:
 
 ```javascript
-routeRegistry.registerStreamRoute("/data-feed");
+routeRegistry.registerRoute("/data-feed", { stream: true });
 
 function broadcastData(context) {
   const req = context.request;
@@ -835,7 +874,10 @@ function broadcastData(context) {
   return { status: 200, body: "Data broadcasted" };
 }
 
-routeRegistry.registerRoute("/broadcast-data", "broadcastData", "GET");
+routeRegistry.registerRoute("/broadcast-data", {
+  handler: "broadcastData",
+  method: "GET",
+});
 ```
 
 ## Best Practices
@@ -846,13 +888,13 @@ routeRegistry.registerRoute("/broadcast-data", "broadcastData", "GET");
 
    ```javascript
    // Good
-   routeRegistry.registerStreamRoute("/notifications/user123");
-   routeRegistry.registerStreamRoute("/chat/room/general");
-   routeRegistry.registerStreamRoute("/status/server/production");
+   routeRegistry.registerRoute("/notifications/user123", { stream: true });
+   routeRegistry.registerRoute("/chat/room/general", { stream: true });
+   routeRegistry.registerRoute("/status/server/production", { stream: true });
 
    // Avoid
-   routeRegistry.registerStreamRoute("/stream1");
-   routeRegistry.registerStreamRoute("/s");
+   routeRegistry.registerRoute("/stream1", { stream: true });
+   routeRegistry.registerRoute("/s", { stream: true });
    ```
 
 2. **Structure Your Messages Consistently**
@@ -990,7 +1032,7 @@ eventSource.onerror = function (event) {
    ```javascript
    // Check if stream is registered
    console.log("Registering stream...");
-   routeRegistry.registerStreamRoute("/my-stream");
+   routeRegistry.registerRoute("/my-stream", { stream: true });
    console.log("Stream registered");
 
    // Verify message sending
@@ -1068,9 +1110,9 @@ When using multiple streams, coordinate them effectively:
 
 ```javascript
 // Register different streams for different data types
-routeRegistry.registerStreamRoute("/notifications"); // User notifications
-routeRegistry.registerStreamRoute("/system-status"); // System health
-routeRegistry.registerStreamRoute("/chat"); // Chat messages
+routeRegistry.registerRoute("/notifications", { stream: true }); // User notifications
+routeRegistry.registerRoute("/system-status", { stream: true }); // System health
+routeRegistry.registerRoute("/chat", { stream: true }); // Chat messages
 
 // Send targeted messages based on context
 function handleUserAction(context) {
@@ -1100,7 +1142,7 @@ function handleUserAction(context) {
 Connect streams to external data sources:
 
 ```javascript
-routeRegistry.registerStreamRoute("/external-updates");
+routeRegistry.registerRoute("/external-updates", { stream: true });
 
 // Webhook handler for external system notifications
 function webhookHandler(context) {
@@ -1119,7 +1161,10 @@ function webhookHandler(context) {
   return { status: 200, body: "Webhook processed" };
 }
 
-routeRegistry.registerRoute("/webhook/github", "webhookHandler", "POST");
+routeRegistry.registerRoute("/webhook/github", {
+  handler: "webhookHandler",
+  method: "POST",
+});
 ```
 
 ## Next Steps

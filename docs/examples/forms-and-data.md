@@ -8,8 +8,14 @@ A basic form with GET (display) and POST (submit) handlers:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/contact", showContactForm);
-  routeRegistry.registerRoute("POST", "/contact", handleContactForm);
+  routeRegistry.registerRoute("GET", {
+    handler: "/contact",
+    method: showContactForm,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/contact",
+    method: handleContactForm,
+  });
 }
 
 function showContactForm(request) {
@@ -162,8 +168,14 @@ Add server-side validation:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/signup", showSignupForm);
-  routeRegistry.registerRoute("POST", "/signup", handleSignup);
+  routeRegistry.registerRoute("GET", {
+    handler: "/signup",
+    method: showSignupForm,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/signup",
+    method: handleSignup,
+  });
 }
 
 function showSignupForm(request) {
@@ -437,8 +449,14 @@ Modern async form handling:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/feedback", showFeedbackForm);
-  routeRegistry.registerRoute("POST", "/api/feedback", handleFeedbackAPI);
+  routeRegistry.registerRoute("GET", {
+    handler: "/feedback",
+    method: showFeedbackForm,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/api/feedback",
+    method: handleFeedbackAPI,
+  });
 }
 
 function showFeedbackForm(request) {
@@ -734,8 +752,14 @@ Handle file uploads (for when assets API is used):
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/upload", showUploadForm);
-  routeRegistry.registerRoute("POST", "/upload", handleUpload);
+  routeRegistry.registerRoute("GET", {
+    handler: "/upload",
+    method: showUploadForm,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/upload",
+    method: handleUpload,
+  });
 }
 
 function showUploadForm(request) {
@@ -965,8 +989,14 @@ Create a multi-step registration process:
 
 ```javascript
 function init() {
-  routeRegistry.registerRoute("GET", "/wizard", showWizard);
-  routeRegistry.registerRoute("POST", "/api/wizard/step", handleWizardStep);
+  routeRegistry.registerRoute("GET", {
+    handler: "/wizard",
+    method: showWizard,
+  });
+  routeRegistry.registerRoute("POST", {
+    handler: "/api/wizard/step",
+    method: handleWizardStep,
+  });
 }
 
 function showWizard(request) {

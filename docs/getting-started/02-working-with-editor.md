@@ -469,7 +469,10 @@ Explain how the streaming works in this script
    }
 
    function init() {
-     routeRegistry.registerRoute("/api/myapi", "apiHandler", "GET");
+     routeRegistry.registerRoute("/api/myapi", {
+       handler: "apiHandler",
+       method: "GET",
+     });
    }
 
    init();
@@ -503,7 +506,10 @@ Explain how the streaming works in this script
    }
 
    function init() {
-     routeRegistry.registerRoute("/", "homeHandler", "GET");
+     routeRegistry.registerRoute("/", {
+       handler: "homeHandler",
+       method: "GET",
+     });
    }
 
    init();
