@@ -19,10 +19,9 @@ This guide explains how to create and use MCP (Model Context Protocol) prompts i
 // In your script's init() function
 function init(context) {
   // Register a prompt with arguments
-  mcpRegistry.registerPrompt(
-    "create_rest_endpoint",
-    "Generate a complete REST API endpoint with handler and route",
-    JSON.stringify([
+  mcpRegistry.registerPrompt("create_rest_endpoint", {
+    description: "Generate a complete REST API endpoint with handler and route",
+    arguments: [
       {
         name: "resourceName",
         description: "The resource name (e.g., 'users', 'products')",
@@ -33,9 +32,9 @@ function init(context) {
         description: "HTTP method (GET, POST, PUT, DELETE)",
         required: true,
       },
-    ]),
-    "create_rest_endpoint", // Handler function name
-  );
+    ],
+    handler: "create_rest_endpoint",
+  });
 
   return { success: true };
 }
@@ -119,15 +118,15 @@ Think of prompts as "code recipes" that AI assistants can follow to create consi
 ### Basic Registration
 
 ```javascript
-mcpRegistry.registerPrompt(name, description, argumentsJson, handlerFunction);
+mcpRegistry.registerPrompt(name, { description, arguments, handler });
 ```
 
 **Parameters:**
 
 - `name` (string, required): Unique identifier (1-100 characters, alphanumeric + underscores)
 - `description` (string, required): What the prompt generates (1-1000 characters)
-- `argumentsJson` (string, required): JSON array of argument definitions
-- `handlerFunction` (string, required): Name of the JavaScript function that generates messages
+- `arguments` (array, optional): argument definitions, `{ name, description, required }`
+- `handler` (string, required): Name of the JavaScript function that generates messages
 
 **Handler Function:**
 
@@ -180,10 +179,10 @@ Arguments define what information the prompt needs to generate content.
 ### Example with Multiple Arguments
 
 ```javascript
-mcpRegistry.registerPrompt(
-  "create_form_handler",
-  "Generate an HTML form with POST handler",
-  JSON.stringify([
+mcpRegistry.registerPrompt("create_form_handler", {
+  description: "Generate an HTML form with POST handler",
+  handler: "createFormHandler",
+  arguments: [
     {
       name: "formName",
       description: "The form name (e.g., 'contact', 'registration')",
@@ -199,8 +198,8 @@ mcpRegistry.registerPrompt(
       description: "The form submission path",
       required: false,
     },
-  ]),
-);
+  ],
+});
 ```
 
 ## Testing Prompts
@@ -472,10 +471,10 @@ function myPromptHandler(context) {
 
 ```javascript
 // Register prompt
-mcpRegistry.registerPrompt(
-  "create_rest_endpoint",
-  "Generate a REST API endpoint with handler and route registration",
-  JSON.stringify([
+mcpRegistry.registerPrompt("create_rest_endpoint", {
+  description:
+    "Generate a REST API endpoint with handler and route registration",
+  arguments: [
     {
       name: "resourceName",
       description: "Resource name (e.g., 'users', 'products')",
@@ -491,9 +490,9 @@ mcpRegistry.registerPrompt(
       description: "URL path (e.g., '/api/users')",
       required: true,
     },
-  ]),
-  "create_rest_endpoint", // Handler function name
-);
+  ],
+  handler: "create_rest_endpoint",
+});
 
 // Handler function (same name as prompt)
 function create_rest_endpoint(args) {
@@ -542,10 +541,9 @@ console.log("Registered ${method} ${path}");
 
 ```javascript
 // Register prompt
-mcpRegistry.registerPrompt(
-  "create_form_handler",
-  "Generate HTML form with POST handler",
-  JSON.stringify([
+mcpRegistry.registerPrompt("create_form_handler", {
+  description: "Generate HTML form with POST handler",
+  arguments: [
     {
       name: "formName",
       description: "Form name (e.g., 'contact', 'registration')",
@@ -561,9 +559,9 @@ mcpRegistry.registerPrompt(
       description: "Form submission path (e.g., '/submit_contact')",
       required: true,
     },
-  ]),
-  "create_form_handler", // Handler function name
-);
+  ],
+  handler: "create_form_handler",
+});
 
 // Handler function (same name as prompt)
 function create_form_handler(args) {

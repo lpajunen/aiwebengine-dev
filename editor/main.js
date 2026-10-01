@@ -907,27 +907,23 @@ AVAILABLE JAVASCRIPT APIs:
 
 8. mcpRegistry - Model Context Protocol (MCP) tool registry
 
-   mcpRegistry.registerTool(name, description, inputSchemaJson, handlerName) - Register an MCP tool
+   mcpRegistry.registerTool(name, { description, inputSchema, handler }) - Register an MCP tool (in init())
    - name: string (tool name, unique identifier)
    - description: string (what the tool does)
-   - inputSchemaJson: string (JSON Schema defining tool parameters as JSON string)
-   - handlerName: string (name of JavaScript function that handles tool execution)
+   - inputSchema: object (JSON Schema defining tool parameters)
+   - handler: string (name of JavaScript function that handles tool execution)
+   - Returns { ok: true }, or { ok: false, reason } outside init(); throws on a malformed call
    
    The handler function receives context with context.args containing the tool arguments.
    It should return a JSON string with the tool result.
 
    Example:
-   mcpRegistry.registerTool(
-     "getCurrentTime",
-     "Get current time in specified timezone",
-     JSON.stringify({
+   mcpRegistry.registerTool("getCurrentTime", { description: "Get current time in specified timezone", inputSchema: {
        type: "object",
        properties: {
          timezone: { type: "string", description: "IANA timezone", default: "UTC" }
        }
-     }),
-     "getCurrentTimeHandler"
-   );
+     }, handler: "getCurrentTimeHandler" });
 
    function getCurrentTimeHandler(context) {
      const timezone = context.args.timezone || "UTC";
@@ -955,6 +951,7 @@ AVAILABLE JAVASCRIPT APIs:
   - name: string (optional identifier)
 
   schedulerService.clearAll() - Remove every scheduled job for the current script
+  - The register calls answer { ok: true, jobId, name, nextRun }, or { ok: false, reason } outside init(); a malformed call throws
 
   Scheduled handlers run without an HTTP caller and receive context.meta.schedule containing jobId, name, type (one-off/recurring), scheduledFor (UTC timestamp), and intervalSeconds (null for one-off jobs).
 

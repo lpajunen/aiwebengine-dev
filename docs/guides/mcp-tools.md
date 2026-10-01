@@ -25,7 +25,7 @@ function getCurrentTimeHandler(context) {
 
 // Register the tool in init()
 function init(context) {
-  const schema = JSON.stringify({
+  const schema = {
     type: "object",
     properties: {
       timezone: {
@@ -35,14 +35,13 @@ function init(context) {
         default: "UTC",
       },
     },
-  });
+  };
 
-  mcpRegistry.registerTool(
-    "getCurrentTime",
-    "Get the current date and time in a specified timezone",
-    schema,
-    "getCurrentTimeHandler",
-  );
+  mcpRegistry.registerTool("getCurrentTime", {
+    description: "Get the current date and time in a specified timezone",
+    inputSchema: schema,
+    handler: "getCurrentTimeHandler",
+  });
 
   return { success: true };
 }
@@ -50,7 +49,7 @@ function init(context) {
 
 ## MCP Registry API
 
-### `mcpRegistry.registerTool(name, description, inputSchemaJson, handlerName)`
+### `mcpRegistry.registerTool(name, { description, inputSchema, handler })`
 
 Registers a new MCP tool that AI clients can discover and execute.
 
@@ -58,16 +57,17 @@ Registers a new MCP tool that AI clients can discover and execute.
 
 - `name` (string) - Unique identifier for the tool (e.g., "getCurrentTime")
 - `description` (string) - Human-readable description of what the tool does
-- `inputSchemaJson` (string) - JSON Schema as a string defining the tool's input parameters
-- `handlerName` (string) - Name of the JavaScript function that handles tool execution
+- `inputSchema` (object) - JSON Schema defining the tool's input parameters
+- `handler` (string) - Name of the JavaScript function that handles tool execution
+
+Answers `{ ok: true }`, or `{ ok: false, reason }` when called outside `init()`; a malformed call throws.
 
 **Example:**
 
 ```javascript
-mcpRegistry.registerTool(
-  "calculate",
-  "Perform basic mathematical calculations",
-  JSON.stringify({
+mcpRegistry.registerTool("calculate", {
+  description: "Perform basic mathematical calculations",
+  inputSchema: {
     type: "object",
     properties: {
       operation: {
@@ -79,9 +79,9 @@ mcpRegistry.registerTool(
       b: { type: "number", description: "Second operand" },
     },
     required: ["operation", "a", "b"],
-  }),
-  "calculateHandler",
-);
+  },
+  handler: "calculateHandler",
+});
 ```
 
 ## Handler Functions
@@ -346,10 +346,10 @@ function init(context) {
   console.log("Registering MCP tools...");
 
   // Register weather tool
-  mcpRegistry.registerTool(
-    "getWeather",
-    "Get current weather information for a location (simulated data)",
-    JSON.stringify({
+  mcpRegistry.registerTool("getWeather", {
+    description:
+      "Get current weather information for a location (simulated data)",
+    inputSchema: {
       type: "object",
       properties: {
         location: {
@@ -358,15 +358,14 @@ function init(context) {
         },
       },
       required: ["location"],
-    }),
-    "getWeatherHandler",
-  );
+    },
+    handler: "getWeatherHandler",
+  });
 
   // Register ID generator tool
-  mcpRegistry.registerTool(
-    "generateId",
-    "Generate a random unique identifier with optional prefix",
-    JSON.stringify({
+  mcpRegistry.registerTool("generateId", {
+    description: "Generate a random unique identifier with optional prefix",
+    inputSchema: {
       type: "object",
       properties: {
         prefix: {
@@ -382,9 +381,9 @@ function init(context) {
           maximum: 32,
         },
       },
-    }),
-    "generateIdHandler",
-  );
+    },
+    handler: "generateIdHandler",
+  });
 
   console.log("MCP tools registered successfully");
 
@@ -501,12 +500,12 @@ Use descriptive, action-oriented names:
 Write clear descriptions that explain what the tool does and when to use it:
 
 ```javascript
-mcpRegistry.registerTool(
-  "searchProducts",
-  "Search the product catalog by name, category, or SKU. Returns matching products with prices and availability.",
-  schema,
-  "searchProductsHandler",
-);
+mcpRegistry.registerTool("searchProducts", {
+  description:
+    "Search the product catalog by name, category, or SKU. Returns matching products with prices and availability.",
+  inputSchema: schema,
+  handler: "searchProductsHandler",
+});
 ```
 
 ### 3. Comprehensive Schemas

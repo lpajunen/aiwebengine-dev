@@ -585,18 +585,19 @@ function callApiHandler(context) {
 
 ### secretStorage.setSecret(key, value)
 
-Stores a secret for the authenticated user (max 1 MB). Returns a success
-message, or a string starting with `Error` if the request is unauthenticated or
-validation fails.
+Stores a secret for the authenticated user (max 1 MB). Returns nothing, and
+throws if nobody is signed in, the value is too large, or the call is made by
+background work acting for somebody.
 
 ```javascript
 function saveTokenHandler(context) {
   const req = context.request;
   const token = req.form.token;
 
-  const result = secretStorage.setSecret("USER_API_TOKEN", token);
-  if (result.startsWith("Error")) {
-    return ResponseBuilder.error(400, result);
+  try {
+    secretStorage.setSecret("USER_API_TOKEN", token);
+  } catch (error) {
+    return ResponseBuilder.error(400, error.message);
   }
 
   return ResponseBuilder.json({ message: "Token saved" });
@@ -606,7 +607,7 @@ function saveTokenHandler(context) {
 ### secretStorage.removeSecret(key)
 
 Removes a single secret for the authenticated user. Returns `true` if it existed
-and was removed, `false` otherwise.
+and was removed, `false` otherwise; throws if the caller may not manage secrets.
 
 ```javascript
 secretStorage.removeSecret("USER_API_TOKEN");
@@ -614,8 +615,8 @@ secretStorage.removeSecret("USER_API_TOKEN");
 
 ### secretStorage.clear()
 
-Removes all secrets for the authenticated user in the current script. Returns a
-success message, or a string starting with `Error` if unauthenticated.
+Removes all secrets for the authenticated user in the current script. Returns
+nothing, and throws if nobody is signed in.
 
 ```javascript
 secretStorage.clear();
@@ -1556,7 +1557,8 @@ Schedule a single execution at an exact UTC timestamp.
 - `runAt` (string, required): ISO-8601 timestamp in UTC, e.g. `"2025-03-01T12:00:00Z"`.
 - `name` (string, optional): Friendly identifier used for logging/overwriting. Defaults to the handler name.
 
-**Returns:** String describing the scheduled execution time and job id.
+**Returns:** `{ ok: true, jobId, name, nextRun }`, or `{ ok: false, reason }`
+when called outside `init()`. A malformed call throws.
 
 ### schedulerService.registerRecurring(options)
 
@@ -1569,7 +1571,8 @@ Register a handler that executes on a fixed interval.
 - `startAt` (string, optional): UTC timestamp for the first execution. When omitted the first run happens one interval from now.
 - `name` (string, optional): Friendly identifier used for logging/overwriting.
 
-**Returns:** String indicating the cadence, next run, and job id.
+**Returns:** as `registerOnce`. `intervalMilliseconds` (at least 100) may be
+given instead of `intervalMinutes`.
 
 ### schedulerService.clearAll()
 
