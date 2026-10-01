@@ -227,352 +227,100 @@ be a host scripts publish on.
 > `listAssets()` no longer exist in the sandbox — calling one is a
 > `TypeError`. `/engine/routes` replaces the first two (and, unlike them,
 > filters by host and reports the handler, summary, description and tags for
-> stream entries); `assetStorage.listAssets()` or `GET /engine/assets`
-> replaces the third.
+> stream entries); `files.list()` or `GET /engine/assets` replaces the
+> third.
 
-## Asset Storage
+## Files
 
-The `assetStorage` object provides functions for managing assets (files) in the asset repository. Assets can be uploaded, retrieved, listed, and deleted programmatically from your scripts.
-
-### assetStorage.listAssets()
-
-Returns a JSON string containing metadata for all assets in the repository.
-
-**Returns:** JSON string with array of asset metadata objects. Each object contains:
-
-- `uri` (string): Asset URI/name
-- `name` (string): Asset name/identifier
-- `size` (number): Size in bytes
-- `mimetype` (string): MIME type of the asset
-- `created_at` (string): Creation timestamp in ISO 8601 format
-- `updated_at` (string): Last update timestamp in ISO 8601 format
-
-**Required Capability:** `ReadAssets`
-
-**Example:**
+`files` is the running script's own tree, by path: its modules, its
+`public/` files, its data. Every script reaches only its own files.
 
 ```javascript
-function listAllAssets(context) {
-  const assetsJson = assetStorage.listAssets();
-  const assetMetadata = JSON.parse(assetsJson);
-
-  // Map to simpler format if needed
-  const assetList = assetMetadata.map((asset) => ({
-    uri: asset.uri,
-    name: asset.name,
-    size: asset.size,
-    type: asset.mimetype,
-    created: asset.created_at,
-    updated: asset.updated_at,
-  }));
-
-  return {
-    status: 200,
-    body: JSON.stringify({
-      assets: assetList,
-      count: assetList.length,
-    }),
-    contentType: "application/json",
-  };
-}
-
-routeRegistry.registerRoute("/assets", {
-  handler: "listAllAssets",
-  method: "GET",
-});
+files.list(); // [{ path, size, mimetype, createdAt, updatedAt }], sorted by path
+files.read("skills/refund.md"); // text, or null if there is no such file
+files.read("public/logo.png", { encoding: "base64" }); // binary, as base64
+files.write("notes/today.md", "# Today"); // create or replace
+files.write("public/logo.png", pngBase64, { encoding: "base64" });
+files.delete("notes/today.md"); // true, or false if it was not there
 ```
 
-### assetStorage.fetchAsset(asset_name)
+Failures throw: a capability the caller does not hold, a path containing
+`..`, content over 10,000,000 bytes, a file that is not text read without
+`{ encoding: "base64" }`. A missing file is not a failure — `read` answers
+`null` and `delete` answers `false`.
 
-Retrieves an asset's content from the repository.
+The entrypoint (`main.*`) is not writable through `files`;
+`engine.call("write_file", ...)` is the deliberate way to change a script's
+program. A write is recorded as a revision of the script.
 
-**Parameters:**
+### files.list()
 
-- `asset_name` (string): Name of the asset to retrieve
+**Returns:** an array of `{ path, size, mimetype, createdAt, updatedAt }`,
+sorted by path. Times are milliseconds since the epoch.
 
-**Returns:** Base64-encoded string containing the asset content, or an error message if the asset is not found
+### files.read(path, options?)
 
-**Required Capability:** `ReadAssets`
+**Returns:** the file as UTF-8 text, or as base64 with
+`{ encoding: "base64" }`; `null` when there is no such file.
 
-**Example:**
+For content that only changes with a redeploy, an import is better than a
+read: `import policy from "./skills/refund.md"` resolves once, is cached with
+the program and is pinned by the revision. `files.read` is for content the
+script writes, or that changes under it.
+
+### files.write(path, content, options?)
+
+`content` is text, or base64 with `{ encoding: "base64" }`. The MIME type is
+inferred from the extension unless `{ mimetype }` is given. A file under
+`public/` can then be served with a file route:
+`routeRegistry.registerRoute("/logo.png", { file: "public/logo.png" })`.
+
+### files.delete(path)
+
+**Returns:** `true` when a file was removed, `false` when there was none.
+
+### Example
 
 ```javascript
-function getAsset(context) {
+function notesHandler(context) {
   const req = context.request;
-  const assetName = req.query.name;
+  const name = req.params.name;
+  const path = "notes/" + name + ".md";
 
-  if (!assetName) {
-    return {
-      status: 400,
-      body: "Missing asset name",
-      contentType: "text/plain; charset=UTF-8",
-    };
+  if (req.method === "GET") {
+    const text = files.read(path);
+    return text === null
+      ? ResponseBuilder.error(404, "No such note")
+      : ResponseBuilder.text(text);
   }
-
-  const contentB64 = assetStorage.fetchAsset(assetName);
-
-  if (contentB64.startsWith("Asset '")) {
-    // Error message returned
-    return {
-      status: 404,
-      body: contentB64,
-      contentType: "text/plain; charset=UTF-8",
-    };
+  if (req.method === "PUT") {
+    files.write(path, req.body);
+    return ResponseBuilder.text("saved");
   }
-
-  // Successfully retrieved
-  return {
-    status: 200,
-    bodyBase64: contentB64,
-    contentType: getMimeType(assetName),
-  };
+  if (req.method === "DELETE") {
+    return files.delete(path)
+      ? ResponseBuilder.text("deleted")
+      : ResponseBuilder.error(404, "No such note");
+  }
+  return ResponseBuilder.error(405, "Method not allowed");
 }
 
-routeRegistry.registerRoute("/asset", { handler: "getAsset", method: "GET" });
-```
-
-### assetStorage.upsertAsset(asset_name, mimetype, content_b64)
-
-Creates a new asset or updates an existing one in the repository.
-
-**Parameters:**
-
-- `asset_name` (string): Name of the asset (1-255 characters, no path traversal characters)
-- `mimetype` (string): MIME type of the asset (e.g., `"image/png"`, `"text/css"`)
-- `content_b64` (string): Base64-encoded asset content
-
-**Returns:** Success message string, or error message if validation fails
-
-**Required Capability:** `WriteAssets`
-
-**Validation Rules:**
-
-- Asset name must be 1-255 characters
-- No path traversal characters (`..`, `\`)
-- Content size limited to 10MB
-- Content must be valid base64
-
-**Example:**
-
-```javascript
-function uploadAsset(context) {
-  const req = context.request;
-  const { name, content, mimetype } = req.form;
-
-  if (!name || !content || !mimetype) {
-    return {
-      status: 400,
-      body: "Missing required fields: name, content, mimetype",
-      contentType: "text/plain; charset=UTF-8",
-    };
-  }
-
-  const result = assetStorage.upsertAsset(name, mimetype, content);
-
-  if (result.startsWith("Error") || result.startsWith("Invalid")) {
-    return {
-      status: 400,
-      body: result,
-      contentType: "text/plain; charset=UTF-8",
-    };
-  }
-
-  return {
-    status: 201,
-    body: JSON.stringify({ message: result, assetName: name }),
-    contentType: "application/json",
-  };
-}
-
-routeRegistry.registerRoute("/upload-asset", {
-  handler: "uploadAsset",
-  method: "POST",
-});
-```
-
-**Example - Upload from form data:**
-
-```javascript
-function handleImageUpload(context) {
-  const req = context.request;
-  // Assume req.form.image contains base64 encoded image
-  const imageB64 = req.form.image;
-  const filename = req.form.filename || "uploaded-image.png";
-
-  try {
-    const result = assetStorage.upsertAsset(filename, "image/png", imageB64);
-
-    console.log("Asset uploaded: " + filename);
-
-    return {
-      status: 200,
-      body: JSON.stringify({
-        success: true,
-        message: result,
-        filename: filename,
-      }),
-      contentType: "application/json",
-    };
-  } catch (error) {
-    console.error("Upload failed: " + error);
-    return {
-      status: 500,
-      body: JSON.stringify({ success: false, error: error.message }),
-      contentType: "application/json",
-    };
+function init() {
+  for (const method of ["GET", "PUT", "DELETE"]) {
+    routeRegistry.registerRoute("/notes/:name", {
+      handler: "notesHandler",
+      method,
+    });
   }
 }
 ```
 
-### assetStorage.deleteAsset(asset_name)
+### Security
 
-Deletes an asset from the repository.
-
-**Parameters:**
-
-- `asset_name` (string): Name of the asset to delete
-
-**Returns:** Success message if deleted, or error message if not found
-
-**Required Capability:** `DeleteAssets`
-
-**Example:**
-
-```javascript
-function removeAsset(context) {
-  const req = context.request;
-  const assetName = req.query.name;
-
-  if (!assetName) {
-    return {
-      status: 400,
-      body: "Missing asset name",
-      contentType: "text/plain; charset=UTF-8",
-    };
-  }
-
-  const result = assetStorage.deleteAsset(assetName);
-
-  if (result.includes("deleted successfully")) {
-    console.log("Asset deleted: " + assetName);
-    return {
-      status: 200,
-      body: result,
-      contentType: "text/plain; charset=UTF-8",
-    };
-  } else {
-    return {
-      status: 404,
-      body: result,
-      contentType: "text/plain; charset=UTF-8",
-    };
-  }
-}
-
-routeRegistry.registerRoute("/delete-asset", {
-  handler: "removeAsset",
-  method: "DELETE",
-});
-```
-
-### Asset Management Example
-
-Complete example showing asset CRUD operations:
-
-```javascript
-function assetHandler(context) {
-  const req = context.request;
-  const method = req.method;
-  const path = req.path;
-
-  if (method === "GET" && path === "/assets") {
-    // List all assets with metadata
-    const assetsJson = assetStorage.listAssets();
-    const assets = JSON.parse(assetsJson);
-    return {
-      status: 200,
-      body: JSON.stringify({
-        assets: assets,
-        count: assets.length,
-      }),
-      contentType: "application/json",
-    };
-  }
-
-  if (method === "GET" && path.startsWith("/assets/")) {
-    // Get specific asset
-    const assetName = path.substring("/assets/".length);
-    const content = assetStorage.fetchAsset(assetName);
-
-    if (content.startsWith("Asset '")) {
-      return { status: 404, body: "Asset not found" };
-    }
-
-    return {
-      status: 200,
-      bodyBase64: content,
-      contentType: "application/octet-stream",
-    };
-  }
-
-  if (method === "POST" && path === "/assets") {
-    // Create/update asset
-    const { name, content, mimetype } = req.form;
-    const result = assetStorage.upsertAsset(name, mimetype, content);
-
-    return {
-      status: 201,
-      body: JSON.stringify({ message: result }),
-      contentType: "application/json",
-    };
-  }
-
-  if (method === "DELETE" && path.startsWith("/assets/")) {
-    // Delete asset
-    const assetName = path.substring("/assets/".length);
-    const result = assetStorage.deleteAsset(assetName);
-
-    return {
-      status: 200,
-      body: JSON.stringify({ message: result }),
-      contentType: "application/json",
-    };
-  }
-
-  return { status: 404, body: "Not found" };
-}
-
-routeRegistry.registerRoute("/assets", {
-  handler: "assetHandler",
-  method: "GET",
-});
-routeRegistry.registerRoute("/assets", {
-  handler: "assetHandler",
-  method: "POST",
-});
-routeRegistry.registerRoute("/assets", {
-  handler: "assetHandler",
-  method: "DELETE",
-});
-```
-
-### Asset Security
-
-- **Access Control**: Asset operations require specific capabilities (`ReadAssets`, `WriteAssets`, `DeleteAssets`)
-- **Validation**: Asset names and content are validated to prevent security issues
-- **Size Limits**: Assets are limited to 10MB to prevent resource exhaustion
-- **Audit Logging**: Asset operations are logged for security monitoring
-- **Path Traversal Protection**: Asset names cannot contain `..` or `\` characters
-
-### Best Practices for Assets
-
-1. **Validate file types**: Check MIME types match expected formats
-2. **Handle errors gracefully**: Always check return messages for errors
-3. **Use meaningful names**: Name assets descriptively for easy management
-4. **Clean up unused assets**: Regularly delete assets that are no longer needed
-5. **Check capabilities**: Ensure your script has required asset capabilities
-6. **Log operations**: Use `console.log()` to track asset modifications
-7. **Verify base64 encoding**: Ensure content is properly base64 encoded before upload
+- Reading takes `ReadAssets`, writing `WriteAssets`, deleting `DeleteAssets`
+- A path may not contain `..` or `\`, so a script cannot name another's file
+- Content is limited to 10,000,000 bytes
+- Writes and removals are audited and recorded as revisions
 
 ## Console Logging
 

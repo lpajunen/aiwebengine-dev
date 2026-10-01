@@ -469,15 +469,20 @@ function handleDocsRequest(context) {
       assetName,
   );
 
-  // Fetch markdown from asset storage
-  const assetContent = assetStorage.fetchAsset(assetName);
+  // Read the markdown from this script's files
+  let markdown = null;
+  try {
+    markdown = files.read(assetName);
+  } catch (e) {
+    console.error("[docs.js] Failed to read " + assetName + ": " + e);
+    return {
+      status: 500,
+      body: render500Page(String(e)),
+      contentType: "text/html; charset=UTF-8",
+    };
+  }
 
-  if (
-    assetContent === "null" ||
-    assetContent === null ||
-    assetContent.startsWith("Asset '") ||
-    assetContent.startsWith("Error:")
-  ) {
+  if (markdown === null) {
     console.log("[docs.js] Documentation not found: " + assetName);
     return {
       status: 404,
@@ -487,24 +492,6 @@ function handleDocsRequest(context) {
   }
 
   try {
-    // Decode base64 content (fetchAsset returns base64-encoded string directly).
-    // convert.atob decodes to a UTF-8 string (handles multi-byte / emoji) and
-    // returns an "Invalid base64..." / "Decoded data is not valid UTF-8..."
-    // message on failure instead of throwing.
-    const markdown = convert.atob(assetContent);
-
-    if (
-      markdown.startsWith("Invalid base64") ||
-      markdown.startsWith("Decoded data is not valid UTF-8")
-    ) {
-      console.error("[docs.js] Failed to decode asset: " + markdown);
-      return {
-        status: 500,
-        body: render500Page(markdown),
-        contentType: "text/html; charset=UTF-8",
-      };
-    }
-
     // Convert markdown to HTML
     const htmlContent = convert.markdown_to_html(markdown);
 

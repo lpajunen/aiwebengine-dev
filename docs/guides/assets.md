@@ -2,7 +2,7 @@
 
 Learn how to work with static files like images, CSS, JavaScript, and other assets in aiwebengine.
 
-Current engine versions store assets by name and expose them over HTTP after you register a route with `routeRegistry.registerRoute(httpPath, { file: assetName })`. Use `assetStorage` to manage file contents and the route registry to choose public URLs.
+Current engine versions store assets by name and expose them over HTTP after you register a file route with `routeRegistry.registerRoute(path, { file })`. Use `files` to manage file contents and the route registry to choose public URLs; only files under `public/` may be served.
 
 ## Overview
 
@@ -128,33 +128,27 @@ Files are immediately available at their URLs.
 
 ### Method 3: API-Based (Programmatic)
 
-**Use the Asset Management API:**
+**Use `files`, the script's own tree:**
 
 ```javascript
-// List available assets
-const assetsJson = assetStorage.listAssets();
-const assets = JSON.parse(assetsJson);
-console.log("Available assets:", assets);
-
-// Access asset metadata
-assets.forEach((asset) => {
-  console.log(`${asset.name}: ${asset.size} bytes, ${asset.mimetype}`);
+// List this script's files
+files.list().forEach((file) => {
+  console.log(`${file.path}: ${file.size} bytes, ${file.mimetype}`);
 });
 
-// Fetch asset data
-const assetContentB64 = assetStorage.fetchAsset("logo.png");
-console.log(assetContentB64); // Base64 encoded content
+// Read a text file (null if there is no such file)
+const css = files.read("public/styles.css");
 
-// Create or update asset
-assetStorage.upsertAsset(
-  "new-image.png", // Asset name
-  "image/png", // MIME type
-  base64EncodedContent, // Base64 string
-);
+// Read a binary file as base64
+const logoB64 = files.read("public/logo.png", { encoding: "base64" });
 
-// Delete asset
-const deleteResult = assetStorage.deleteAsset("old-image.png");
-console.log(deleteResult);
+// Create or update a file
+files.write("public/new-image.png", base64EncodedContent, {
+  encoding: "base64",
+});
+
+// Delete a file (true if it was there)
+files.delete("public/old-image.png");
 ```
 
 **Example: Upload from form**
@@ -162,12 +156,12 @@ console.log(deleteResult);
 ```javascript
 function uploadHandler(context) {
   const req = context.request;
-  const assetName = req.form.name; // "uploads-file.jpg"
+  const assetName = "public/" + req.form.name; // "public/uploads-file.jpg"
   const mimetype = req.form.mimetype; // "image/jpeg"
   const contentB64 = req.form.content; // Base64 string
 
   try {
-    assetStorage.upsertAsset(assetName, mimetype, contentB64);
+    files.write(assetName, contentB64, { encoding: "base64", mimetype });
     console.log(`Asset uploaded: ${assetName}`);
 
     return {
@@ -196,7 +190,7 @@ routeRegistry.registerRoute("/upload-asset", {
 
 ### Method 4: The engine's HTTP API (`/engine/assets`)
 
-`assetStorage` works on the assets of the script that is running. To manage
+`files` works on the files of the script that is running. To manage
 another script's assets — from a page, a deployment tool, or a script that
 builds other scripts — call `/engine/assets`. The engine answers as the
 signed-in user, so an owner of the script, a user with the asset capability, or
@@ -242,7 +236,7 @@ const hits = await (
 ```
 
 **Write one asset** with `POST /engine/assets`, the HTTP form of
-`assetStorage.upsertAsset`.
+`files.write` for any script you may write.
 
 **Write several at once** with `POST /engine/assets/batch`. A script's modules
 are one unit of change, and writing them one request at a time makes the engine
@@ -492,13 +486,13 @@ assets/
 ```javascript
 function assetGalleryHandler(context) {
   // Get all assets with metadata
-  const assetsJson = assetStorage.listAssets();
-  const assets = JSON.parse(assetsJson);
-
-  // Filter for images
-  const images = assets.filter((asset) => {
-    return asset.mimetype.startsWith(\"image/\");
-  });
+  // Every image this script serves from public/
+  const images = files
+    .list()
+    .filter(
+      (file) =>
+        file.path.startsWith("public/") && file.mimetype.startsWith("image/"),
+    );
 
   // Build HTML gallery
   const imageCards = images
@@ -626,61 +620,49 @@ routeRegistry.registerRoute("/upload-form", {
 
 ## Asset API Reference
 
-### `assetStorage.listAssets()`
+### `files.list()`
 
-Returns JSON string with metadata for all assets.
+Every file of the script, sorted by path.
 
 ```javascript
-const assetsJson = assetStorage.listAssets();
-const assets = JSON.parse(assetsJson);
+files.list();
 // [
 //   {
-//     "uri": "logo.png",
-//     "name": "logo.png",
+//     "path": "public/logo.png",
 //     "size": 1024,
 //     "mimetype": "image/png",
-//     "created_at": "2026-01-18T10:35:00Z",
-//     "updated_at": "2026-01-18T10:35:00Z"
+//     "createdAt": 1768732500000,
+//     "updatedAt": 1768732500000
 //   },
 //   { ... }
 // ]
 ```
 
-### `assetStorage.fetchAsset(assetName)`
+### `files.read(path, options?)`
 
-Returns the base64-encoded content for an asset.
+The file as text, or as base64 with `{ encoding: "base64" }`. Answers `null`
+when there is no such file, and throws for a binary file read as text.
 
 ```javascript
-const contentB64 = assetStorage.fetchAsset("logo.png");
+const logoB64 = files.read("public/logo.png", { encoding: "base64" });
 ```
 
-Returns an error message string if the asset is not found.
+### `files.write(path, content, options?)`
 
-### `assetStorage.upsertAsset(assetName, mimetype, contentB64)`
-
-Creates or updates an asset.
+Creates or replaces a file. `content` is text, or base64 with
+`{ encoding: "base64" }`; the MIME type comes from the extension unless
+`{ mimetype }` is given.
 
 ```javascript
-assetStorage.upsertAsset(
-  "new.png",
-  "image/png",
-  "iVBORw0KGgoAAAANS...", // Base64 encoded
-);
+files.write("public/new.png", "iVBORw0KGgoAAAANS...", { encoding: "base64" });
 ```
 
-**Parameters:**
+### `files.delete(path)`
 
-- `assetName` - Asset name (e.g., `photo.jpg`)
-- `mimetype` - MIME type (e.g., `image/jpeg`)
-- `contentB64` - Base64 encoded file content
-
-### `assetStorage.deleteAsset(assetName)`
-
-Deletes an asset. Returns a status message string.
+Removes a file. Answers `true`, or `false` when there was nothing to remove.
 
 ```javascript
-const result = assetStorage.deleteAsset("old-image.png");
-console.log(result);
+files.delete("public/old-image.png");
 ```
 
 ## MIME Types Reference
@@ -786,12 +768,11 @@ Regularly remove assets that are no longer referenced:
 
 ```javascript
 function cleanupHandler(context) {
-  const assets = JSON.parse(assetStorage.listAssets());
-  const unusedAssets = findUnusedAssets(assets);
+  const unusedAssets = findUnusedAssets(files.list());
 
-  unusedAssets.forEach((asset) => {
-    assetStorage.deleteAsset(asset.name);
-    console.log(`Deleted unused asset: ${asset.name}`);
+  unusedAssets.forEach((file) => {
+    files.delete(file.path);
+    console.log(`Deleted unused file: ${file.path}`);
   });
 
   return {
@@ -934,19 +915,18 @@ routeRegistry.registerRoute("/manifest.json", {
 ## Quick Reference
 
 ```javascript
-// List all assets with metadata
-const assetsJson = assetStorage.listAssets();
-const assets = JSON.parse(assetsJson);
-// Each asset has: uri, name, size, mimetype, created_at, updated_at
+// List this script's files: each has path, size, mimetype, createdAt, updatedAt
+const all = files.list();
 
-// Get asset data
-const assetContentB64 = assetStorage.fetchAsset("logo.png");
+// Read text, or base64 for binary (null if missing)
+const css = files.read("public/styles.css");
+const logoB64 = files.read("public/logo.png", { encoding: "base64" });
 
-// Create/update asset
-assetStorage.upsertAsset("new.png", "image/png", base64Content);
+// Create or update
+files.write("public/new.png", base64Content, { encoding: "base64" });
 
-// Delete asset
-assetStorage.deleteAsset("old.png");
+// Delete
+files.delete("public/old.png");
 ```
 
 Another script's assets, over the engine's HTTP API:

@@ -560,7 +560,7 @@ web application engine. Scripts are server-side handlers that:
 Available functions:
 - routeRegistry.registerRoute(), console.log(), GET /engine/script_logs to read logs back
 - fetch(), routeRegistry.registerRoute(path, { stream: true }), routeRegistry.sendStreamMessage()
-- assetStorage.listAssets(), assetStorage.fetchAsset(), assetStorage.upsertAsset(), assetStorage.deleteAsset()
+- files.list(), files.read(path), files.write(path, content), files.delete(path)
 
 Can you help me create a [your request]?
 ```

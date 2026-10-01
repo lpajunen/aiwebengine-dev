@@ -1144,14 +1144,9 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
 
   // Add available assets list
   try {
-    const assetsJson =
-      typeof assetStorage !== "undefined" &&
-      typeof assetStorage.listAssets === "function"
-        ? assetStorage.listAssets()
-        : "[]";
-    const assetMetadata = JSON.parse(assetsJson);
+    const assetMetadata = files.list();
     if (assetMetadata.length > 0) {
-      const assetNames = assetMetadata.map((/** @type {any} */ a) => a.name);
+      const assetNames = assetMetadata.map((file) => file.path);
       contextualPrompt +=
         "AVAILABLE ASSETS: " + assetNames.join(", ") + "\\n\\n";
     }
@@ -1400,10 +1395,7 @@ CURRENT CONTEXT:`;
   }
 
   try {
-    const assetsJson = assetStorage.listAssets
-      ? assetStorage.listAssets()
-      : "[]";
-    const assets = JSON.parse(assetsJson).map((/** @type {any} */ a) => a.name);
+    const assets = files.list().map((file) => file.path);
     if (assets.length > 0) {
       contextInfo += `\nAvailable Assets: ${assets.join(", ")}`;
     }

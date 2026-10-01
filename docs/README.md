@@ -227,10 +227,9 @@ console.log(message);
 // Read logs back over HTTP; admins and script owners
 const { logs } = await (await fetch("/engine/script_logs")).json();
 
-// Assets (returns JSON metadata)
-const assetsJson = assetStorage.listAssets();
-const assets = JSON.parse(assetsJson);
-const assetContent = assetStorage.fetchAsset(name);
+// This script's files
+const all = files.list(); // [{ path, size, mimetype, createdAt, updatedAt }]
+const text = files.read(path); // text, or null if missing
 
 // HTTP requests
 const response = fetch(url, options);
