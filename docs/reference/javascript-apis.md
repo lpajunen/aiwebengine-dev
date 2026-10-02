@@ -1430,7 +1430,7 @@ const { logs } = await (await fetch("/engine/read_logs?limit=100")).json();
 // One script's errors, oldest first
 const uri = encodeURIComponent("https://example.com/api-users");
 const errors = await (
-  await fetch(`/engine/read_logs?uri=${uri}&level=ERROR`)
+  await fetch(`/engine/read_logs?script=${uri}&level=ERROR`)
 ).json();
 
 // Each entry has: scriptUri, message, level, timestamp (in milliseconds),

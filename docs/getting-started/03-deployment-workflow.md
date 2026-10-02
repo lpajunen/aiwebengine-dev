@@ -883,7 +883,7 @@ curl -X POST "$MANAGE_HOST/engine/check_script" -H "Authorization: Bearer $TOKEN
   -H "Content-Type: application/json" -d "{\"uri\": \"$URI\"}"
 
 # View logs
-curl "$MANAGE_HOST/engine/read_logs?uri=$URI" -H "Authorization: Bearer $TOKEN"
+curl "$MANAGE_HOST/engine/read_logs?script=$URI" -H "Authorization: Bearer $TOKEN"
 
 # List scripts
 curl "$MANAGE_HOST/engine/list_scripts" -H "Authorization: Bearer $TOKEN"

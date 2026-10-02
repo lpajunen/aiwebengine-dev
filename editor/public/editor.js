@@ -151,7 +151,7 @@ const engineApi = {
 
   /** @param {string} uri */
   async deleteScript(uri) {
-    await this.call("delete_script", { uri });
+    await this.call("delete_script", { script: uri });
   },
 
   /**
@@ -159,7 +159,7 @@ const engineApi = {
    * @returns {Promise<string[]>}
    */
   async listScriptOwners(uri) {
-    const data = await this.call("list_script_owners", { uri });
+    const data = await this.call("list_script_owners", { script: uri });
     return data.owners || [];
   },
 
@@ -168,7 +168,7 @@ const engineApi = {
    * @param {string} owner
    */
   async addScriptOwner(uri, owner) {
-    await this.call("add_script_owner", { uri, owner });
+    await this.call("add_script_owner", { script: uri, owner });
   },
 
   /**
@@ -176,7 +176,7 @@ const engineApi = {
    * @param {string} owner
    */
   async removeScriptOwner(uri, owner) {
-    await this.call("remove_script_owner", { uri, owner });
+    await this.call("remove_script_owner", { script: uri, owner });
   },
 
   /**
@@ -266,7 +266,7 @@ const engineApi = {
     /** @type {Record<string, unknown>} */
     const args = {};
     const { uri, level, since, limit } = options || {};
-    if (uri) args.uri = uri;
+    if (uri) args.script = uri;
     if (level) args.level = level;
     if (since !== undefined) args.since = String(since);
     if (limit !== undefined) args.limit = limit;
@@ -280,7 +280,7 @@ const engineApi = {
    * @param {string} uri
    */
   async clearLogs(uri) {
-    await this.call("clear_logs", { uri });
+    await this.call("clear_logs", { script: uri });
   },
 
   /**

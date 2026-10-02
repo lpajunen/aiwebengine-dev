@@ -836,9 +836,9 @@ AVAILABLE JAVASCRIPT APIs:
    - message: string
    - To read logs back, call POST /engine/read_logs, which returns
      {uri, logs: [{scriptUri, message, level, timestamp}], count, timestamp}.
-     Omit uri for every script (newest first) or pass {"uri": "..."} for one
+     Omit script for every script (newest first) or pass {"script": "..."} for one
      script (oldest first); level, since and limit narrow the result.
-     POST /engine/clear_logs with a uri clears one script's logs.
+     POST /engine/clear_logs with a script clears one script's logs.
 
 3. scriptStorage - Persistent key-value storage shared by everyone using the script
    - Implements the WHATWG Storage interface, exactly like localStorage in a browser

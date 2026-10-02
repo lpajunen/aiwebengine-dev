@@ -864,7 +864,7 @@ Content-Type: application/json
 GET /engine/read_logs
 
 # Get logs for specific script, oldest first
-GET /engine/read_logs?uri=users
+GET /engine/read_logs?script=users
 
 # Narrow by level, time or count
 GET /engine/read_logs?level=ERROR&limit=50

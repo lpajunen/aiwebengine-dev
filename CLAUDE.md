@@ -73,7 +73,7 @@ reads when pushing a script to a repository, so an upload and a push agree on wh
 script.
 
 After deploying, bind the scripts to the host they should be published on with
-`scripts/set-script-hosts.js`, which calls `POST $MANAGE_HOST/engine/set_script_hosts` with `{uri, hosts: [...]}`
+`scripts/set-script-hosts.js`, which calls `POST $MANAGE_HOST/engine/set_script_hosts` with `{script, hosts: [...]}`
 (administrators only; `get_script_hosts` reads the current binding and an empty list clears it):
 
 ```bash

@@ -181,17 +181,17 @@ const uri = encodeURIComponent("https://example.com/api-users");
 
 // Everything one request logged, in order
 const one = await (
-  await fetch(`/engine/read_logs?uri=${uri}&request_id=req_1787583751296_11`)
+  await fetch(`/engine/read_logs?script=${uri}&request_id=req_1787583751296_11`)
 ).json();
 
 // Only what the scheduled jobs said
 const ticks = await (
-  await fetch(`/engine/read_logs?uri=${uri}&kind=scheduled&limit=50`)
+  await fetch(`/engine/read_logs?script=${uri}&kind=scheduled&limit=50`)
 ).json();
 
 // One route, errors only
 const failures = await (
-  await fetch(`/engine/read_logs?uri=${uri}&route=/users/:id&level=ERROR`)
+  await fetch(`/engine/read_logs?script=${uri}&route=/users/:id&level=ERROR`)
 ).json();
 ```
 
@@ -213,7 +213,7 @@ To narrow to one script, pass its URI:
 ```javascript
 const uri = "https://example.com/api-users";
 const response = await fetch(
-  `/engine/read_logs?uri=${encodeURIComponent(uri)}&level=ERROR`,
+  `/engine/read_logs?script=${encodeURIComponent(uri)}&level=ERROR`,
 );
 const { logs, count } = await response.json();
 ```
@@ -886,12 +886,12 @@ const { logs } = await (await fetch("/engine/read_logs?limit=100")).json();
 // Narrow to one script, one level, the newest 50 entries
 const uri = encodeURIComponent("https://example.com/api-users");
 const recent = await (
-  await fetch(`/engine/read_logs?uri=${uri}&level=ERROR&limit=50`)
+  await fetch(`/engine/read_logs?script=${uri}&level=ERROR&limit=50`)
 ).json();
 
 // Everything one invocation logged
 const trace = await (
-  await fetch(`/engine/read_logs?uri=${uri}&request_id=${requestId}`)
+  await fetch(`/engine/read_logs?script=${uri}&request_id=${requestId}`)
 ).json();
 
 // Follow the log live (SSE), replaying the newest 50 entries first
