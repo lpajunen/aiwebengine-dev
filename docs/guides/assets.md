@@ -188,11 +188,11 @@ routeRegistry.registerRoute("/upload-asset", {
 });
 ```
 
-### Method 4: The engine's HTTP API (`/engine/assets`)
+### Method 4: The engine's HTTP API (`/engine/{operation}`)
 
 `files` works on the files of the script that is running. To manage
 another script's assets — from a page, a deployment tool, or a script that
-builds other scripts — call `/engine/assets`. The engine answers as the
+builds other scripts — call the engine's file operations (`list_files`, `read_file`, `write_file`, `write_files`, `edit_file`, `delete_file`), each `POST /engine/{operation}` with a JSON body (the read-only ones also take `GET` with the arguments in the query). A file is named by its `path` within the script, and a script's entrypoint is the file named `main.ts` (or `.js`, `.tsx`, `.jsx`). The engine answers as the
 signed-in user, so an owner of the script, a user with the asset capability, or
 an Administrator gets through and everyone else is refused.
 
@@ -201,12 +201,12 @@ an Administrator gets through and everyone else is refused.
 ```javascript
 const script = encodeURIComponent("https://example.com/my-app");
 
-// Every asset the script owns
-const list = await (await fetch(`/engine/assets?script=${script}`)).json();
+// Every file the script owns
+const list = await (await fetch(`/engine/list_files?script=${script}`)).json();
 
-// One asset, whole-file base64
+// One file: `content` is text when `encoding` is "utf8", base64 otherwise
 const file = await (
-  await fetch(`/engine/assets?script=${script}&asset=app.css`)
+  await fetch(`/engine/read_file?script=${script}&path=app.css`)
 ).json();
 ```
 
@@ -222,23 +222,24 @@ transferring the file:
 ```javascript
 // Lines 120-180 as text, not base64
 const range = await (
-  await fetch(`/engine/assets?script=${script}&asset=lib/util.ts&lines=120-180`)
+  await fetch(
+    `/engine/read_file?script=${script}&path=lib/util.ts&lines=120-180`,
+  )
 ).json();
 // { encoding, content, start_line, end_line, sha256, bytes, total_lines, ... }
 
 // Where is renderCart defined?
 const hits = await (
   await fetch(
-    `/engine/assets?script=${script}&asset=lib/util.ts&grep=function%20renderCart`,
+    `/engine/read_file?script=${script}&path=lib/util.ts&grep=function%20renderCart`,
   )
 ).json();
 // { encoding, matches: [{ line, text, truncated }], match_count, sha256, ... }
 ```
 
-**Write one asset** with `POST /engine/assets`, the HTTP form of
-`files.write` for any script you may write.
+**Write one file** with `POST /engine/write_file` and `{ script, path, text }` (or `content` as base64 for binary), the HTTP form of `files.write` for any script you may write. `create_file` takes the same body and refuses a path that is already taken.
 
-**Write several at once** with `POST /engine/assets/batch`. A script's modules
+**Write several at once** with `/engine/write_files`. A script's modules
 are one unit of change, and writing them one request at a time makes the engine
 act on each partial state: every single-asset write invalidates the prepared
 program and notifies the rest of the cluster, so every other instance
@@ -248,10 +249,11 @@ being uploaded. One batch is one transaction, one notification, and one
 
 ```javascript
 const result = await (
-  await fetch(`/engine/assets/batch?script=${script}`, {
+  await fetch(`/engine/write_files`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      script: "https://example.com/my-app",
       files: [
         { name: "lib/util.ts", content_base64: utilB64 },
         {
@@ -271,16 +273,18 @@ Up to 256 files and 10 MB of content per batch. `mimetype` is inferred from the
 extension when omitted, and a `sha256` that does not match the decoded content
 rejects the whole batch. Nothing is written if any file is rejected.
 
-**Edit an asset in place** with `PATCH /engine/assets` — the point of it is what
+**Edit an asset in place** with `/engine/edit_file` — the point of it is what
 is _not_ in the request. A caller changing three lines sends those three lines,
 not the module:
 
 ```javascript
 const patched = await (
-  await fetch(`/engine/assets?script=${script}&asset=lib/util.ts`, {
-    method: "PATCH",
+  await fetch(`/engine/edit_file`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      script: "https://example.com/my-app",
+      path: "lib/util.ts",
       edits: [
         { old_string: "const RETRIES = 3;", new_string: "const RETRIES = 5;" },
         { old_string: "log(", new_string: "console.log(", replace_all: true },
@@ -299,10 +303,10 @@ the precondition: pass the `sha256` a read reported and the patch is refused
 with `409` if the stored content has moved on since — a change to a known
 version rather than to whatever happens to be there.
 
-**Delete** with `DELETE /engine/assets?script=…&asset=…`.
+**Delete** with `POST /engine/delete_file` and `{ script, path }`.
 
-Every one of these has an equivalent MCP tool (`list_assets`, `read_asset`,
-`write_asset`, `write_assets`, `edit_asset`, `delete_asset`), which is how an
+Every one of these has an equivalent MCP tool (`list_files`, `read_file`,
+`write_file`, `write_files`, `edit_file`, `delete_file`), which is how an
 AI assistant edits a script's modules without resending them.
 
 ## Using Assets in Scripts
@@ -935,27 +939,32 @@ Another script's assets, over the engine's HTTP API:
 const script = encodeURIComponent("https://example.com/my-app");
 
 // List, read a whole asset, read a line range, or search it
-await fetch(`/engine/assets?script=${script}`);
-await fetch(`/engine/assets?script=${script}&asset=app.css`);
-await fetch(`/engine/assets?script=${script}&asset=lib/util.ts&lines=120-180`);
+await fetch(`/engine/list_files?script=${script}`);
+await fetch(`/engine/read_file?script=${script}&path=app.css`);
 await fetch(
-  `/engine/assets?script=${script}&asset=lib/util.ts&grep=renderCart`,
+  `/engine/read_file?script=${script}&path=lib/util.ts&lines=120-180`,
+);
+await fetch(
+  `/engine/read_file?script=${script}&path=lib/util.ts&grep=renderCart`,
 );
 
 // Write many files as one transaction and one init()
-await fetch(`/engine/assets/batch?script=${script}`, {
+await fetch(`/engine/write_files`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
+    script: "https://example.com/my-app",
     files: [{ name: "app.css", content_base64: cssB64 }],
   }),
 });
 
 // Change a few lines without resending the file
-await fetch(`/engine/assets?script=${script}&asset=lib/util.ts`, {
-  method: "PATCH",
+await fetch(`/engine/edit_file`, {
+  method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
+    script: "https://example.com/my-app",
+    path: "lib/util.ts",
     edits: [{ old_string: "RETRIES = 3", new_string: "RETRIES = 5" }],
     base_sha256: sha,
   }),

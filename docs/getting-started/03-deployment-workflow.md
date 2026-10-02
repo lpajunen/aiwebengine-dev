@@ -596,7 +596,7 @@ cannot see what the engine will do with the code. Three endpoints run the
 script the way the engine would, without publishing anything. All three answer
 to an owner of the script or an Administrator.
 
-### `POST /engine/check` — what would this script do if deployed?
+### `POST /engine/check_script` — what would this script do if deployed?
 
 `check` resolves the script's asset-backed imports the way the engine does,
 runs its `init()` with **every registration withheld** and database writes
@@ -604,8 +604,10 @@ rolled back, and reports what it found:
 
 ```bash
 # Check what is deployed
-curl -X POST "$MANAGE_HOST/engine/check?uri=https://example.com/my-app" \
-  -H "Authorization: Bearer $TOKEN"
+curl -X POST "$MANAGE_HOST/engine/check_script" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"uri": "https://example.com/my-app"}'
 ```
 
 ```json
@@ -641,16 +643,16 @@ Pass `content` to check code **before writing it** — the script URI does not
 even have to exist yet:
 
 ```bash
-curl -X POST "$MANAGE_HOST/engine/check?uri=https://example.com/my-app" \
+curl -X POST "$MANAGE_HOST/engine/check_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
+  -d '{"uri": "https://example.com/my-app", "content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
 ```
 
 `rollback` (default `true`) controls whether the database writes `init()` makes
-are kept, and `timeout_ms` raises the ceiling for a slow `init()`.
+are kept, and `timeoutMs` raises the ceiling for a slow `init()`.
 
-### `POST /engine/eval` — try an expression in a deployed script's sandbox
+### `POST /engine/eval_script` — try an expression in a deployed script's sandbox
 
 `eval` loads the script's own program, evaluates a snippet against it, and
 returns the value plus everything the snippet logged. The snippet can call the
@@ -658,10 +660,10 @@ script's functions, use the bindings its entrypoint imported, and `import` or
 `require` any module the entrypoint reaches:
 
 ```bash
-curl -X POST "$MANAGE_HOST/engine/eval?uri=https://example.com/my-app" \
+curl -X POST "$MANAGE_HOST/engine/eval_script" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: text/plain" \
-  --data-binary 'database.query("things")'
+  -H "Content-Type: application/json" \
+  -d '{"uri": "https://example.com/my-app", "source": "database.query(\"things\")"}'
 ```
 
 ```json
@@ -697,7 +699,7 @@ Each of these has an equivalent MCP tool — `check_script`, `eval_script` and
 
 ### 1. Test Before Deploying
 
-Run `POST /engine/check` against the candidate source first — it reports what
+Run `POST /engine/check_script` against the candidate source first — it reports what
 the engine would reject before anything is published (see
 [Checking a Script Before It Goes Live](#checking-a-script-before-it-goes-live)).
 Then test in a dev/staging environment:
@@ -774,7 +776,7 @@ After deploying, check:
 
 ```bash
 # Check logs (add ?uri=... for one script)
-curl "$MANAGE_HOST/engine/script_logs?limit=50" -H "Authorization: Bearer $TOKEN"
+curl "$MANAGE_HOST/engine/read_logs?limit=50" -H "Authorization: Bearer $TOKEN"
 
 # Follow the log as the first requests arrive
 curl -N "$MANAGE_HOST/engine/script_logs/stream?uri=$URI" \
@@ -784,7 +786,7 @@ curl -N "$MANAGE_HOST/engine/script_logs/stream?uri=$URI" \
 curl https://example.com/my-app/things
 
 # Check registered routes
-curl "$MANAGE_HOST/engine/routes" -H "Authorization: Bearer $TOKEN"
+curl "$MANAGE_HOST/engine/list_routes" -H "Authorization: Bearer $TOKEN"
 ```
 
 ### 5. Rollback Plan
@@ -859,7 +861,7 @@ Now that you understand deployment workflows:
 
 - [ ] Test locally
 - [ ] Review code changes
-- [ ] `POST /engine/check` the candidate source
+- [ ] `POST /engine/check_script` the candidate source
 - [ ] Check logs for errors
 - [ ] Deploy to staging
 - [ ] Test in staging
@@ -877,13 +879,14 @@ Now that you understand deployment workflows:
 curl http://localhost:8080/api/test
 
 # Check a script without deploying it
-curl -X POST "$MANAGE_HOST/engine/check?uri=$URI" -H "Authorization: Bearer $TOKEN"
+curl -X POST "$MANAGE_HOST/engine/check_script" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "{\"uri\": \"$URI\"}"
 
 # View logs
-curl "$MANAGE_HOST/engine/script_logs?uri=$URI" -H "Authorization: Bearer $TOKEN"
+curl "$MANAGE_HOST/engine/read_logs?uri=$URI" -H "Authorization: Bearer $TOKEN"
 
 # List scripts
-curl "$MANAGE_HOST/engine/scripts" -H "Authorization: Bearer $TOKEN"
+curl "$MANAGE_HOST/engine/list_scripts" -H "Authorization: Bearer $TOKEN"
 ```
 
 Happy deploying! 🚀

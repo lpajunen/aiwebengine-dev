@@ -134,7 +134,7 @@ The easiest way to view logs:
 - Jump to latest button (scrolls view to newest entry)
 - Timestamps included
 
-### Method 2: `GET /engine/script_logs`
+### Method 2: `GET /engine/read_logs`
 
 Read logs back over the engine's HTTP API. The engine answers based on the
 signed-in user: an **Administrator** or an owner of the script sees its
@@ -181,24 +181,24 @@ const uri = encodeURIComponent("https://example.com/api-users");
 
 // Everything one request logged, in order
 const one = await (
-  await fetch(`/engine/script_logs?uri=${uri}&request_id=req_1787583751296_11`)
+  await fetch(`/engine/read_logs?uri=${uri}&request_id=req_1787583751296_11`)
 ).json();
 
 // Only what the scheduled jobs said
 const ticks = await (
-  await fetch(`/engine/script_logs?uri=${uri}&kind=scheduled&limit=50`)
+  await fetch(`/engine/read_logs?uri=${uri}&kind=scheduled&limit=50`)
 ).json();
 
 // One route, errors only
 const failures = await (
-  await fetch(`/engine/script_logs?uri=${uri}&route=/users/:id&level=ERROR`)
+  await fetch(`/engine/read_logs?uri=${uri}&route=/users/:id&level=ERROR`)
 ).json();
 ```
 
 From a page, call it with the visitor's own session:
 
 ```javascript
-const response = await fetch("/engine/script_logs?limit=100");
+const response = await fetch("/engine/read_logs?limit=100");
 const { logs } = await response.json();
 
 logs.forEach((log) => {
@@ -213,7 +213,7 @@ To narrow to one script, pass its URI:
 ```javascript
 const uri = "https://example.com/api-users";
 const response = await fetch(
-  `/engine/script_logs?uri=${encodeURIComponent(uri)}&level=ERROR`,
+  `/engine/read_logs?uri=${encodeURIComponent(uri)}&level=ERROR`,
 );
 const { logs, count } = await response.json();
 ```
@@ -230,7 +230,7 @@ function logsHandler(context) {
   if (req.headers.cookie) headers.Cookie = req.headers.cookie;
 
   const response = JSON.parse(
-    fetch(`https://${req.headers.host}/engine/script_logs?limit=100`, {
+    fetch(`https://${req.headers.host}/engine/read_logs?limit=100`, {
       headers: headers,
     }),
   );
@@ -248,18 +248,17 @@ routeRegistry.registerRoute("/my-logs", {
 });
 ```
 
-### Pruning with `DELETE /engine/script_logs`
+### Clearing with `POST /engine/clear_logs`
 
-`DELETE /engine/script_logs` prunes every script back to its newest entries.
-Given a `uri` it clears that one script's logs outright:
+`POST /engine/clear_logs` clears one script's logs outright. There is no
+clear-everything call: how much each script keeps is the engine's background
+pruner's job (`[logs]` in the configuration).
 
 ```javascript
-// Prune every script
-await fetch("/engine/script_logs", { method: "DELETE" });
-
-// Clear one script's logs
-await fetch(`/engine/script_logs?uri=${encodeURIComponent(uri)}`, {
-  method: "DELETE",
+await fetch("/engine/clear_logs", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ uri }),
 });
 ```
 
@@ -333,7 +332,7 @@ tail -f /var/log/aiwebengine/server.log
 
 ### Basic Log Viewer
 
-Both viewers below share this helper, which calls `/engine/script_logs` with
+Both viewers below share this helper, which calls `/engine/read_logs` with
 the caller's own credentials so the engine applies their permissions:
 
 ```javascript
@@ -345,7 +344,7 @@ function readLogs(req, query) {
   if (req.headers.cookie) headers.Cookie = req.headers.cookie;
 
   const response = JSON.parse(
-    fetch(`https://${req.headers.host}/engine/script_logs${query}`, {
+    fetch(`https://${req.headers.host}/engine/read_logs${query}`, {
       headers: headers,
     }),
   );
@@ -619,16 +618,16 @@ function slowHandler(context) {
 
 ### 6. Evaluate a Snippet in the Sandbox
 
-Some questions are faster to ask than to log. `POST /engine/eval` runs a
+Some questions are faster to ask than to log. `POST /engine/eval_script` runs a
 snippet against a deployed script's own sandbox and returns the value plus
 everything it logged, so you can inspect state without adding a `console.log`,
 redeploying, and taking it out again:
 
 ```bash
-curl -X POST "$MANAGE_HOST/engine/eval?uri=https://example.com/my-app" \
+curl -X POST "$MANAGE_HOST/engine/eval_script" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: text/plain" \
-  --data-binary 'scriptStorage.getItem("app:config")'
+  -H "Content-Type: application/json" \
+  -d 'scriptStorage.getItem("app:config")'
 ```
 
 The reply is `{ok, value, valueType, console, durationMs, rolledBack}`. The
@@ -882,17 +881,17 @@ console.log(`Card ending in ${sanitizeCardNumber(cardNumber)}`);
 console.log("Message");
 
 // Read logs over the engine's HTTP API (every script, newest first)
-const { logs } = await (await fetch("/engine/script_logs?limit=100")).json();
+const { logs } = await (await fetch("/engine/read_logs?limit=100")).json();
 
 // Narrow to one script, one level, the newest 50 entries
 const uri = encodeURIComponent("https://example.com/api-users");
 const recent = await (
-  await fetch(`/engine/script_logs?uri=${uri}&level=ERROR&limit=50`)
+  await fetch(`/engine/read_logs?uri=${uri}&level=ERROR&limit=50`)
 ).json();
 
 // Everything one invocation logged
 const trace = await (
-  await fetch(`/engine/script_logs?uri=${uri}&request_id=${requestId}`)
+  await fetch(`/engine/read_logs?uri=${uri}&request_id=${requestId}`)
 ).json();
 
 // Follow the log live (SSE), replaying the newest 50 entries first
@@ -901,8 +900,12 @@ const source = new EventSource(
 );
 source.addEventListener("log", (e) => console.log(JSON.parse(e.data).message));
 
-// Prune every script back to its newest entries
-await fetch("/engine/script_logs", { method: "DELETE" });
+// Clear one script's logs
+await fetch("/engine/clear_logs", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ uri }),
+});
 
 // Log helper functions
 function logError(msg) {

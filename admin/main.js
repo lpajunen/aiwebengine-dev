@@ -5,8 +5,8 @@
  *
  * Serves the user management UI at `/admin`, grouped under the "Aiwebengine
  * administration" tag in Swagger. The page itself reads and writes user roles
- * over the engine's HTTP API (`GET /engine/users`,
- * `POST|DELETE /engine/user_roles`) with the signed-in user's session, so the
+ * over the engine's HTTP API (`list_users`,
+ * `add_user_role`, `remove_user_role`) with the signed-in user's session, so the
  * engine enforces that user's administrator rights; this script no longer
  * proxies those calls through the `userStorage` global, which the engine has
  * removed.
@@ -287,8 +287,13 @@ function handleManagerUI(context) {
                 return detail || ('Request failed with status ' + response.status);
             },
 
-            async request(path, options) {
-                const response = await fetch('/engine' + path, options);
+            /** One engine operation: POST /engine/{operation} with a JSON body. */
+            async request(operation, args) {
+                const response = await fetch('/engine/' + operation, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(args || {})
+                });
                 if (!response.ok) {
                     throw new Error(await this.errorMessage(response));
                 }
@@ -296,25 +301,17 @@ function handleManagerUI(context) {
             },
 
             async listUsers() {
-                const response = await this.request('/users');
+                const response = await this.request('list_users');
                 const data = await response.json();
                 return Array.isArray(data) ? data : (data.users || []);
             },
 
             async addUserRole(userId, role) {
-                await this.request('/user_roles', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({ user_id: userId, role: role }).toString()
-                });
+                await this.request('add_user_role', { user_id: userId, role: role });
             },
 
             async removeUserRole(userId, role) {
-                await this.request(
-                    '/user_roles?user_id=' + encodeURIComponent(userId) +
-                        '&role=' + encodeURIComponent(role),
-                    { method: 'DELETE' }
-                );
+                await this.request('remove_user_role', { user_id: userId, role: role });
             }
         };
 

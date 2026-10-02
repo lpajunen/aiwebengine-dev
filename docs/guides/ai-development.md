@@ -558,7 +558,7 @@ web application engine. Scripts are server-side handlers that:
 - Can use routeRegistry.registerRoute(path, { stream: true }) and routeRegistry.sendStreamMessage(data) for SSE
 
 Available functions:
-- routeRegistry.registerRoute(), console.log(), GET /engine/script_logs to read logs back
+- routeRegistry.registerRoute(), console.log(), GET /engine/read_logs to read logs back
 - fetch(), routeRegistry.registerRoute(path, { stream: true }), routeRegistry.sendStreamMessage()
 - files.list(), files.read(path), files.write(path, content), files.delete(path)
 

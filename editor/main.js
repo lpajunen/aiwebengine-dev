@@ -18,32 +18,36 @@ function getArgs(context) {
   return (context && context.args) || {};
 }
 
-// Read from the engine's own HTTP API under /engine/. These endpoints replaced
+// Call the engine's own HTTP API under /engine/. Each operation is
+// POST /engine/{operation} with a JSON body. These endpoints replaced
 // the legacy JavaScript globals, so the caller's credentials are forwarded
 // and the engine applies that user's permissions to the answer.
 /**
  * @param {*} context
- * @param {string} path
+ * @param {string} operation
+ * @param {Record<string, unknown>} [args]
  * @returns {any}
  */
-function engineGet(context, path) {
+function engineCall(context, operation, args) {
   const req = getRequest(context);
   const incoming = req.headers || {};
 
   /** @type {Record<string, string>} */
-  const headers = {};
+  const headers = { "Content-Type": "application/json" };
   const authorization = incoming.authorization || incoming.Authorization;
   const cookie = incoming.cookie || incoming.Cookie;
   if (authorization) headers.Authorization = authorization;
   if (cookie) headers.Cookie = cookie;
 
   const host = incoming.host || incoming.Host;
-  const response = fetch("https://" + host + "/engine" + path, {
+  const response = fetch("https://" + host + "/engine/" + operation, {
+    method: "POST",
     headers: headers,
+    body: JSON.stringify(args || {}),
   });
   if (!response.ok) {
     throw new Error(
-      "Engine request " + path + " failed with status " + response.status,
+      "Engine request " + operation + " failed with status " + response.status,
     );
   }
   return response.json();
@@ -817,11 +821,11 @@ AVAILABLE JAVASCRIPT APIs:
    - Use for personalized broadcasting to specific users/groups on stable endpoints
 
    To introspect what is registered, call the engine's HTTP API rather than a
-   global: GET /engine/routes returns {host, routes: [{path, method, handler,
-   script_uri, summary, description, tags}]}, where method is the HTTP method
-   for handlers and "STREAM" or "ASSET" for stream and asset registrations.
-   Pass ?host=... to see only one host. The caller's session decides what
-   comes back.
+   global: POST /engine/list_routes returns {host, routes: [{path, method,
+   handler, script_uri, summary, description, tags}]}, where method is the HTTP
+   method for handlers and "STREAM" or "ASSET" for stream and asset
+   registrations. Pass {"host": "..."} to see only one host. The caller's
+   session decides what comes back.
 
 2. Console logging - Write messages to server logs and retrieve log entries
    - console.log(message) - General logging (level: LOG)
@@ -830,12 +834,11 @@ AVAILABLE JAVASCRIPT APIs:
    - console.warn(message) - Warning-level logging (level: WARN)
    - console.error(message) - Error-level logging (level: ERROR)
    - message: string
-   - To read logs back, call GET /engine/script_logs, which returns
+   - To read logs back, call POST /engine/read_logs, which returns
      {uri, logs: [{scriptUri, message, level, timestamp}], count, timestamp}.
-     Omit uri for every script (newest first) or pass ?uri=... for one script
-     (oldest first); level, since and limit narrow the result. DELETE the same
-     path prunes every script back to its newest entries, or clears one
-     script's logs when given a uri.
+     Omit uri for every script (newest first) or pass {"uri": "..."} for one
+     script (oldest first); level, since and limit narrow the result.
+     POST /engine/clear_logs with a uri clears one script's logs.
 
 3. scriptStorage - Persistent key-value storage shared by everyone using the script
    - Implements the WHATWG Storage interface, exactly like localStorage in a browser
@@ -1128,7 +1131,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
 
   // Add available scripts list
   try {
-    const scriptMetadata = engineGet(context, "/scripts").scripts || [];
+    const scriptMetadata = engineCall(context, "list_scripts").scripts || [];
     const scripts = scriptMetadata.map((/** @type {any} */ meta) => meta.uri);
     if (scripts.length > 0) {
       contextualPrompt += "AVAILABLE SCRIPTS: " + scripts.join(", ") + "\\n\\n";
@@ -1374,7 +1377,7 @@ CURRENT CONTEXT:`;
 
   // Add available scripts/assets
   try {
-    const scripts = (engineGet(context, "/scripts").scripts || []).map(
+    const scripts = (engineCall(context, "list_scripts").scripts || []).map(
       (/** @type {any} */ m) => m.uri,
     );
     if (scripts.length > 0) {

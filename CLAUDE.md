@@ -48,8 +48,8 @@ happens.
 
 `scripts/upload-script.js` uploads a server-side script plus an optional asset directory. It reads
 the OAuth token from `schemas/token.json` (run `make oauth-login` first — the token is **not** taken
-from `.env`), uploads the script to `POST $MANAGE_HOST/engine/upsert_script`, then base64-uploads
-each asset to `POST $MANAGE_HOST/engine/assets`. Convenience wrappers with the correct paths already
+from `.env`), uploads the entrypoint to `POST $MANAGE_HOST/engine/write_file` (under its own name, `main.ts`), then the
+assets through `POST $MANAGE_HOST/engine/write_files`. Convenience wrappers with the correct paths already
 wired:
 
 ```bash
@@ -73,8 +73,8 @@ reads when pushing a script to a repository, so an upload and a push agree on wh
 script.
 
 After deploying, bind the scripts to the host they should be published on with
-`scripts/set-script-hosts.js`, which calls `POST $MANAGE_HOST/engine/script_hosts?uri=…&hosts=…`
-(administrators only; `GET` reads the current binding and `DELETE` clears it):
+`scripts/set-script-hosts.js`, which calls `POST $MANAGE_HOST/engine/set_script_hosts` with `{uri, hosts: [...]}`
+(administrators only; `get_script_hosts` reads the current binding and an empty list clears it):
 
 ```bash
 make set-script-hosts            # admin + editor + docs → MANAGE_HOST's hostname
@@ -136,12 +136,12 @@ environment — not Node — so:
   `routeRegistry.listRoutes`/`listStreams`/`listAssets`) have been **removed** — calling one is a
   `TypeError`. Every one of them has an HTTP equivalent under `/engine/` — script, asset, secret
   and user management
-  (`/engine/scripts`, `/engine/read_script`, `/engine/upsert_script`, `/engine/delete_script`,
-  `/engine/assets` (`GET` also does `lines`/`grep`, plus `PATCH` and `POST /engine/assets/batch`),
-  `/engine/secrets`, `/engine/script_owners`, `/engine/users`, `/engine/user_roles`), logs
-  (`GET|DELETE /engine/script_logs`, plus `GET /engine/script_logs/stream` for an SSE tail), route
-  introspection (`/engine/routes`) and the pre-deploy loop (`POST /engine/check`,
-  `POST /engine/eval`, `POST /engine/run_tests`), with equivalent MCP tools — see
+  (`/engine/list_scripts`, `/engine/list_files`, `/engine/read_file` (with `lines`/`grep`), `/engine/write_file`,
+  `/engine/write_files`, `/engine/edit_file`, `/engine/delete_file`, `/engine/delete_script`,
+  `/engine/list_secrets`, `/engine/list_script_owners`, `/engine/list_users`, `/engine/add_user_role`), logs
+  (`/engine/read_logs`, `/engine/clear_logs`, plus `GET /engine/script_logs/stream` for an SSE tail), route
+  introspection (`/engine/list_routes`) and the pre-deploy loop (`POST /engine/check_script`,
+  `POST /engine/eval_script`, `POST /engine/run_tests`), with equivalent MCP tools — see
   `apis/openapi.json`. The browser calls them with the signed-in user's session and the engine
   enforces that user's permissions.
 - The script-scoped storage global is `scriptStorage` (it was `sharedStorage`), and together with

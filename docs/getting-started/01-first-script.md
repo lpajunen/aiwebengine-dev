@@ -380,7 +380,7 @@ routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" });
 console.log(message);
 
 // Read logs back over the engine's HTTP API
-const { logs } = await (await fetch("/engine/script_logs")).json();
+const { logs } = await (await fetch("/engine/read_logs")).json();
 ```
 
 ### Handler Template

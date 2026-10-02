@@ -24,7 +24,7 @@ Two fields say what kind of run this is and identify it:
   `mcpPrompt`, `test` or `eval`.
 - `context.invocationId` identifies this invocation. Every log line the handler
   writes is filed under it, so
-  `GET /engine/script_logs?request_id=<invocationId>` returns exactly the lines
+  `GET /engine/read_logs?request_id=<invocationId>` returns exactly the lines
   this run produced. For an HTTP route it is the request's `x-request-id`,
   which the response carries back to the caller — which is how a failing
   request in a browser leads straight to its server-side log.
@@ -205,12 +205,12 @@ routeRegistry.sendStreamMessageFiltered(
 
 ### Listing what is registered
 
-Use the engine's HTTP API at `GET /engine/routes`, which returns every
+Use the engine's HTTP API at `/engine/list_routes`, which returns every
 registration in the engine — script routes, SSE streams and asset routes —
 as `{host, routes}`:
 
 ```javascript
-const { routes } = await (await fetch("/engine/routes")).json();
+const { routes } = await (await fetch("/engine/list_routes")).json();
 
 routes.forEach((route) => {
   // method is the HTTP method for handlers, or "STREAM" / "ASSET"
@@ -225,9 +225,9 @@ be a host scripts publish on.
 
 > **Removed globals:** `routeRegistry.listRoutes()`, `listStreams()` and
 > `listAssets()` no longer exist in the sandbox — calling one is a
-> `TypeError`. `/engine/routes` replaces the first two (and, unlike them,
+> `TypeError`. `/engine/list_routes` replaces the first two (and, unlike them,
 > filters by host and reports the handler, summary, description and tags for
-> stream entries); `files.list()` or `GET /engine/assets` replaces the
+> stream entries); `files.list()` or `/engine/read_file` replaces the
 > third.
 
 ## Files
@@ -624,7 +624,7 @@ secretStorage.clear();
 
 **Cross-script management:** the `secretStorage` global only reaches the current
 script's secrets. To manage the secrets of _other_ scripts — what tools like the
-editor's Secrets tab do — use the engine's HTTP API at `/engine/secrets`, or the
+editor's Secrets tab do — use the engine's HTTP API at `/engine/list_secrets`, or the
 equivalent MCP tools. The engine allows those calls for Administrators and for
 owners of the target script, and refuses everyone else. See the OpenAPI
 description at `/engine/openapi.json` for the full contract.
@@ -1393,15 +1393,14 @@ Basic console logging (output goes to server logs).
 - `console.warn(message)`: Log a warning message (level: WARN)
 - `console.error(message)`: Log an error message (level: ERROR)
 - `console.debug(message)`: Log a debug message (level: DEBUG)
-  Reading logs back is the HTTP API's job: `GET /engine/script_logs` returns
+  Reading logs back is the HTTP API's job: `GET /engine/read_logs` returns
   `{uri, logs, count, timestamp}`, with each entry shaped
   `{scriptUri, message, level, timestamp, seq, requestId, kind, route}`. Omit
   `uri` for every script (newest first) or pass one for a single script (oldest
   first); `level`, `since`, `limit`, `contains`, `request_id`, `kind`, `route`
   and `after_seq` narrow the result. `GET /engine/script_logs/stream` follows
   the log live over Server-Sent Events with the same filters.
-  `DELETE /engine/script_logs` prunes every script back to its newest entries,
-  or clears one script's logs when given a `uri`. The engine answers all three
+  `POST /engine/clear_logs` clears one script's logs. The engine answers all three
   as the signed-in user, so an Administrator or an owner of the script sees its
   entries and everyone else is refused. See the
   [Logging guide](../guides/logging.md) for the full parameter list.
@@ -1426,12 +1425,12 @@ Reading them back from a page, with the visitor's own session:
 
 ```javascript
 // Every script, newest first
-const { logs } = await (await fetch("/engine/script_logs?limit=100")).json();
+const { logs } = await (await fetch("/engine/read_logs?limit=100")).json();
 
 // One script's errors, oldest first
 const uri = encodeURIComponent("https://example.com/api-users");
 const errors = await (
-  await fetch(`/engine/script_logs?uri=${uri}&level=ERROR`)
+  await fetch(`/engine/read_logs?uri=${uri}&level=ERROR`)
 ).json();
 
 // Each entry has: scriptUri, message, level, timestamp (in milliseconds),

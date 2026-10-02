@@ -79,43 +79,49 @@ const engineApi = {
   },
 
   /**
-   * @param {string} path
-   * @param {RequestInit} [options]
-   * @returns {Promise<Response>}
+   * One engine operation: `POST /engine/{operation}` with the arguments as a
+   * JSON body. Every operation answers JSON; a failure is `{ error }` with a
+   * status, which is thrown as an Error carrying the engine's message.
+   * @param {string} operation
+   * @param {Record<string, unknown>} [args]
+   * @returns {Promise<any>}
    */
-  async request(path, options) {
-    const response = await fetch("/engine" + path, options);
+  async call(operation, args) {
+    const response = await fetch("/engine/" + operation, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args || {}),
+    });
     if (!response.ok) {
       throw new Error(await this.errorMessage(response));
     }
-    return response;
-  },
-
-  /**
-   * @param {string} path
-   * @param {RequestInit} [options]
-   * @returns {Promise<any>}
-   */
-  async json(path, options) {
-    const response = await this.request(path, options);
     return response.json();
   },
 
   /**
-   * @param {Record<string, string>} fields
-   * @returns {RequestInit}
+   * A script's entrypoint is the file named main.{ts,js,tsx,jsx} in its tree.
+   * Existing scripts say which in their file list; a script with no files yet
+   * takes its language from the URI's extension, as the engine does.
+   * @param {string} uri
+   * @returns {Promise<string>}
    */
-  form(fields) {
-    return {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(fields).toString(),
-    };
+  async entryPath(uri) {
+    try {
+      const data = await this.call("list_files", { script: uri });
+      for (const file of data.files || []) {
+        const name = file.name || file.uri || "";
+        if (ENTRY_FILE.test(name)) return name;
+      }
+    } catch {
+      /* fall through to the URI's extension */
+    }
+    const ext = (/\.(tsx|jsx|ts|js)$/.exec(uri) || [])[1] || "js";
+    return "main." + ext;
   },
 
   /** @returns {Promise<any[]>} */
   async listScripts() {
-    const data = await this.json("/scripts");
+    const data = await this.call("list_scripts");
     return data.scripts || [];
   },
 
@@ -124,10 +130,13 @@ const engineApi = {
    * @returns {Promise<string>}
    */
   async readScript(uri) {
-    const response = await this.request(
-      "/read_script?uri=" + encodeURIComponent(uri),
-    );
-    return response.text();
+    const data = await this.call("read_file", {
+      script: uri,
+      path: await this.entryPath(uri),
+    });
+    return data.encoding === "base64"
+      ? base64ToText(data.content)
+      : data.content || "";
   },
 
   /**
@@ -135,12 +144,16 @@ const engineApi = {
    * @param {string} content
    */
   async upsertScript(uri, content) {
-    await this.request("/upsert_script", this.form({ uri, content }));
+    await this.call("write_file", {
+      script: uri,
+      path: await this.entryPath(uri),
+      text: content,
+    });
   },
 
   /** @param {string} uri */
   async deleteScript(uri) {
-    await this.request("/delete_script", this.form({ uri }));
+    await this.call("delete_script", { uri });
   },
 
   /**
@@ -148,9 +161,7 @@ const engineApi = {
    * @returns {Promise<string[]>}
    */
   async listScriptOwners(uri) {
-    const data = await this.json(
-      "/script_owners?uri=" + encodeURIComponent(uri),
-    );
+    const data = await this.call("list_script_owners", { uri });
     return data.owners || [];
   },
 
@@ -159,7 +170,7 @@ const engineApi = {
    * @param {string} owner
    */
   async addScriptOwner(uri, owner) {
-    await this.request("/script_owners", this.form({ uri, owner }));
+    await this.call("add_script_owner", { uri, owner });
   },
 
   /**
@@ -167,21 +178,20 @@ const engineApi = {
    * @param {string} owner
    */
   async removeScriptOwner(uri, owner) {
-    await this.request(
-      `/script_owners?uri=${encodeURIComponent(uri)}&owner=${encodeURIComponent(owner)}`,
-      { method: "DELETE" },
-    );
+    await this.call("remove_script_owner", { uri, owner });
   },
 
   /**
+   * The script's files other than its entrypoint, which the editor shows as
+   * the script itself.
    * @param {string} script
    * @returns {Promise<any[]>}
    */
   async listAssets(script) {
-    const data = await this.json(
-      "/assets?script=" + encodeURIComponent(script),
+    const data = await this.call("list_files", { script });
+    return (data.files || []).filter(
+      /** @param {any} file */ (file) => !ENTRY_FILE.test(file.name || ""),
     );
-    return data.assets || [];
   },
 
   /**
@@ -190,10 +200,12 @@ const engineApi = {
    * @returns {Promise<string>} base64-encoded asset content
    */
   async readAsset(script, asset) {
-    const data = await this.json(
-      `/assets?script=${encodeURIComponent(script)}&asset=${encodeURIComponent(this.assetName(asset))}`,
-    );
-    return data.content || "";
+    const data = await this.call("read_file", {
+      script,
+      path: this.assetName(asset),
+    });
+    if (data.encoding === "base64") return data.content || "";
+    return utf8ToBase64(data.content || "");
   },
 
   /**
@@ -203,14 +215,11 @@ const engineApi = {
    * @param {string} content base64-encoded asset content
    */
   async upsertAsset(script, asset, mimetype, content) {
-    await this.request("/assets?script=" + encodeURIComponent(script), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        asset: this.assetName(asset),
-        mimetype: mimetype,
-        content: content,
-      }),
+    await this.call("write_file", {
+      script,
+      path: this.assetName(asset),
+      mimetype: mimetype,
+      content: content,
     });
   },
 
@@ -219,10 +228,7 @@ const engineApi = {
    * @param {string} asset
    */
   async deleteAsset(script, asset) {
-    await this.request(
-      `/assets?script=${encodeURIComponent(script)}&asset=${encodeURIComponent(this.assetName(asset))}`,
-      { method: "DELETE" },
-    );
+    await this.call("delete_file", { script, path: this.assetName(asset) });
   },
 
   /**
@@ -230,9 +236,7 @@ const engineApi = {
    * @returns {Promise<string[]>}
    */
   async listSecrets(script) {
-    const data = await this.json(
-      "/secrets?script=" + encodeURIComponent(script),
-    );
+    const data = await this.call("list_secrets", { script });
     return data.keys || [];
   },
 
@@ -242,11 +246,7 @@ const engineApi = {
    * @param {string} value
    */
   async setSecret(script, key, value) {
-    await this.request("/secrets?script=" + encodeURIComponent(script), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value }),
-    });
+    await this.call("write_secret", { script, key, value });
   },
 
   /**
@@ -254,10 +254,7 @@ const engineApi = {
    * @param {string} key
    */
   async deleteSecret(script, key) {
-    await this.request(
-      `/secrets?script=${encodeURIComponent(script)}&key=${encodeURIComponent(key)}`,
-      { method: "DELETE" },
-    );
+    await this.call("delete_secret", { script, key });
   },
 
   /**
@@ -268,27 +265,24 @@ const engineApi = {
    * @returns {Promise<any[]>}
    */
   async listLogs(options) {
-    const params = new URLSearchParams();
+    /** @type {Record<string, unknown>} */
+    const args = {};
     const { uri, level, since, limit } = options || {};
-    if (uri) params.set("uri", uri);
-    if (level) params.set("level", level);
-    if (since !== undefined) params.set("since", String(since));
-    if (limit !== undefined) params.set("limit", String(limit));
-    const query = params.toString();
-    const data = await this.json("/script_logs" + (query ? "?" + query : ""));
+    if (uri) args.uri = uri;
+    if (level) args.level = level;
+    if (since !== undefined) args.since = String(since);
+    if (limit !== undefined) args.limit = limit;
+    const data = await this.call("read_logs", args);
     return data.logs || [];
   },
 
   /**
-   * Prune every script back to its newest entries, or clear one script's logs
-   * outright when `uri` is given.
-   * @param {string} [uri]
+   * Clear one script's logs. The engine no longer clears every script's at
+   * once: retention across scripts is its background pruner's job.
+   * @param {string} uri
    */
-  async pruneLogs(uri) {
-    await this.request(
-      "/script_logs" + (uri ? "?uri=" + encodeURIComponent(uri) : ""),
-      { method: "DELETE" },
-    );
+  async clearLogs(uri) {
+    await this.call("clear_logs", { uri });
   },
 
   /**
@@ -299,12 +293,26 @@ const engineApi = {
    * @returns {Promise<any[]>}
    */
   async listRoutes(host) {
-    const data = await this.json(
-      "/routes" + (host ? "?host=" + encodeURIComponent(host) : ""),
-    );
+    const data = await this.call("list_routes", host ? { host } : {});
     return data.routes || [];
   },
 };
+
+/** The file a script's entrypoint is stored as. */
+const ENTRY_FILE = /^main\.(ts|js|tsx|jsx)$/;
+
+/**
+ * UTF-8 text as base64, which is how the editor carries asset content.
+ * @param {string} text
+ * @returns {string}
+ */
+function utf8ToBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++)
+    binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
 
 /**
  * Decode base64 asset content into text, honouring UTF-8 multi-byte
@@ -2218,8 +2226,15 @@ function init(context) {
   async clearLogs() {
     try {
       this.showStatus("Clearing logs...", "info");
-      await engineApi.pruneLogs();
-      this.showStatus("Logs pruned successfully", "success");
+      // The engine clears one script's logs per call, so clear each script
+      // this list is showing.
+      const uris = (this.scriptsData || []).map(
+        /** @param {any} script */ (script) => script.uri,
+      );
+      await Promise.all(
+        uris.map(/** @param {string} uri */ (uri) => engineApi.clearLogs(uri)),
+      );
+      this.showStatus("Logs cleared successfully", "success");
       // Refresh logs after successful prune
       await this.loadLogs();
     } catch (error) {

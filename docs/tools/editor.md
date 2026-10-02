@@ -821,54 +821,57 @@ contract.
 
 ```bash
 # List all scripts with metadata
-GET /engine/scripts
+GET /engine/list_scripts
 
-# Get script content
-GET /engine/read_script?uri=https://example.com/users
+# Get a script's entrypoint (the file named main.ts / main.js / ...)
+GET /engine/read_file?script=https://example.com/users&path=main.js
 
-# Create/update script
-POST /engine/upsert_script
-Content-Type: application/x-www-form-urlencoded
-uri=https://example.com/users&content=function handler(context) {...}
+# Create/update it
+POST /engine/write_file
+Content-Type: application/json
+{"script": "https://example.com/users", "path": "main.js", "text": "function handler(context) {...}"}
 
 # Delete script
 POST /engine/delete_script
-Content-Type: application/x-www-form-urlencoded
-uri=https://example.com/users
+Content-Type: application/json
+{"uri": "https://example.com/users"}
 ```
 
 ### Assets
 
 ```bash
-# List a script's assets
-GET /engine/assets?script=https://example.com/users
+# List a script's files
+GET /engine/list_files?script=https://example.com/users
 
-# Get asset data (base64 in a JSON envelope)
-GET /engine/assets?script=https://example.com/users&asset=logo.png
+# Get a file (`content` is text, or base64 when `encoding` says so)
+GET /engine/read_file?script=https://example.com/users&path=logo.png
 
-# Upload asset
-POST /engine/assets?script=https://example.com/users
+# Upload a file
+POST /engine/write_file
 Content-Type: application/json
-{"asset": "logo.png", "mimetype": "image/png", "content": "base64..."}
+{"script": "https://example.com/users", "path": "logo.png", "mimetype": "image/png", "content": "base64..."}
 
-# Delete asset
-DELETE /engine/assets?script=https://example.com/users&asset=logo.png
+# Delete a file
+POST /engine/delete_file
+Content-Type: application/json
+{"script": "https://example.com/users", "path": "logo.png"}
 ```
 
 ### Logs
 
 ```bash
 # Get logs across every script, newest first
-GET /engine/script_logs
+GET /engine/read_logs
 
 # Get logs for specific script, oldest first
-GET /engine/script_logs?uri=https://example.com/users
+GET /engine/read_logs?uri=https://example.com/users
 
 # Narrow by level, time or count
-GET /engine/script_logs?level=ERROR&limit=50
+GET /engine/read_logs?level=ERROR&limit=50
 
-# Prune every script back to its newest entries
-DELETE /engine/script_logs
+# Clear one script's logs
+POST /engine/clear_logs
+{"uri": "https://example.com/users"}
 ```
 
 ## Tips and Tricks

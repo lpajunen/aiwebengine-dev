@@ -606,13 +606,13 @@ call.
 Roles are `"Authenticated"` (every logged-in user, cannot be removed),
 `"Editor"`, and `"Administrator"`.
 
-| Operation     | HTTP                                         | MCP tool           |
-| ------------- | -------------------------------------------- | ------------------ |
-| List users    | `GET /engine/users`                          | `list_users`       |
-| Grant a role  | `POST /engine/user_roles`                    | `add_user_role`    |
-| Revoke a role | `DELETE /engine/user_roles?user_id=…&role=…` | `remove_user_role` |
+| Operation     | HTTP                            | MCP tool           |
+| ------------- | ------------------------------- | ------------------ |
+| List users    | `GET /engine/list_users`        | `list_users`       |
+| Grant a role  | `POST /engine/add_user_role`    | `add_user_role`    |
+| Revoke a role | `POST /engine/remove_user_role` | `remove_user_role` |
 
-### GET /engine/users
+### GET /engine/list_users
 
 Returns the users with their roles and linked providers. Answers `403` when the
 caller is not an administrator.
@@ -620,18 +620,18 @@ caller is not an administrator.
 Each user looks like `{ id, email, name, roles: string[], providers: string[],
 created_at }`.
 
-### POST /engine/user_roles
+### POST /engine/add_user_role
 
 Grants a role to a user. Takes `user_id` and `role` (`Editor`,
-`Administrator`, or `Authenticated`) as JSON or form-encoded fields, and
+`Administrator`, or `Authenticated`) as JSON fields, and
 returns the resulting role set. Answers `400` for a missing parameter or an
 unknown role, `403` when the caller is not an administrator, and `404` when the
 user does not exist.
 
-### DELETE /engine/user_roles
+### POST /engine/remove_user_role
 
 Revokes a role from a user. Takes `user_id` and `role` (`Editor` or
-`Administrator`) as query parameters and returns the resulting role set.
+`Administrator`) as JSON fields and returns the resulting role set.
 Besides the `400`/`403`/`404` cases above, it answers `400` for
 `"Authenticated"`, which cannot be revoked, and `409` when the removal would
 leave the deployment without an administrator.
@@ -643,10 +643,10 @@ the browser sends the session, and the engine enforces that user's rights. This
 is what the built-in `/admin` UI does:
 
 ```javascript
-const response = await fetch("/engine/user_roles", {
+const response = await fetch("/engine/add_user_role", {
   method: "POST",
-  headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  body: new URLSearchParams({ user_id: userId, role: "Editor" }).toString(),
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ user_id: userId, role: "Editor" }),
 });
 
 if (!response.ok) {
@@ -675,7 +675,9 @@ function listUsersHandler(context) {
   if (incoming.cookie) headers.Cookie = incoming.cookie;
 
   const response = JSON.parse(
-    fetch("https://" + incoming.host + "/engine/users", { headers: headers }),
+    fetch("https://" + incoming.host + "/engine/list_users", {
+      headers: headers,
+    }),
   );
   if (response.status !== 200) {
     return ResponseBuilder.error(response.status, "Failed to list users");
