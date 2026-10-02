@@ -20,37 +20,37 @@ MANAGE_HOSTNAME = $(shell echo "$(MANAGE_HOST)" | sed -e 's|^https\{0,1\}://||' 
 # assets, at the same relative path.
 upload-editor:
 	@node scripts/upload-script.js --script-path editor/main.js \
-	  --script-uri https://example.com/editor --assets-dir editor
+	  --script-uri editor --assets-dir editor
 
 upload-editor-dry-run:
 	@node scripts/upload-script.js --script-path editor/main.js \
-	  --script-uri https://example.com/editor --assets-dir editor --dry-run
+	  --script-uri editor --assets-dir editor --dry-run
 
 upload-docs:
 	@node scripts/upload-script.js --script-path docs/main.js \
-	  --script-uri https://example.com/docs --assets-dir docs
+	  --script-uri docs --assets-dir docs
 
 upload-docs-dry-run:
 	@node scripts/upload-script.js --script-path docs/main.js \
-	  --script-uri https://example.com/docs --assets-dir docs --dry-run
+	  --script-uri docs --assets-dir docs --dry-run
 
 upload-admin:
 	@node scripts/upload-script.js --script-path admin/main.js \
-	  --script-uri https://example.com/admin --assets-dir admin
+	  --script-uri admin --assets-dir admin
 
 upload-admin-dry-run:
 	@node scripts/upload-script.js --script-path admin/main.js \
-	  --script-uri https://example.com/admin --assets-dir admin --dry-run
+	  --script-uri admin --assets-dir admin --dry-run
 
 upload-all: upload-admin upload-editor upload-docs
 
 # Publish admin, editor and docs on the management host (run after deploying).
 set-script-hosts:
-	@node scripts/set-script-hosts.js --script-uri https://example.com/admin \
-	  --script-uri https://example.com/editor --script-uri https://example.com/docs \
+	@node scripts/set-script-hosts.js --script-uri admin \
+	  --script-uri editor --script-uri docs \
 	  --hosts $(MANAGE_HOSTNAME)
 
 set-script-hosts-dry-run:
-	@node scripts/set-script-hosts.js --script-uri https://example.com/admin \
-	  --script-uri https://example.com/editor --script-uri https://example.com/docs \
+	@node scripts/set-script-hosts.js --script-uri admin \
+	  --script-uri editor --script-uri docs \
 	  --hosts $(MANAGE_HOSTNAME) --dry-run

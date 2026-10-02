@@ -95,7 +95,7 @@ Pass `--hosts` to target something else (`*` for every configured host, empty fo
 default host):
 
 ```bash
-node scripts/set-script-hosts.js --script-uri https://example.com/docs --hosts softagen.com
+node scripts/set-script-hosts.js --script-uri docs --hosts softagen.com
 ```
 
 ## Documentation

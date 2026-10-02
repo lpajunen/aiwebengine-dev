@@ -199,7 +199,7 @@ an Administrator gets through and everyone else is refused.
 **List, or read one asset:**
 
 ```javascript
-const script = encodeURIComponent("https://example.com/my-app");
+const script = encodeURIComponent("my-app");
 
 // Every file the script owns
 const list = await (await fetch(`/engine/list_files?script=${script}`)).json();
@@ -253,7 +253,7 @@ const result = await (
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      script: "https://example.com/my-app",
+      script: "my-app",
       files: [
         { name: "lib/util.ts", content_base64: utilB64 },
         {
@@ -283,7 +283,7 @@ const patched = await (
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      script: "https://example.com/my-app",
+      script: "my-app",
       path: "lib/util.ts",
       edits: [
         { old_string: "const RETRIES = 3;", new_string: "const RETRIES = 5;" },
@@ -936,7 +936,7 @@ files.delete("public/old.png");
 Another script's assets, over the engine's HTTP API:
 
 ```javascript
-const script = encodeURIComponent("https://example.com/my-app");
+const script = encodeURIComponent("my-app");
 
 // List, read a whole asset, read a line range, or search it
 await fetch(`/engine/list_files?script=${script}`);
@@ -953,7 +953,7 @@ await fetch(`/engine/write_files`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    script: "https://example.com/my-app",
+    script: "my-app",
     files: [{ name: "app.css", content_base64: cssB64 }],
   }),
 });
@@ -963,7 +963,7 @@ await fetch(`/engine/edit_file`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    script: "https://example.com/my-app",
+    script: "my-app",
     path: "lib/util.ts",
     edits: [{ old_string: "RETRIES = 3", new_string: "RETRIES = 5" }],
     base_sha256: sha,

@@ -607,12 +607,12 @@ rolled back, and reports what it found:
 curl -X POST "$MANAGE_HOST/engine/check_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"uri": "https://example.com/my-app"}'
+  -d '{"uri": "my-app"}'
 ```
 
 ```json
 {
-  "scriptUri": "https://example.com/my-app",
+  "scriptUri": "my-app",
   "ok": true,
   "diagnostics": [],
   "init": {
@@ -646,7 +646,7 @@ even have to exist yet:
 curl -X POST "$MANAGE_HOST/engine/check_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"uri": "https://example.com/my-app", "content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
+  -d '{"uri": "my-app", "content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
 ```
 
 `rollback` (default `true`) controls whether the database writes `init()` makes
@@ -663,12 +663,12 @@ script's functions, use the bindings its entrypoint imported, and `import` or
 curl -X POST "$MANAGE_HOST/engine/eval_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"uri": "https://example.com/my-app", "source": "database.query(\"things\")"}'
+  -d '{"uri": "my-app", "source": "database.query(\"things\")"}'
 ```
 
 ```json
 {
-  "scriptUri": "https://example.com/my-app",
+  "scriptUri": "my-app",
   "ok": true,
   "value": "[]",
   "valueType": "string",

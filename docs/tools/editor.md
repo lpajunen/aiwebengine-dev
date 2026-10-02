@@ -824,37 +824,37 @@ contract.
 GET /engine/list_scripts
 
 # Get a script's entrypoint (the file named main.ts / main.js / ...)
-GET /engine/read_file?script=https://example.com/users&path=main.js
+GET /engine/read_file?script=users&path=main.js
 
 # Create/update it
 POST /engine/write_file
 Content-Type: application/json
-{"script": "https://example.com/users", "path": "main.js", "text": "function handler(context) {...}"}
+{"script": "users", "path": "main.js", "text": "function handler(context) {...}"}
 
 # Delete script
 POST /engine/delete_script
 Content-Type: application/json
-{"uri": "https://example.com/users"}
+{"uri": "users"}
 ```
 
 ### Assets
 
 ```bash
 # List a script's files
-GET /engine/list_files?script=https://example.com/users
+GET /engine/list_files?script=users
 
 # Get a file (`content` is text, or base64 when `encoding` says so)
-GET /engine/read_file?script=https://example.com/users&path=logo.png
+GET /engine/read_file?script=users&path=logo.png
 
 # Upload a file
 POST /engine/write_file
 Content-Type: application/json
-{"script": "https://example.com/users", "path": "logo.png", "mimetype": "image/png", "content": "base64..."}
+{"script": "users", "path": "logo.png", "mimetype": "image/png", "content": "base64..."}
 
 # Delete a file
 POST /engine/delete_file
 Content-Type: application/json
-{"script": "https://example.com/users", "path": "logo.png"}
+{"script": "users", "path": "logo.png"}
 ```
 
 ### Logs
@@ -864,14 +864,14 @@ Content-Type: application/json
 GET /engine/read_logs
 
 # Get logs for specific script, oldest first
-GET /engine/read_logs?uri=https://example.com/users
+GET /engine/read_logs?uri=users
 
 # Narrow by level, time or count
 GET /engine/read_logs?level=ERROR&limit=50
 
 # Clear one script's logs
 POST /engine/clear_logs
-{"uri": "https://example.com/users"}
+{"uri": "users"}
 ```
 
 ## Tips and Tricks

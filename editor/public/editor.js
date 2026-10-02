@@ -35,17 +35,15 @@
  */
 const engineApi = {
   /**
-   * Resolve a script identifier to a full script URI. Full URIs are used
-   * as-is; short names are namespaced under this deployment's own origin, the
-   * way the engine stores scripts created through the editor.
+   * A script is named by a slug (`shop`), and that name is what the engine
+   * takes. Kept as a function so the callers read the same as before; scripts
+   * that predate slugs keep the URL they were stored under, and that is what
+   * the list gives back.
    * @param {string} script
    * @returns {string}
    */
   scriptUri(script) {
-    if (script.startsWith("https://") || script.startsWith("http://")) {
-      return script;
-    }
-    return "https://" + window.location.host + "/" + script;
+    return script;
   },
 
   /**
@@ -1099,6 +1097,9 @@ declare var module: any;
       const content = await engineApi.readScript(
         engineApi.scriptUri(scriptName),
       );
+      // What language a script is in is the name of its entrypoint file
+      // (main.ts, main.js, ...), not anything in the script's own name.
+      const entry = await engineApi.entryPath(engineApi.scriptUri(scriptName));
       console.log("[Editor] Script content length:", content.length);
 
       this.currentScript = scriptName;
@@ -1108,7 +1109,7 @@ declare var module: any;
         console.log("[Editor] Setting Monaco editor value...");
 
         // Set the correct language based on file extension
-        const language = this.getScriptLanguage(scriptName);
+        const language = this.getScriptLanguage(entry);
         console.log(
           "[Editor] Detected language:",
           language,
@@ -1165,13 +1166,15 @@ declare var module: any;
   }
 
   createNewScript() {
-    const scriptName = prompt("Enter script name (without .js extension):");
-    if (!scriptName) return;
+    const entered = prompt(
+      "Enter script name (lower-case letters, digits, - and _):",
+    );
+    if (!entered) return;
 
-    const fullName = scriptName.endsWith(".js")
-      ? scriptName
-      : scriptName + ".js";
-    const routePath = "/" + fullName.replace(/\.js$/, "");
+    // A name, not a file: the language is the entrypoint's, and it is written
+    // as main.js.
+    const fullName = entered.trim().replace(/\.js$/, "");
+    const routePath = "/" + fullName;
 
     // Create empty script with the canonical handler pattern:
     // handlers take `context` and return a response via ResponseBuilder.

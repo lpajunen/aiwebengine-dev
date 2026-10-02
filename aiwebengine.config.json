@@ -1,9 +1,8 @@
 {
-  "uriOrigin": "https://example.com",
   "defaultScript": {
-    "uri": "https://example.com/editor",
+    "uri": "editor",
     "path": "editor/main.js",
     "dir": "editor"
   },
-  "scriptUriOverrides": {}
+  "scriptNames": {}
 }

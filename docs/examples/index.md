@@ -11,7 +11,7 @@ This guide documents the example JavaScript scripts maintained in the dedicated 
 ```bash
 # Upload a script
 curl -X POST http://localhost:3000/api/scripts \
-  -F "uri=https://example.com/my-script" \
+  -F "uri=my-script" \
   -F "content=<script_content>"
 ```
 
