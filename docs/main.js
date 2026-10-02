@@ -492,14 +492,16 @@ function handleDocsRequest(context) {
   }
 
   try {
-    // Convert markdown to HTML
-    const htmlContent = convert.markdown_to_html(markdown);
-
-    if (htmlContent.startsWith("Error:")) {
-      console.error("[docs.js] Markdown conversion failed: " + htmlContent);
+    // Convert markdown to HTML; a failed conversion throws
+    let htmlContent;
+    try {
+      htmlContent = convert.markdown_to_html(markdown);
+    } catch (error) {
+      const message = /** @type {Error} */ (error).message;
+      console.error("[docs.js] Markdown conversion failed: " + message);
       return {
         status: 500,
-        body: render500Page(htmlContent),
+        body: render500Page(message),
         contentType: "text/html; charset=UTF-8",
       };
     }

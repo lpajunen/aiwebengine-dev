@@ -881,29 +881,27 @@ AVAILABLE JAVASCRIPT APIs:
 6. convert - Markdown to HTML conversion functions
    - convert.markdown_to_html(markdown) - Convert markdown string to HTML
    - markdown: string (markdown content, max 1MB)
-   - Returns: string (HTML output or error message starting with "Error:")
+   - Returns: string (HTML output); throws an Error when conversion fails
    - Supports: headings, lists, code blocks, tables, bold, italic, links, strikethrough
    - Use for: rendering blog posts, documentation, user content in HTML responses
    - Example: const html = convert.markdown_to_html('# Hello\\n\\nThis is **bold**');
 
    - convert.render_handlebars_template(template, data) - Render Handlebars template with data
    - template: string (Handlebars template content, max 1MB)
-   - data: string (JSON string representing data object to populate template variables)
-   - Returns: string (rendered template output or error message starting with "Error:")
+   - data: object (or JSON text) whose fields populate template variables
+   - Returns: string (rendered template output); throws an Error when rendering fails
    - Supports: variables {{variable}}, loops {{#each items}}, conditionals {{#if condition}}
    - Use for: dynamic HTML generation, email templates, configuration files
-   - Example: const html = convert.render_handlebars_template('<h1>{{title}}</h1><p>{{content}}</p>', '{"title": "Hello", "content": "World"}');
+   - Example: const html = convert.render_handlebars_template('<h1>{{title}}</h1><p>{{content}}</p>', { title: "Hello", content: "World" });
 
 7. fetch(url, options) - Make HTTP requests to external APIs
    - url: string
-   - options: JSON string with {method, headers, body, timeout_ms} - the options
-     are a JSON STRING, not an object; wrap them in JSON.stringify(...)
+   - options: object {method, headers, body, timeout, binary}
    - Supports {{secret:identifier}} in headers for secure API keys
    - Returns: a response object with {status, ok, headers, body} plus text() and
      json(); read it directly (const r = fetch(url); if (r.ok) r.json()) or
      await it. The request is already finished when fetch returns, so await only
-     sequences. JSON.parse(fetch(url)) still works, because toString() yields the
-     old JSON envelope.
+     sequences.
 
 8. mcpRegistry - Model Context Protocol (MCP) tool registry
 
@@ -1158,7 +1156,7 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
 
   try {
     // Make request to Anthropic API with secret injection and system prompt
-    const options = JSON.stringify({
+    const options = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1176,14 +1174,9 @@ Remember: You are creating JavaScript scripts that run on the SERVER and handle 
           },
         ],
       }),
-    });
+    };
 
-    // The runtime takes the options as a JSON string, though the generated
-    // types declare a FetchOptions object; the response is the new object.
-    const response = fetch(
-      "https://api.anthropic.com/v1/messages",
-      /** @type {any} */ (options),
-    );
+    const response = fetch("https://api.anthropic.com/v1/messages", options);
 
     if (response.ok) {
       const data = /** @type {any} */ (response.json());
@@ -1404,7 +1397,7 @@ CURRENT CONTEXT:`;
 
   try {
     // Make request to Anthropic API with tools
-    const options = JSON.stringify({
+    const options = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1418,14 +1411,9 @@ CURRENT CONTEXT:`;
         messages: messages,
         tools: getAIAssistantTools(),
       }),
-    });
+    };
 
-    // The runtime takes the options as a JSON string, though the generated
-    // types declare a FetchOptions object; the response is the new object.
-    const response = fetch(
-      "https://api.anthropic.com/v1/messages",
-      /** @type {any} */ (options),
-    );
+    const response = fetch("https://api.anthropic.com/v1/messages", options);
 
     if (response.ok) {
       const data = /** @type {any} */ (response.json());

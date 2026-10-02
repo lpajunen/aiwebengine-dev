@@ -1,6 +1,6 @@
 # Conversion API Reference
 
-The `convert` object provides functions for converting content between different formats. Currently supports Markdown to HTML conversion.
+The `convert` object provides functions for converting content between different formats: Markdown to HTML, Handlebars templates, and base64. Every function answers with its result and throws an `Error` when it fails.
 
 ## convert.markdown_to_html()
 
@@ -21,10 +21,7 @@ const html = convert.markdown_to_html(markdown);
 
 ### Return Value
 
-Returns a string containing:
-
-- **HTML output** if conversion succeeds
-- **Error message** if conversion fails (starts with "Error:")
+The HTML as a string. A conversion that fails throws an `Error`.
 
 ### Supported Markdown Features
 
@@ -47,7 +44,7 @@ The converter supports GitHub-Flavored Markdown including:
 
 ### Error Handling
 
-The function returns an error message (starting with "Error:") if:
+The function throws an `Error` if:
 
 - Markdown input is empty
 - Markdown input exceeds 1MB size limit
@@ -72,12 +69,13 @@ This is a **simple** example with *italic* text.
 - GitHub-flavored markdown
 `;
 
-  const html = convert.markdown_to_html(markdown);
-
-  if (html.startsWith("Error:")) {
+  let html;
+  try {
+    html = convert.markdown_to_html(markdown);
+  } catch (error) {
     return {
       status: 500,
-      body: html,
+      body: error.message,
       contentType: "text/plain; charset=UTF-8",
     };
   }
@@ -125,10 +123,11 @@ function serveBlogPost(context) {
   }
 
   // Convert markdown to HTML
-  const content = convert.markdown_to_html(markdown);
-
-  if (content.startsWith("Error:")) {
-    console.error(`Failed to convert blog post ${slug}: ${content}`);
+  let content;
+  try {
+    content = convert.markdown_to_html(markdown);
+  } catch (error) {
+    console.error(`Failed to convert blog post ${slug}: ${error.message}`);
     return {
       status: 500,
       body: "Failed to render blog post",
@@ -271,12 +270,13 @@ function renderUserComment(context) {
   }
 
   // Convert markdown to HTML
-  const commentHtml = convert.markdown_to_html(userMarkdown);
-
-  if (commentHtml.startsWith("Error:")) {
+  let commentHtml;
+  try {
+    commentHtml = convert.markdown_to_html(userMarkdown);
+  } catch (error) {
     return {
       status: 400,
-      body: "Invalid markdown: " + commentHtml,
+      body: "Invalid markdown: " + error.message,
       contentType: "text/plain; charset=UTF-8",
     };
   }
@@ -294,6 +294,28 @@ function renderUserComment(context) {
   };
 }
 ```
+
+## convert.render_handlebars_template()
+
+Renders a Handlebars template with data.
+
+```javascript
+const html = convert.render_handlebars_template(
+  "<h1>{{title}}</h1>{{#each items}}<li>{{this}}</li>{{/each}}",
+  { title: "Hello", items: ["a", "b"] },
+);
+```
+
+- **template** (string): the template, at most 1MB.
+- **data** (object, or JSON text): the values the template refers to.
+
+Answers the rendered string; a template that does not parse or render throws.
+
+## convert.btoa() and convert.atob()
+
+`convert.btoa(text)` answers the base64 encoding of a string's UTF-8 bytes, and
+`convert.atob(base64)` decodes it back. Decoding input that is not base64, or
+whose bytes are not UTF-8, throws.
 
 ## Performance Considerations
 
@@ -322,13 +344,10 @@ function serveCachedDocs(context) {
       };
     }
 
+    // A failed conversion throws, so only a real result is cached
     html = convert.markdown_to_html(markdown);
-
-    if (!html.startsWith("Error:")) {
-      // Cache the converted HTML
-      scriptStorage.setItem(cacheKey, html);
-      console.info(`Cached HTML for document ${docId}`);
-    }
+    scriptStorage.setItem(cacheKey, html);
+    console.info(`Cached HTML for document ${docId}`);
   }
 
   return {
@@ -396,10 +415,11 @@ function safeUserContent(context) {
   }
 
   // Convert
-  const html = convert.markdown_to_html(userMarkdown);
-
-  if (html.startsWith("Error:")) {
-    return { status: 400, body: html };
+  let html;
+  try {
+    html = convert.markdown_to_html(userMarkdown);
+  } catch (error) {
+    return { status: 400, body: error.message };
   }
 
   // Return with strict CSP

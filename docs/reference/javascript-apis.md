@@ -767,17 +767,14 @@ const response = fetch("https://api.example.com/data");
 if (response.ok) {
   const data = response.json();
 }
-
-// Still works: toString() yields the original envelope
-const response = JSON.parse(fetch("https://api.example.com/data"));
 ```
 
 `await` is sequencing sugar here: host calls block, so the request has already
 finished by the time `fetch` returns. `Promise.all` over several fetches gives
 the right answers but runs them one after another.
 
-> **Note:** the response changed shape, the **options did not** — `fetch` still
-> takes them as a JSON string, so keep the `JSON.stringify({...})` around them.
+Options are an object — `{ method, headers, body, timeout, binary }`. Only a
+`body` is a string, so a JSON payload is `JSON.stringify`-ed on its own.
 
 **Example - Simple GET Request:**
 
@@ -817,13 +814,13 @@ function createResource(context) {
     description: "Created via API",
   };
 
-  const options = JSON.stringify({
+  const options = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestData),
-  });
+  };
 
   const response = fetch("https://api.example.com/items", options);
 
@@ -842,13 +839,13 @@ The fetch function supports secure secret injection using template syntax `{{sec
 ```javascript
 function callSecureAPI(context) {
   // Use {{secret:identifier}} syntax to inject secrets securely
-  const options = JSON.stringify({
+  const options = {
     method: "GET",
     headers: {
       Authorization: "{{secret:api_key}}", // Secret injected by server
       "X-API-Key": "{{secret:external_api_key}}", // Another secret
     },
-  });
+  };
 
   const response = fetch("https://secure-api.example.com/data", options);
 
@@ -1489,7 +1486,7 @@ Converts a markdown string to HTML.
 
 - `markdown` (string): Markdown content to convert (max 1MB)
 
-**Returns:** String containing HTML output or error message (starting with "Error:")
+**Returns:** the HTML as a string. A conversion that fails throws an `Error`.
 
 **Example:**
 
@@ -1506,10 +1503,11 @@ const hello = "world";
 \`\`\`
 `;
 
-  const html = convert.markdown_to_html(markdown);
-
-  if (html.startsWith("Error:")) {
-    return { status: 500, body: html };
+  let html;
+  try {
+    html = convert.markdown_to_html(markdown);
+  } catch (error) {
+    return { status: 500, body: error.message };
   }
 
   return {

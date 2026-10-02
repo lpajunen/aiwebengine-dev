@@ -228,75 +228,57 @@ The input schema defines what parameters your tool accepts. It follows the [JSON
 
 ## Calling External MCP Servers
 
-The engine also exposes a global `McpClient` helper for connecting to remote MCP servers from your own script code. Use this when you want one aiwebengine script to act as an MCP client to another MCP-compatible service.
+The engine also exposes a global `McpClient` class for connecting to remote MCP servers from your own script code. Use this when you want one aiwebengine script to act as an MCP client to another MCP-compatible service. Its methods answer in values and throw when they fail; see the engine's `docs/MCP_CLIENT.md` for the whole contract.
 
-### McpClient.constructor(serverUrl, secretIdentifier)
-
-Creates a JSON connection descriptor for a remote MCP server.
+### new McpClient(serverUrl, secretIdentifier)
 
 - `serverUrl` must be an `https://` URL.
 - `secretIdentifier` must name a secret that contains the remote server token or bearer credential.
 
 ```javascript
-const clientDataJson = McpClient.constructor(
+const client = new McpClient(
   "https://api.githubcopilot.com/mcp/",
   "GITHUB_TOKEN",
 );
 ```
 
-### McpClient.\_listTools(clientDataJson)
+### client.listTools()
 
-Lists tools exposed by the remote MCP server. The engine caches results for one hour.
+Answers the remote server's tools as an array of `{ name, description, inputSchema }`. The engine caches the list for one hour.
 
 ```javascript
-const toolsResponse = JSON.parse(McpClient._listTools(clientDataJson));
+for (const tool of client.listTools()) {
+  console.log(`Remote tool: ${tool.name}`);
+}
+```
 
-if (toolsResponse.error) {
-  console.error("Failed to list remote tools:", toolsResponse.error);
-} else {
-  toolsResponse.tools.forEach((tool) => {
-    console.log(`Remote tool: ${tool.name}`);
+### client.callTool(name, args)
+
+Calls a remote tool and answers its result. A JSON-RPC error from the server throws an `Error` carrying the server's `code`.
+
+```javascript
+try {
+  const result = client.callTool("search_repositories", {
+    query: "aiwebengine",
+    limit: 5,
   });
+} catch (error) {
+  console.error(`Remote MCP tool failed [${error.code}]: ${error.message}`);
 }
 ```
 
-### McpClient.\_callTool(clientDataJson, toolName, argsJson)
-
-Calls a remote tool and returns the raw JSON response body.
-
-```javascript
-const result = JSON.parse(
-  McpClient._callTool(
-    clientDataJson,
-    "search_repositories",
-    JSON.stringify({ query: "aiwebengine", limit: 5 }),
-  ),
-);
-
-if (result.error) {
-  console.error("Remote MCP tool failed:", result.error);
-}
-```
-
-### Complete wrapper example
+### Complete example
 
 ```javascript
 function searchGitHubHandler(context) {
-  const clientDataJson = McpClient.constructor(
+  const client = new McpClient(
     "https://api.githubcopilot.com/mcp/",
     "GITHUB_TOKEN",
   );
-
-  const resultJson = McpClient._callTool(
-    clientDataJson,
-    "search_repositories",
-    JSON.stringify({
-      query: context.args.query,
-      limit: context.args.limit || 5,
-    }),
-  );
-
-  return resultJson;
+  return client.callTool("search_repositories", {
+    query: context.args.query,
+    limit: context.args.limit || 5,
+  });
 }
 ```
 
