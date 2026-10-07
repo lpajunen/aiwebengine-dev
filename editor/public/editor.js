@@ -24,13 +24,8 @@
  */
 
 /**
- * The engine's own HTTP API, served under /engine/. These endpoints replaced
- * the privileged JavaScript globals (userStorage, the cross-script
- * scriptStorage, the *ForUri secret and asset methods,
- * console.listLogs/pruneLogs, routeRegistry.listRoutes/listStreams) that the
- * editor script used to call on the browser's behalf. The engine has since
- * removed those globals outright, so the editor talks to the endpoints
- * directly with the signed-in user's session and the engine enforces that
+ * The engine's own HTTP API, served under /engine/. The editor talks to it
+ * directly with the signed-in user's session, and the engine enforces that
  * user's permissions.
  */
 const engineApi = {
@@ -275,8 +270,8 @@ const engineApi = {
   },
 
   /**
-   * Clear one script's logs. The engine no longer clears every script's at
-   * once: retention across scripts is its background pruner's job.
+   * Clear one script's logs. Retention across scripts is the engine's
+   * background pruner's job.
    * @param {string} uri
    */
   async clearLogs(uri) {
@@ -2251,7 +2246,7 @@ function init(context) {
     try {
       const routes = await engineApi.listRoutes();
       // The engine returns registrations in its own order; the panel lists
-      // them by path, the way the editor's own endpoint used to sort them.
+      // them by path.
       routes.sort(
         /** @param {any} a @param {any} b */
         (a, b) => a.path.toLowerCase().localeCompare(b.path.toLowerCase()),

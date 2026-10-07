@@ -19,9 +19,8 @@ function getArgs(context) {
 }
 
 // Call the engine's own HTTP API under /engine/. Each operation is
-// POST /engine/{operation} with a JSON body. These endpoints replaced
-// the legacy JavaScript globals, so the caller's credentials are forwarded
-// and the engine applies that user's permissions to the answer.
+// POST /engine/{operation} with a JSON body. The caller's credentials are
+// forwarded, and the engine applies that user's permissions to the answer.
 /**
  * @param {*} context
  * @param {string} operation

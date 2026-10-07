@@ -41,8 +41,6 @@ function init() {
     method: "GET",
   });
 }
-
-init();
 ```
 
 Handlers always receive a single `context` argument; the HTTP request lives at
@@ -115,12 +113,6 @@ routeRegistry.registerRoute("/api/items", { handler: "createItemHandler", method
 // Log initialization
 console.log("Items API initialized");
 }
-
-// ============================================
-// Execute Initialization
-// ============================================
-
-init();
 
 ````
 
@@ -408,10 +400,10 @@ function init() {
 }
 ```
 
-Note: Path parameters like `:id` are now automatically extracted and available via `req.params`. You can also use query parameters for additional filtering:
+Path parameters like `:id` are extracted into `req.params`. You can also use query parameters for additional filtering:
 
 ```javascript
-// New approach - access path parameters directly
+// Access path parameters directly
 routeRegistry.registerRoute("/api/users/:id", {
   handler: "getUser",
   method: "GET",
@@ -1037,9 +1029,10 @@ function init() {
 function renderProfileHandler(context) {
   const userId = context.request.query.userId;
 
-  // Make internal HTTP request to user service
+  // Call the other script's public URL. Loopback and private addresses are
+  // refused, so this is the engine's public host, not localhost.
   const response = fetch(
-    "http://localhost:8080/internal/users/get?id=" + userId,
+    "https://your-engine.example.com/internal/users/get?id=" + userId,
   );
   const data = response.json();
 
@@ -1278,6 +1271,4 @@ function init() {
     method: "GET",
   });
 }
-
-init();
 ```

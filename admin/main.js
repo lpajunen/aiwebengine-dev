@@ -7,9 +7,7 @@
  * administration" tag in Swagger. The page itself reads and writes user roles
  * over the engine's HTTP API (`list_users`,
  * `add_user_role`, `remove_user_role`) with the signed-in user's session, so the
- * engine enforces that user's administrator rights; this script no longer
- * proxies those calls through the `userStorage` global, which the engine has
- * removed.
+ * engine enforces that user's administrator rights.
  *
  * AUTHENTICATION USAGE:
  * - 'auth' is part of the request object (request.auth)
@@ -264,9 +262,7 @@ function handleManagerUI(context) {
         let users = [];
 
         /**
-         * The engine's own HTTP API, served under /engine/. User and role
-         * management used to run through /admin/api/* handlers that called the
-         * since-removed userStorage global; the page now calls the engine
+         * The engine's own HTTP API, served under /engine/. The page calls it
          * directly with the signed-in user's session, and the engine enforces
          * that user's administrator rights.
          */
@@ -505,7 +501,7 @@ function init(context) {
   );
 
   // Serve the management UI. The page reads and writes user roles straight
-  // from the engine's HTTP API, so there is no /admin/api/* layer any more.
+  // from the engine's HTTP API; this script serves only the page.
   routeRegistry.registerRoute("/admin", {
     handler: "handleManagerUI",
     method: "GET",

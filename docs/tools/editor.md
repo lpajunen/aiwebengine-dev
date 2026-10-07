@@ -27,7 +27,7 @@ cargo run
 Open in browser:
 
 ```
-http://localhost:8080/editor
+http://localhost:3000/editor
 ```
 
 ### Remote Server
@@ -569,9 +569,9 @@ Add error handling and input validation
 Open a new tab and navigate to your endpoint:
 
 ```
-http://localhost:8080/api/users
-http://localhost:8080/hello?name=World
-http://localhost:8080/
+http://localhost:3000/api/users
+http://localhost:3000/hello?name=World
+http://localhost:3000/
 ```
 
 **Use DevTools:**
@@ -634,8 +634,6 @@ function init() {
     method: "GET",
   });
 }
-
-init();
 ```
 
 ### Multiple Cursors
@@ -834,7 +832,7 @@ Content-Type: application/json
 # Delete script
 POST /engine/delete_script
 Content-Type: application/json
-{"uri": "users"}
+{"script": "users"}
 ```
 
 ### Assets
@@ -871,7 +869,7 @@ GET /engine/read_logs?level=ERROR&limit=50
 
 # Clear one script's logs
 POST /engine/clear_logs
-{"uri": "users"}
+{"script": "users"}
 ```
 
 ## Tips and Tricks
@@ -929,8 +927,7 @@ Then search for `[ERROR]` to find errors.
 
 ## Next Steps
 
-- **[Deployer Tool](deployer.md)** - CLI deployment workflow
-- **[External Tools](external-tools.md)** - VS Code, Git integration
+- **[Deployment Workflow](../getting-started/03-deployment-workflow.md)** - Deploying from a checkout, git sync and pins
 - **[Script Development](../guides/scripts.md)** - Deep dive into scripting
 - **[AI Development](../guides/ai-development.md)** - Master AI assistance
 

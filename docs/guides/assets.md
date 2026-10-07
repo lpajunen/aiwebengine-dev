@@ -61,7 +61,7 @@ assets/
 
 **Upload assets via the editor:**
 
-1. Open `http://localhost:8080/editor`
+1. Open `http://localhost:3000/editor`
 2. Click "Assets" in sidebar
 3. Click "Upload Assets"
 4. Select files from your computer

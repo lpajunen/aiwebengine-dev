@@ -223,12 +223,7 @@ Each entry carries `path`, `method`, `handler`, `script_uri`, `summary`,
 host; the listing is unfiltered by default, since the management host need not
 be a host scripts publish on.
 
-> **Removed globals:** `routeRegistry.listRoutes()`, `listStreams()` and
-> `listAssets()` no longer exist in the sandbox — calling one is a
-> `TypeError`. `/engine/list_routes` replaces the first two (and, unlike them,
-> filters by host and reports the handler, summary, description and tags for
-> stream entries); `files.list()` or `/engine/read_file` replaces the
-> third.
+A script lists its own files with `files.list()`.
 
 ## Files
 
@@ -376,9 +371,6 @@ try {
   }
 }
 ```
-
-> **Renamed:** the shared store used to be called `sharedStorage`. That name is
-> gone; use `scriptStorage`.
 
 ### Storage.getItem(key)
 
@@ -754,8 +746,7 @@ Makes HTTP requests to external APIs with built-in security features including s
 - `text()`: the body as text
 - `json()`: the body parsed as JSON (throws if it is not JSON)
 
-`fetch` used to return the JSON envelope as a **string**, and the object it
-returns now is usable three ways so both styles work:
+The object `fetch` returns can be awaited or used directly:
 
 ```javascript
 // Browser-shaped
@@ -1237,9 +1228,7 @@ Basic console logging (output goes to server logs).
   entries and everyone else is refused. See the
   [Logging guide](../guides/logging.md) for the full parameter list.
 
-> **Removed globals:** `console.listLogs()`, `console.listLogsForUri(uri)` and
-> `console.pruneLogs()` no longer exist — reading and pruning logs is the HTTP
-> API's job.
+Reading and pruning logs is the HTTP API's job, not a global's.
 
 **Example:**
 

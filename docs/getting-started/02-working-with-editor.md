@@ -17,7 +17,7 @@ The editor provides:
 Once your aiwebengine instance is running:
 
 ```text
-http://localhost:8080/editor
+http://localhost:3000/editor
 ```
 
 Or on a remote server:
@@ -166,21 +166,17 @@ Assets are static files like images, CSS, JavaScript, PDFs that your scripts can
 1. Click **"Assets"** in the sidebar
 2. Click **"Upload Assets"**
 3. Select files from your computer
-4. Files are uploaded and immediately available
 
-### Asset URLs
+An uploaded file becomes one of the script's files. It is served over HTTP only
+from `public/`, at the path a file route in `init()` gives it:
 
-After uploading `logo.png`, it's available at:
-
-```text
-http://localhost:8080/logo.png
+```javascript
+function init() {
+  routeRegistry.registerRoute("/logo.png", { file: "public/logo.png" });
+}
 ```
 
-Or in a subdirectory:
-
-```text
-/assets/images/logo.png → http://localhost:8080/assets/images/logo.png
-```
+See [Serving Files: File Routes](../guides/asset-registration.md).
 
 ### Using Assets in Scripts
 
@@ -299,13 +295,13 @@ After saving a script:
 2. Navigate to your endpoint:
 
    ```text
-   http://localhost:8080/your-endpoint
+   http://localhost:3000/your-endpoint
    ```
 
 3. Test with query parameters:
 
    ```text
-   http://localhost:8080/api/users?page=1&limit=10
+   http://localhost:3000/api/users?page=1&limit=10
    ```
 
 ### Using Browser DevTools
@@ -474,8 +470,6 @@ Explain how the streaming works in this script
        method: "GET",
      });
    }
-
-   init();
    ```
 
 4. Save and test at `/api/myapi`
@@ -511,8 +505,6 @@ Explain how the streaming works in this script
        method: "GET",
      });
    }
-
-   init();
    ```
 
 4. Visit `/` to see your page

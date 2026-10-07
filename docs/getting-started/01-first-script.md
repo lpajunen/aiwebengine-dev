@@ -16,7 +16,7 @@ A simple "Hello World" API endpoint that:
 Before you start, make sure you have:
 
 - aiwebengine running and accessible
-- Access to the `/editor` interface OR the deployer tool
+- Access to the `/editor` interface, or a checkout with the repository tooling
 - Basic JavaScript knowledge
 
 ## Step 1: Understanding Script Structure
@@ -40,7 +40,6 @@ function init() {
 }
 
 // 3. Init call - runs when script loads
-init();
 ```
 
 **Key Concepts:**
@@ -57,7 +56,7 @@ init();
 1. **Open the editor:**
 
 ```text
-http://localhost:8080/editor
+http://localhost:3000/editor
 ```
 
 1. **Click "New Script"**
@@ -107,21 +106,20 @@ function init() {
 }
 
 // Initialize the script
-init();
 ```
 
 1. **Click "Save"**
 
-### Option B: Using the Deployer Tool
+### Option B: From a checkout
 
-1. **Create a file `hello.js`** on your local machine with the code above
+1. **Create `hello/main.js`** in a repository that includes `scripts/tooling.mk`,
+   with the code above.
 
 1. **Deploy it:**
 
    ```bash
-   cargo run --bin deployer \
-     --uri "http://localhost:8080/hello" \
-     --file "./hello.js"
+   make oauth-login                       # once
+   make deploy-changed URI=hello FILES="hello/main.js"
    ```
 
 ## Step 3: Test Your Script
@@ -131,7 +129,7 @@ init();
 Open your browser and visit:
 
 ```text
-http://localhost:8080/hello
+http://localhost:3000/hello
 ```
 
 You should see:
@@ -145,7 +143,7 @@ Hello, World! Welcome to aiwebengine.
 Try adding a query parameter:
 
 ```text
-http://localhost:8080/hello?name=Alice
+http://localhost:3000/hello?name=Alice
 ```
 
 You should see:
@@ -158,10 +156,10 @@ Hello, Alice! Welcome to aiwebengine.
 
 ```bash
 # Basic request
-curl http://localhost:8080/hello
+curl http://localhost:3000/hello
 
 # With parameters
-curl "http://localhost:8080/hello?name=Bob"
+curl "http://localhost:3000/hello?name=Bob"
 ```
 
 ## Step 4: View the Logs
@@ -170,7 +168,7 @@ Your script is logging each request. Let's see the logs:
 
 ### Using the Editor
 
-1. Go to `http://localhost:8080/editor`
+1. Go to `http://localhost:3000/editor`
 2. Select your `hello.js` script
 3. Click the "Logs" tab at the top
 4. You'll see entries like:
@@ -181,12 +179,12 @@ Your script is logging each request. Let's see the logs:
 [2024-10-24 10:30:00] Hello script initialized successfully
 ```
 
-### Using the Logs API
+### Reading the log over HTTP
 
-Create a simple endpoint to fetch logs programmatically:
+As the script's owner (or an administrator), on the management host:
 
 ```bash
-curl "http://localhost:8080/api/logs?uri=/hello"
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:3000/engine/read_logs?script=hello"
 ```
 
 ## Understanding the Context and Response
@@ -284,14 +282,12 @@ function init() {
   });
   console.log("Enhanced hello script initialized");
 }
-
-init();
 ```
 
 Test it:
 
 ```bash
-curl "http://localhost:8080/hello?name=Alice"
+curl "http://localhost:3000/hello?name=Alice"
 ```
 
 Response:
@@ -405,8 +401,6 @@ function init() {
     method: "GET",
   });
 }
-
-init();
 ```
 
 ## Getting Help
@@ -423,7 +417,7 @@ For better development experience with autocomplete and type checking in your ID
 /// <reference path="https://your-engine.com/engine/types/v0.1.0/aiwebengine.d.ts" />
 ```
 
-Replace `your-engine.com` with your actual engine URL (e.g., `localhost:8080` for local development).
+Replace `your-engine.com` with your actual engine URL (e.g., `localhost:3000` for local development).
 
 ### Benefits
 
@@ -435,7 +429,7 @@ Replace `your-engine.com` with your actual engine URL (e.g., `localhost:8080` fo
 ### Example with Type Support
 
 ```javascript
-/// <reference path="http://localhost:8080/engine/types/v0.1.0/aiwebengine.d.ts" />
+/// <reference path="http://localhost:3000/engine/types/v0.1.0/aiwebengine.d.ts" />
 
 /**
  * @param {HandlerContext} context
@@ -458,8 +452,6 @@ function init() {
     method: "GET",
   });
 }
-
-init();
 ```
 
 ### Optional: Configure jsconfig.json

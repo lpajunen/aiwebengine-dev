@@ -1,27 +1,15 @@
-# Asset Registration System
+# Serving Files: File Routes
 
-## Overview
+A script's files are stored by their path in the script's tree. A file is
+served over HTTP only when the script's `init()` registers a **file route** for
+it, and only from `public/`:
 
-As of November 2025, aiwebengine has been refactored to use a more flexible asset registration system. Assets are now:
-
-1. **Stored by name** in the repository (not by HTTP path)
-2. **Registered to HTTP paths at runtime** with a file route: `routeRegistry.registerRoute(path, { file })`
-3. **Managed through JavaScript** in init() functions, similar to route registration
-
-## Key Changes
-
-### Before (Old System)
-
-- Assets stored with `public_path` (e.g., `/logo.svg`)
-- HTTP path was fixed in the database
-- No flexibility to change paths without database updates
-
-### After (New System)
-
-- Assets stored with `asset_name` (e.g., `logo.svg`)
-- HTTP paths registered dynamically using `routeRegistry.registerRoute(path, { file })`
-- Same asset can be served at multiple HTTP paths
-- Paths can be changed without touching the database
+- the HTTP path is chosen at registration, so it need not mirror the file
+  path, and one file can be served at several paths;
+- the file is read when a request arrives, so rewriting it needs no
+  re-registration;
+- a file anywhere but `public/` is private to the script, and a route naming
+  one is refused.
 
 ## Asset Functions
 
@@ -91,19 +79,3 @@ function init(context) {
   }
 }
 ```
-
-## Database Schema
-
-The assets table structure:
-
-```sql
-CREATE TABLE assets (
-    asset_name TEXT PRIMARY KEY,        -- Asset identifier
-    mimetype TEXT NOT NULL,              -- MIME type
-    content BYTEA NOT NULL,              -- Binary content
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-```
-
-HTTP path mappings are maintained in-memory and registered via JavaScript.

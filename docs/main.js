@@ -34,10 +34,8 @@ function extractTitle(markdown) {
  * Map URL path to asset name.
  *
  * The asset name is the file's path inside this script's directory, so
- * docs/guides/scripts.md in the repository is the asset guides/scripts.md.
- * It used to carry a "docs/" prefix, added at upload time by --asset-prefix;
- * that made the deployed name differ from the repository path, which the
- * engine's git pull has no way to reproduce.
+ * docs/guides/scripts.md in the repository is the asset guides/scripts.md —
+ * the same name the engine's git pull gives it.
  *
  * /docs/ -> README.md
  * /docs/guides/scripts -> guides/scripts.md

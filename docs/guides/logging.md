@@ -262,11 +262,6 @@ await fetch("/engine/clear_logs", {
 });
 ```
 
-> **Removed globals:** `console.listLogs()`, `console.listLogsForUri(uri)` and
-> `console.pruneLogs()` no longer exist in the sandbox — calling one is a
-> `TypeError`. Use the endpoints above; they are what the engine reads and
-> prunes logs with.
-
 ### Method 3: Following the log with `GET /engine/script_logs/stream`
 
 A listing answers what a script _did_; the stream answers what it is doing

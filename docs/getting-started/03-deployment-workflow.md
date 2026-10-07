@@ -1,593 +1,93 @@
 # Deployment Workflow
 
-This guide covers different ways to deploy and manage scripts in aiwebengine, from local development to production deployment.
+How a script gets from your editor to an engine, and how what the engine serves
+is chosen. A script is a tree of files stored in the engine's database; its
+entrypoint is `main.{ts,js,tsx,jsx}`, and its `init()` registers routes, tools
+and jobs. Writing a script's files records a revision and re-runs `init()` —
+there is no build step and no restart.
 
-## Overview
+There are four ways to write files, and all of them reach the same engine
+operations with the same permission checks:
 
-aiwebengine supports multiple deployment workflows:
+| Way                        | Good for                                             |
+| -------------------------- | ---------------------------------------------------- |
+| The web editor (`/editor`) | Small scripts, learning, editing on a server         |
+| The repository tooling     | Working in a local checkout with git                 |
+| Git sync                   | Moving a solution between a repository and an engine |
+| MCP / `/engine/*` directly | Agents and your own automation                       |
 
-1. **Web Editor** - Browser-based development and deployment
-2. **Deployer Tool** - CLI tool for rapid deployment
-3. **Direct File Placement** - Copy files to scripts directory
-4. **API-based Deployment** - Programmatic deployment via REST API
-5. **Git-based Workflow** - Version control integration
+## The web editor
 
-## Understanding Script Lifecycle
-
-### Script States
-
-```text
-1. Created/Edited → 2. Saved → 3. Loaded → 4. Initialized → 5. Active
-```
-
-1. **Created/Edited** - Script exists as code
-2. **Saved** - Script is persisted to storage
-3. **Loaded** - Script is read by the engine
-4. **Initialized** - `init()` function runs, routes registered
-5. **Active** - Script responds to requests
-
-### Hot Reloading
-
-aiwebengine supports hot reloading:
-
-- Save a script
-- Engine automatically reloads it
-- Routes are re-registered
-- No server restart needed
-
-## Workflow 1: Web Editor (Recommended for Beginners)
-
-Best for: Quick prototyping, learning, small projects
-
-### Advantages
-
-✅ No local development environment needed
-✅ Built-in AI assistant
-✅ Instant preview and testing
-✅ Visual asset management
-✅ Integrated log viewer
-
-### Workflow Steps
-
-**Development:**
-
-1. Open `/editor` in browser
-2. Create or edit scripts
-3. Save changes (auto-reloads)
-4. Test immediately
-5. Check logs for errors
-
-**Example:**
+Open `/editor`, create a script, write `main.ts`, and save. Saving writes the
+file and runs `init()`; the editor shows the result and the script's log.
 
 ```javascript
-// Create api/hello.js in the editor
+// main.ts
 function helloHandler(context) {
   return {
     status: 200,
-    body: "Hello from editor!",
-    contentType: "text/plain; charset=UTF-8",
+    body: "Hello from the editor!",
+    contentType: "text/plain",
   };
 }
 
 function init() {
-  routeRegistry.registerRoute("/api/hello", {
+  routeRegistry.registerRoute("/hello", {
     handler: "helloHandler",
     method: "GET",
   });
 }
-
-init();
 ```
 
-Click Save → Test at `/api/hello` → View logs
+The engine calls `init()`; a script never calls it itself.
 
-### When to Use
+## The repository tooling
 
-- 🎯 Learning aiwebengine
-- 🎯 Quick experiments
-- 🎯 Small scripts
-- 🎯 Demo applications
-- 🎯 Remote server without local access
-
-## Workflow 2: Deployer Tool (Recommended for Developers)
-
-Best for: Local development, version control, team collaboration
-
-### Advantages
-
-✅ Use your favorite code editor (VS Code, etc.)
-✅ Local version control with Git
-✅ Test locally before deploying
-✅ Batch deployment of multiple scripts
-✅ CI/CD integration
-
-### Setup
-
-The deployer tool is built with your aiwebengine installation:
+A repository built from this one (or including its `scripts/tooling.mk`)
+deploys from a checkout. Sign in once, then deploy what changed:
 
 ```bash
-cargo build --release
+make oauth-login                 # browser sign-in; the token is saved and refreshed
+make deploy-changed-dry-run      # what would be written
+make deploy-changed              # write the changed files, verified by sha256
 ```
 
-Binary location:
+`aiwebengine.config.json` says which directory is which script; `URI=` and
+`FILES="..."` retarget a single run. `make upload-<name>` targets in a repository's
+own `Makefile` deploy a whole script directory.
+
+## Git sync
+
+The engine can pull a GitHub repository in and push a script's files back as
+one commit. A directory holding `main.*` is one script; everything beside it is
+its files.
 
 ```bash
-target/release/deployer
+make set-git-credentials                       # store a token, checked against GitHub
+make git-pull REPO=owner/repo [PREFIX=demo]    # repository → engine
+make git-push REPO=owner/repo SCRIPT=demo-shop # engine → repository
 ```
 
-### Basic Usage
+A push refuses when both sides have moved since the last sync. See the engine's
+`docs/GIT_SYNC.md`.
 
-**Deploy a single script:**
+## Choosing what is served: pins
+
+By default a script serves its newest revision (head), so every write is live.
+Pin a script and writes keep recording revisions while production stays put:
 
 ```bash
-./target/release/deployer \
-  --uri "http://localhost:8080/api/hello" \
-  --file "./scripts/api/hello.js"
+make status                        # what is served vs. head
+make pin                           # freeze what is running now
+make deploy-changed                # write freely; production does not move
+make check-head && make test-head  # vet the newest revision
+make promote                       # serve it
+make unpin                         # or follow head again
+make revert REV=last-good          # put the files back as a new revision
 ```
 
-**Parameters:**
-
-- `--uri` - Full URL where script will be accessible
-- `--file` - Local path to your script file
-
-### Development Workflow
-
-**Step 1: Create script locally**
-
-```bash
-# Create directory
-mkdir -p my-scripts/api
-
-# Create script
-cat > my-scripts/api/users.js << 'EOF'
-function usersHandler(context) {
-  return {
-    status: 200,
-    body: JSON.stringify({ users: [] }),
-    contentType: "application/json"
-  };
-}
-
-function init() {
-  routeRegistry.registerRoute("/api/users", { handler: "usersHandler", method: "GET" });
-}
-
-init();
-EOF
-```
-
-**Step 2: Test locally**
-
-```bash
-# Start aiwebengine locally
-cargo run
-
-# In another terminal, deploy
-./target/release/deployer \
-  --uri "http://localhost:8080/api/users" \
-  --file "./my-scripts/api/users.js"
-```
-
-**Step 3: Test the endpoint**
-
-```bash
-curl http://localhost:8080/api/users
-```
-
-**Step 4: Iterate**
-
-1. Edit `my-scripts/api/users.js` in your editor
-2. Re-run deployer command
-3. Test again
-4. Repeat until satisfied
-
-**Step 5: Deploy to production**
-
-```bash
-./target/release/deployer \
-  --uri "https://production.example.com/api/users" \
-  --file "./my-scripts/api/users.js"
-```
-
-### Deploying Multiple Scripts
-
-**Create a deployment script:**
-
-```bash
-#!/bin/bash
-# deploy.sh
-
-SERVER="http://localhost:8080"
-DEPLOYER="./target/release/deployer"
-
-# Deploy all API scripts
-for script in ./scripts/api/*.js; do
-  filename=$(basename "$script")
-  path="/api/${filename%.js}"
-
-  echo "Deploying $filename to $path..."
-  $DEPLOYER --uri "$SERVER$path" --file "$script"
-done
-
-echo "Deployment complete!"
-```
-
-Make it executable:
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-
-### Using with Git
-
-**Example Git workflow:**
-
-```bash
-# Initialize repo
-git init
-git add my-scripts/
-git commit -m "Initial commit"
-
-# Create a branch for new feature
-git checkout -b feature/user-management
-
-# Edit scripts
-vim my-scripts/api/users.js
-
-# Test locally
-./deploy.sh
-
-# Commit changes
-git add my-scripts/api/users.js
-git commit -m "Add user management API"
-
-# Merge to main
-git checkout main
-git merge feature/user-management
-
-# Deploy to production
-./deploy-production.sh
-```
-
-### When to Use
-
-- 🎯 Professional development
-- 🎯 Team collaboration
-- 🎯 Version control needed
-- 🎯 Multiple environments (dev, staging, prod)
-- 🎯 CI/CD pipelines
-
-## Workflow 3: Direct File Placement
-
-Best for: Server administrators, automated deployments
-
-### How It Works
-
-Place JavaScript files directly in the `scripts/` directory:
-
-```text
-aiwebengine/
-├── scripts/
-│   ├── api/
-│   │   ├── users.js
-│   │   └── posts.js
-│   ├── pages/
-│   │   └── home.js
-│   └── features/
-│       └── chat.js
-```
-
-The engine automatically:
-
-1. Scans the `scripts/` directory
-2. Loads all `.js` files
-3. Executes `init()` function in each
-4. Registers routes
-
-### Development Workflow
-
-**Local development:**
-
-```bash
-# Edit files directly
-vim scripts/api/users.js
-
-# Restart server (or wait for auto-reload if enabled)
-cargo run
-```
-
-**Docker deployment:**
-
-```dockerfile
-# Dockerfile
-FROM aiwebengine:latest
-
-# Copy scripts
-COPY ./scripts /app/scripts
-
-# Copy assets
-COPY ./assets /app/assets
-```
-
-Build and run:
-
-```bash
-docker build -t my-app .
-docker run -p 8080:8080 my-app
-```
-
-### When to Use
-
-- 🎯 Docker deployments
-- 🎯 Server with file system access
-- 🎯 Automated deployment scripts
-- 🎯 Simple, straightforward workflow
-
-## Workflow 4: API-based Deployment
-
-Best for: Integration with other tools, programmatic deployment
-
-### Using the Scripts API
-
-aiwebengine exposes REST APIs for script management (if editor is enabled):
-
-**Create/Update a script:**
-
-```bash
-curl -X POST "http://localhost:8080/api/scripts/api/hello.js" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "function helloHandler(context) { return { status: 200, body: \"Hello\" }; } function init() { routeRegistry.registerRoute(\"/api/hello\", { handler: \"helloHandler\", method: \"GET\" }); } init();"
-  }'
-```
-
-**Get script content:**
-
-```bash
-curl http://localhost:8080/api/scripts/api/hello.js
-```
-
-**Delete a script:**
-
-```bash
-curl -X DELETE http://localhost:8080/api/scripts/api/hello.js
-```
-
-**List all scripts:**
-
-```bash
-curl http://localhost:8080/api/scripts
-```
-
-### Custom Deployment Tool
-
-Create your own deployment tool:
-
-```javascript
-// deploy.mjs
-import fs from "fs";
-import fetch from "node-fetch";
-
-async function deployScript(serverUrl, scriptPath, localFile) {
-  const content = fs.readFileSync(localFile, "utf8");
-
-  const response = await fetch(`${serverUrl}/api/scripts/${scriptPath}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-
-  if (response.ok) {
-    console.log(`✓ Deployed ${scriptPath}`);
-  } else {
-    console.error(`✗ Failed to deploy ${scriptPath}:`, await response.text());
-  }
-}
-
-// Usage
-await deployScript(
-  "http://localhost:8080",
-  "api/users.js",
-  "./scripts/api/users.js",
-);
-```
-
-### When to Use
-
-- 🎯 Integration with existing tools
-- 🎯 Custom deployment pipelines
-- 🎯 Automated testing workflows
-- 🎯 Third-party IDE integration
-
-## Workflow 5: Git-based Workflow
-
-Best for: Professional teams, version control requirements
-
-### Repository Structure
-
-```text
-my-aiwebengine-app/
-├── .git/
-├── scripts/
-│   ├── api/
-│   ├── pages/
-│   └── features/
-├── assets/
-│   ├── css/
-│   ├── js/
-│   └── images/
-├── tests/
-├── .gitignore
-├── README.md
-└── deploy.sh
-```
-
-### Gitignore Example
-
-```gitignore
-# .gitignore
-target/
-logs/
-*.log
-.env
-.DS_Store
-```
-
-### Development Workflow
-
-**1. Clone repository:**
-
-```bash
-git clone https://github.com/your-org/your-app.git
-cd your-app
-```
-
-**2. Create feature branch:**
-
-```bash
-git checkout -b feature/new-api
-```
-
-**3. Develop locally:**
-
-```bash
-# Edit scripts
-vim scripts/api/newfeature.js
-
-# Test locally
-./deploy-local.sh
-curl http://localhost:8080/api/newfeature
-```
-
-**4. Commit changes:**
-
-```bash
-git add scripts/api/newfeature.js
-git commit -m "Add new feature API"
-git push origin feature/new-api
-```
-
-**5. Code review:**
-
-- Create pull request
-- Team reviews changes
-- CI runs automated tests
-
-**6. Merge and deploy:**
-
-```bash
-git checkout main
-git merge feature/new-api
-./deploy-production.sh
-```
-
-### CI/CD Integration
-
-**GitHub Actions example:**
-
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy to aiwebengine
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Deploy scripts
-        run: |
-          for script in scripts/**/*.js; do
-            ./deployer \
-              --uri "${{ secrets.SERVER_URL }}/$(basename $script .js)" \
-              --file "$script"
-          done
-```
-
-### When to Use
-
-- 🎯 Team collaboration
-- 🎯 Code review process
-- 🎯 Version history important
-- 🎯 Multiple developers
-- 🎯 Professional projects
-
-## Comparing Workflows
-
-| Workflow      | Ease of Use | Version Control | Team Collaboration | CI/CD Ready | Best For              |
-| ------------- | ----------- | --------------- | ------------------ | ----------- | --------------------- |
-| Web Editor    | ⭐⭐⭐⭐⭐  | ❌              | ⭐                 | ❌          | Learning, prototyping |
-| Deployer Tool | ⭐⭐⭐⭐    | ✅              | ⭐⭐⭐⭐           | ✅          | Professional dev      |
-| Direct File   | ⭐⭐⭐      | ✅              | ⭐⭐               | ⭐⭐⭐      | Server admins         |
-| API-based     | ⭐⭐        | ✅              | ⭐⭐⭐             | ✅          | Tool integration      |
-| Git-based     | ⭐⭐⭐      | ✅              | ⭐⭐⭐⭐⭐         | ✅          | Teams                 |
-
-## Environment-Specific Deployment
-
-### Local Development
-
-```bash
-# config.local.toml
-[server]
-host = "localhost"
-port = 8080
-
-[scripts]
-auto_reload = true
-```
-
-Deploy locally:
-
-```bash
-./target/release/deployer \
-  --uri "http://localhost:8080/api/test" \
-  --file "./scripts/api/test.js"
-```
-
-### Staging Environment
-
-```bash
-# config.staging.toml
-[server]
-host = "0.0.0.0"
-port = 8080
-
-[scripts]
-auto_reload = true  # Still enable for testing
-```
-
-Deploy to staging:
-
-```bash
-./target/release/deployer \
-  --uri "https://staging.example.com/api/test" \
-  --file "./scripts/api/test.js"
-```
-
-### Production Environment
-
-```bash
-# config.production.toml
-[server]
-host = "0.0.0.0"
-port = 8080
-
-[scripts]
-auto_reload = false  # Disable for stability
-```
-
-Deploy to production:
-
-```bash
-./target/release/deployer \
-  --uri "https://api.example.com/api/test" \
-  --file "./scripts/api/test.js"
-```
+The underlying operations are `deploy_script`, `get_deployment`,
+`list_revisions`, `diff_revisions`, `label_revision` and `revert_script`.
 
 ## Checking a Script Before It Goes Live
 
@@ -607,7 +107,7 @@ rolled back, and reports what it found:
 curl -X POST "$MANAGE_HOST/engine/check_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"uri": "my-app"}'
+  -d '{"script": "my-app"}'
 ```
 
 ```json
@@ -646,7 +146,7 @@ even have to exist yet:
 curl -X POST "$MANAGE_HOST/engine/check_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"uri": "my-app", "content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
+  -d '{"script": "my-app", "content": "function init() { routeRegistry.registerRoute(\"/x\", { handler: \"handleX\", method: \"GET\" }); }"}'
 ```
 
 `rollback` (default `true`) controls whether the database writes `init()` makes
@@ -663,7 +163,7 @@ script's functions, use the bindings its entrypoint imported, and `import` or
 curl -X POST "$MANAGE_HOST/engine/eval_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"uri": "my-app", "source": "database.query(\"things\")"}'
+  -d '{"script": "my-app", "source": "database.query(\"things\")"}'
 ```
 
 ```json
@@ -695,198 +195,15 @@ name contains a given string, and writes roll back by default.
 Each of these has an equivalent MCP tool — `check_script`, `eval_script` and
 `run_tests` — so an assistant working on a script can use the same loop.
 
-## Best Practices
-
-### 1. Test Before Deploying
-
-Run `POST /engine/check_script` against the candidate source first — it reports what
-the engine would reject before anything is published (see
-[Checking a Script Before It Goes Live](#checking-a-script-before-it-goes-live)).
-Then test in a dev/staging environment:
-
-```bash
-# Test locally first
-./deploy-local.sh
-./run-tests.sh
-
-# Then deploy to staging
-./deploy-staging.sh
-./run-tests.sh
-
-# Finally deploy to production
-./deploy-production.sh
-```
-
-### 2. Use Version Control
-
-Even with web editor, export and commit:
-
-```bash
-# Export scripts from editor
-curl http://localhost:8080/api/scripts > scripts-backup.json
-
-# Commit to git
-git add scripts-backup.json
-git commit -m "Backup scripts $(date +%Y-%m-%d)"
-```
-
-### 3. Automate Deployment
-
-Create deployment scripts:
-
-```bash
-#!/bin/bash
-# deploy-all.sh
-
-set -e  # Exit on error
-
-echo "Deploying to $1..."
-
-case $1 in
-  local)
-    SERVER="http://localhost:8080"
-    ;;
-  staging)
-    SERVER="https://staging.example.com"
-    ;;
-  production)
-    SERVER="https://api.example.com"
-    ;;
-  *)
-    echo "Usage: $0 {local|staging|production}"
-    exit 1
-    ;;
-esac
-
-# Deploy all scripts
-find scripts -name "*.js" -type f | while read script; do
-  path="${script#scripts/}"
-  path="/${path%.js}"
-
-  echo "Deploying $script to $path..."
-  ./deployer --uri "$SERVER$path" --file "$script"
-done
-
-echo "✓ Deployment complete!"
-```
-
-### 4. Monitor Deployments
-
-After deploying, check:
-
-```bash
-# Check logs (add ?uri=... for one script)
-curl "$MANAGE_HOST/engine/read_logs?limit=50" -H "Authorization: Bearer $TOKEN"
-
-# Follow the log as the first requests arrive
-curl -N "$MANAGE_HOST/engine/script_logs/stream?uri=$URI" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Test endpoints
-curl https://example.com/my-app/things
-
-# Check registered routes
-curl "$MANAGE_HOST/engine/list_routes" -H "Authorization: Bearer $TOKEN"
-```
-
-### 5. Rollback Plan
-
-Keep previous versions:
-
-```bash
-# Before deploying
-cp scripts/api/users.js scripts/api/users.js.backup
-
-# If deployment fails
-mv scripts/api/users.js.backup scripts/api/users.js
-./deploy.sh
-```
+The repository tooling wraps all three: `make check-head`, `make eval SRC='…'`,
+`make test` and `make test-head`.
 
 ## Troubleshooting
 
-### Script Not Loading
-
-**Check:**
-
-- File has `.js` extension
-- Valid JavaScript syntax
-- `init()` function exists and is called
-- File permissions are correct
-
-### Routes Not Registering
-
-**Check:**
-
-- `routeRegistry.registerRoute()` called in `init()`
-- Path starts with `/`
-- Handler name matches function name
-- No duplicate routes
-
-### Deployer Tool Fails
-
-**Check:**
-
-- Server is running
-- URL is correct
-- File path exists
-- Network connectivity
-
-### Changes Not Appearing
-
-**Check:**
-
-- Script was saved
-- Auto-reload is enabled (or restart server)
-- Browser cache cleared
-- Correct environment targeted
-
-## Next Steps
-
-Now that you understand deployment workflows:
-
-1. **[Learn Script Development](../guides/scripts.md)** - Master script features
-2. **[Explore Asset Management](../guides/assets.md)** - Work with static files
-3. **[Study Logging](../guides/logging.md)** - Debug effectively
-4. **[Use AI Development](../guides/ai-development.md)** - Accelerate with AI
-
-## Quick Reference
-
-### Deployer Command
-
-```bash
-./target/release/deployer --uri "URL" --file "PATH"
-```
-
-### Deployment Checklist
-
-- [ ] Test locally
-- [ ] Review code changes
-- [ ] `POST /engine/check_script` the candidate source
-- [ ] Check logs for errors
-- [ ] Deploy to staging
-- [ ] Test in staging
-- [ ] Deploy to production
-- [ ] Monitor production logs
-- [ ] Test production endpoints
-
-### Common Commands
-
-```bash
-# Deploy single script
-./deployer --uri "http://localhost:8080/api/test" --file "./test.js"
-
-# Test endpoint
-curl http://localhost:8080/api/test
-
-# Check a script without deploying it
-curl -X POST "$MANAGE_HOST/engine/check_script" -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" -d "{\"uri\": \"$URI\"}"
-
-# View logs
-curl "$MANAGE_HOST/engine/read_logs?script=$URI" -H "Authorization: Bearer $TOKEN"
-
-# List scripts
-curl "$MANAGE_HOST/engine/list_scripts" -H "Authorization: Bearer $TOKEN"
-```
-
-Happy deploying! 🚀
+- **A route answers 404 after a write.** `init()` failed or did not register
+  it. `check_script` reports why; the script's log (`read_logs`) has the error.
+- **A route answers with old behaviour.** The script is pinned. `make status`
+  shows what is served.
+- **A registration is refused.** Another script on the same host already holds
+  the path, or a file route names a file outside `public/`. The refusal names
+  which.

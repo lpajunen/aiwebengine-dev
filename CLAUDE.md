@@ -90,11 +90,10 @@ Every script is a **top-level directory holding `main.*`**; everything else unde
 assets, at the same relative path. `docs/guides/scripts.md` is deployed as the asset
 `guides/scripts.md`, and `docs/main.js` is the entrypoint rather than an asset.
 
-This is the layout the engine's `/engine/git/*` API reads and writes, which is why there is no
-`src/` directory and no manifest: the URI a script is served at and who owns it deliberately do not
-live in the repository. `docs` used to add a `docs/` prefix to its asset names at upload time, which
-made the deployed name differ from the repository path; that prefix is gone, and `mapPathToAssetName`
-in `docs/main.js` returns the repository-relative name.
+This is the layout the engine's git sync (`pull_from_git`, `push_to_git`) reads and writes, which is
+why there is no `src/` directory and no manifest: the URI a script is served at and who owns it
+deliberately do not live in the repository. A file's asset name is its path inside the script's
+directory (`mapPathToAssetName` in `docs/main.js`), so the deployed name equals the repository path.
 
 ## Shared tooling
 
@@ -131,11 +130,8 @@ environment — not Node — so:
 - **All scripts are equal.** There is no privileged-script flag: what a call is allowed to do
   depends on the signed-in user — whether they are an Editor, an Administrator, or an owner of the
   script — and the engine enforces that.
-- The legacy privileged JavaScript globals (`userStorage`, the cross-script `scriptStorage`, the
-  `*ForUri` secret and asset methods, `console.listLogs`/`pruneLogs`,
-  `routeRegistry.listRoutes`/`listStreams`/`listAssets`) have been **removed** — calling one is a
-  `TypeError`. Every one of them has an HTTP equivalent under `/engine/` — script, asset, secret
-  and user management
+- Engine administration is not a JavaScript global. It is the engine's operation table, under
+  `/engine/` — script, file, secret and user management
   (`/engine/list_scripts`, `/engine/list_files`, `/engine/read_file` (with `lines`/`grep`), `/engine/write_file`,
   `/engine/write_files`, `/engine/edit_file`, `/engine/delete_file`, `/engine/delete_script`,
   `/engine/list_secrets`, `/engine/list_script_owners`, `/engine/list_users`, `/engine/add_user_role`), logs
@@ -144,15 +140,14 @@ environment — not Node — so:
   `POST /engine/eval_script`, `POST /engine/run_tests`), with equivalent MCP tools — see
   `apis/openapi.json`. The browser calls them with the signed-in user's session and the engine
   enforces that user's permissions.
-- The script-scoped storage global is `scriptStorage` (it was `sharedStorage`), and together with
+- The script-scoped storage global is `scriptStorage`, and together with
   `personalStorage` it implements the WHATWG `Storage` interface: `setItem`/`removeItem`/`clear`
   return nothing and throw a `DOMException` (`QuotaExceededError`, `SecurityError`) instead of
   returning a message.
 
 Every script starts with a `/// <reference path="../types/aiwebengine.d.ts" />`
 triple-slash directive. That file is **generated** by `make fetch-types` from
-`/engine/types/v0.1.0/` — edit the server, not it. The companion `aiwebengine-priv.d.ts` that
-typed the privileged globals is gone from the server along with the globals themselves.
+`/engine/types/v0.1.0/` — edit the server, not it.
 
 `scripts/` is the opposite: ordinary **Node.js** CLI tooling that runs locally (CommonJS `require`,
 `dotenv`, real filesystem and network access).

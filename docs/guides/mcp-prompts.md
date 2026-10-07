@@ -594,8 +594,8 @@ function render${formName}Form() {
   \`;
 }
 
-function handle${formName}Submit(request) {
-  const formData = request.formData;
+function handle${formName}Submit(context) {
+  const formData = context.request.form;
   
   // Validate fields
   ${fieldList
