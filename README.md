@@ -9,12 +9,12 @@ Documentation and tooling for AI Web Engine solution developers. This repository
 
 ## What is AI Web Engine?
 
-AI Web Engine is a platform for building AI-powered web applications with JavaScript. This repository contains the development toolkit including:
+AI Web Engine ([aiwebengine](https://github.com/lpajunen/aiwebengine)) runs JavaScript/TypeScript scripts — websites, HTTP APIs, MCP tools and agents — stored in the engine itself. This repository contains:
 
-- TypeScript type definitions for the AI Web Engine APIs
-- OAuth authentication helpers
-- Comprehensive documentation and examples
-- Deployment tools
+- `editor/`, `admin/` and `docs/` — the scripts serving `/editor`, `/admin` and `/docs` on an engine
+- `docs/*.md` — the solution developer documentation, which `/docs` serves
+- `scripts/` and `scripts/tooling.mk` — the shared deployment tooling (OAuth login, deploying changed files, revisions, tests, git sync)
+- `types/` — the engine's type definitions, fetched with `make fetch-types`
 
 ## Prerequisites
 
@@ -65,8 +65,6 @@ See [.env.example](.env.example) for all available configuration options.
 
 ```bash
 make fetch-types
-# or
-make fetch-types
 ```
 
 ### OAuth Login
@@ -75,8 +73,12 @@ Authenticate with your AI Web Engine server:
 
 ```bash
 make oauth-login
-# or
-make oauth-login
+```
+
+### Deploy the Editor, Admin and Docs Scripts
+
+```bash
+make upload-all            # or upload-editor, upload-admin, upload-docs
 ```
 
 ### Set Script Hosts
@@ -86,8 +88,6 @@ After deploying the admin, editor and docs scripts, publish them on the manageme
 
 ```bash
 make set-script-hosts-dry-run   # preview
-make set-script-hosts
-# or
 make set-script-hosts
 ```
 
@@ -107,7 +107,7 @@ Comprehensive documentation is available in the [docs](docs) directory:
 - **Examples**: [docs/examples](docs/examples)
 - **API Reference**: [docs/reference](docs/reference)
 
-To serve the documentation locally, run the documentation system via the docs.js script.
+An engine serves them at `/docs` once the `docs` script is deployed (`make upload-docs`).
 
 ## Contributing
 

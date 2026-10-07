@@ -16,11 +16,11 @@ function getCurrentTimeHandler(context) {
   const timezone = context.args.timezone || "UTC";
   const now = new Date();
 
-  return JSON.stringify({
+  return {
     timestamp: now.toISOString(),
     timezone: timezone,
     formatted: now.toLocaleString("en-US", { timeZone: timezone }),
-  });
+  };
 }
 
 // Register the tool in init()
@@ -42,8 +42,6 @@ function init(context) {
     inputSchema: schema,
     handler: "getCurrentTimeHandler",
   });
-
-  return { success: true };
 }
 ```
 
@@ -60,7 +58,7 @@ Registers a new MCP tool that AI clients can discover and execute.
 - `inputSchema` (object) - JSON Schema defining the tool's input parameters
 - `handler` (string) - Name of the JavaScript function that handles tool execution
 
-Answers `{ ok: true }`, or `{ ok: false, reason }` when called outside `init()`; a malformed call throws.
+Answers `{ ok: true }`, or `{ ok: false, reason }` when the registration is refused (for example, a call outside `init()`); a malformed call throws.
 
 **Example:**
 
@@ -86,23 +84,21 @@ mcpRegistry.registerTool("calculate", {
 
 ## Handler Functions
 
-Tool handlers receive a `context` object with the following structure:
-
-```javascript
-{
-  args: {
-    // Tool arguments as specified in the input schema
-    // Example: { timezone: "Europe/Helsinki" }
-  }
-}
-```
+A tool handler receives the usual `context`: the arguments are in
+`context.args`, and the person calling is in `context.request.auth` (an MCP
+client calls `/mcp` with a bearer token, so a tool always knows who is
+calling).
 
 **Handler Requirements:**
 
-1. Must accept a `context` parameter
-2. Must return a JSON string with the result
-3. Should handle errors gracefully
-4. Has access to all standard APIs (fetch, console, scriptStorage, etc.)
+1. Return plain data — an object, array, number or string — and the engine
+   serializes it. Do not `JSON.stringify` it yourself: a returned string is
+   expected to be JSON already.
+2. **Throw an `Error` for a failure.** The client gets the message as a tool
+   error (`isError: true`), which a model understands as "this did not work";
+   an `{ error: ... }` object reads as a successful answer.
+3. Every global is available (`fetch`, `database`, `scriptStorage`, ...), and
+   the call runs with the caller's permissions.
 
 **Example Handler:**
 
@@ -112,9 +108,7 @@ function calculateHandler(context) {
 
   // Validate inputs
   if (isNaN(a) || isNaN(b)) {
-    return JSON.stringify({
-      error: "Invalid numbers provided",
-    });
+    throw new Error("Invalid numbers provided");
   }
 
   // Perform calculation
@@ -131,20 +125,15 @@ function calculateHandler(context) {
       break;
     case "divide":
       if (b === 0) {
-        return JSON.stringify({ error: "Cannot divide by zero" });
+        throw new Error("Cannot divide by zero");
       }
       result = a / b;
       break;
     default:
-      return JSON.stringify({ error: "Unknown operation" });
+      throw new Error(`Unknown operation: ${operation}`);
   }
 
-  return JSON.stringify({
-    operation: operation,
-    a: a,
-    b: b,
-    result: result,
-  });
+  return { operation, a, b, result };
 }
 ```
 
@@ -296,13 +285,13 @@ function getWeatherHandler(context) {
     conditions[Math.floor(Math.random() * conditions.length)];
   const temperature = Math.floor(Math.random() * 30) + 10;
 
-  return JSON.stringify({
+  return {
     location: location,
     condition: randomCondition,
     temperature: temperature,
     unit: "celsius",
     timestamp: new Date().toISOString(),
-  });
+  };
 }
 
 // ID generator handler
@@ -317,10 +306,10 @@ function generateIdHandler(context) {
     randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
   }
 
-  return JSON.stringify({
+  return {
     id: prefix + "-" + randomPart,
     timestamp: Date.now(),
-  });
+  };
 }
 
 // Initialize and register tools
@@ -367,27 +356,27 @@ function init(context) {
     handler: "generateIdHandler",
   });
 
-  console.log("MCP tools registered successfully");
-
-  return {
-    success: true,
-    tools: ["getWeather", "generateId"],
-  };
+  console.log("MCP tools registered");
 }
 ```
 
 ## Using MCP Tools with AI Clients
 
-### Configuring VS Code
+An engine's MCP endpoint is `/mcp` on each host that publishes scripts (the
+management host's `/mcp` also lists the engine's own tools). It is a remote
+HTTP MCP server that signs people in with OAuth: a client discovers the
+engine's authorization server, registers itself, and opens a browser for the
+person to sign in and consent. Any client that supports remote MCP servers
+with OAuth can use it.
 
-To enable AI assistants in VS Code to use your MCP tools, create a configuration file:
+### VS Code
 
 **File: `.vscode/mcp.json`**
 
 ```json
 {
   "servers": {
-    "my-mcp-server": {
+    "my-engine": {
       "type": "http",
       "url": "https://yourdomain.com/mcp"
     }
@@ -395,76 +384,33 @@ To enable AI assistants in VS Code to use your MCP tools, create a configuration
 }
 ```
 
-### Configuring Claude Desktop
+### Claude
 
-Add your MCP server to Claude Desktop's configuration:
-
-**File: `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)**
-
-```json
-{
-  "mcpServers": {
-    "my-server": {
-      "command": "curl",
-      "args": [
-        "-X",
-        "POST",
-        "https://yourdomain.com/mcp",
-        "-H",
-        "Content-Type: application/json",
-        "-d",
-        "@-"
-      ]
-    }
-  }
-}
-```
+Add a custom connector with the URL `https://yourdomain.com/mcp`, or in
+Claude Code: `claude mcp add --transport http my-engine https://yourdomain.com/mcp`.
 
 ### Testing with curl
 
-You can test your MCP tools using curl commands:
+`/mcp` accepts only a bearer token whose audience is that host's `/mcp`. With a
+token (in a checkout with the repository tooling, `make oauth-login` stores
+one):
 
 ```bash
-# Initialize the connection
-curl -X POST https://yourdomain.com/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-      "protocolVersion": "2024-11-05",
-      "capabilities": {},
-      "clientInfo": {
-        "name": "test-client",
-        "version": "1.0.0"
-      }
-    }
-  }'
-
 # List available tools
 curl -X POST https://yourdomain.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
+
+# Call a tool
+curl -X POST https://yourdomain.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
     "id": 2,
-    "method": "tools/list",
-    "params": {}
-  }'
-
-# Call a tool
-curl -X POST https://yourdomain.com/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
     "method": "tools/call",
-    "params": {
-      "name": "getWeather",
-      "arguments": {
-        "location": "Helsinki"
-      }
-    }
+    "params": { "name": "getWeather", "arguments": { "location": "Helsinki" } }
   }'
 ```
 
@@ -519,30 +465,19 @@ Provide detailed parameter descriptions and constraints:
 
 ### 4. Error Handling
 
-Always handle errors gracefully and return informative messages:
+Throw with a message that says what to do differently; the client shows it as
+a tool error:
 
 ```javascript
 function myToolHandler(context) {
-  try {
-    // Validate inputs
-    if (!context.args.required_param) {
-      return JSON.stringify({
-        error: "Missing required parameter: required_param",
-      });
-    }
-
-    // Process
-    const result = doSomething(context.args.required_param);
-
-    return JSON.stringify({ result: result });
-  } catch (error) {
-    console.error(`Tool error: ${error.message}`);
-    return JSON.stringify({
-      error: `Failed to execute tool: ${error.message}`,
-    });
+  if (!context.args.required_param) {
+    throw new Error("Missing required parameter: required_param");
   }
+  return { result: doSomething(context.args.required_param) };
 }
 ```
+
+An uncaught exception from deeper code is reported the same way, and logged.
 
 ### 5. Use Existing APIs
 
@@ -564,11 +499,7 @@ function searchDataHandler(context) {
   // Log the search
   console.log(`Search performed: ${query}`);
 
-  return JSON.stringify({
-    query: query,
-    results: data.results,
-    cached: true,
-  });
+  return { query: query, results: data.results };
 }
 ```
 
@@ -600,22 +531,21 @@ Return well-structured JSON that's easy for AI to interpret:
 
 ### Authentication
 
-Registering an MCP tool is limited to the script's owners, Editors and Administrators, but execution is unrestricted by default. Consider implementing your own authorization in handlers:
+Registering a tool takes an editor who owns the script. Calling one takes a
+signed-in person: `/mcp` refuses a request without a valid bearer token, and
+the tool runs with that person's identity and permissions. Decide what they may
+do from `context.request.auth` — never from an argument, which the caller
+chooses:
 
 ```javascript
-function sensitiveOperationHandler(context) {
-  // Check if user has permission
-  const userId = context.args.userId;
-
-  // Validate before executing
-  if (!isAuthorized(userId)) {
-    return JSON.stringify({
-      error: "Unauthorized: User does not have permission",
-    });
+function deleteNoteHandler(context) {
+  const auth = context.request.auth;
+  const note = database.query("notes", { where: { id: context.args.id } })[0];
+  if (!note || note.owner !== auth.userId) {
+    throw new Error("No such note");
   }
-
-  // Proceed with operation
-  return performOperation();
+  database.delete("notes", note.id);
+  return { deleted: note.id };
 }
 ```
 
@@ -629,16 +559,12 @@ function createUserHandler(context) {
 
   // Validate username
   if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
-    return JSON.stringify({
-      error: "Invalid username format",
-    });
+    throw new Error("Invalid username format");
   }
 
   // Validate email
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return JSON.stringify({
-      error: "Invalid email format",
-    });
+    throw new Error("Invalid email format");
   }
 
   // Create user
@@ -648,29 +574,25 @@ function createUserHandler(context) {
 
 ### Rate Limiting
 
-Implement rate limiting for resource-intensive operations:
+`rateLimit.consume` spends from a budget the engine keys to the caller:
 
 ```javascript
-const rateLimits = {};
-
 function expensiveOperationHandler(context) {
-  const clientId = context.args.clientId || "default";
-  const now = Date.now();
-
-  // Check rate limit
-  if (rateLimits[clientId] && now - rateLimits[clientId] < 60000) {
-    return JSON.stringify({
-      error: "Rate limit exceeded. Please wait 60 seconds.",
-    });
+  const budget = rateLimit.consume("expensive", {
+    limit: 10,
+    windowSeconds: 60,
+  });
+  if (!budget.allowed) {
+    throw new Error(
+      `Rate limit exceeded; try again in ${budget.retryAfterSeconds}s`,
+    );
   }
-
-  // Update rate limit
-  rateLimits[clientId] = now;
-
-  // Perform operation
   return performExpensiveOperation();
 }
 ```
+
+A variable at the top of the script would not work: the program runs from the
+top on every call.
 
 ## Troubleshooting
 
@@ -678,19 +600,19 @@ function expensiveOperationHandler(context) {
 
 If your tool doesn't appear in the tools list:
 
-1. Check that `init()` is being called
-2. Verify the tool name doesn't contain invalid characters
-3. Check console logs for registration errors
-4. Ensure the schema is valid JSON
+1. Read `registerTool`'s result, or run `check_script`: a refused registration says why
+2. Check the script's log for `init()` errors
+3. Check the client is connected to a host the script is published on
+4. Ensure the schema is valid JSON Schema
 
 ### Tool Execution Fails
 
 If tool execution fails:
 
-1. Check the handler name matches exactly
-2. Verify the handler function is defined before `init()`
-3. Look for JavaScript errors in console logs
-4. Test the handler function independently
+1. Check the handler name matches exactly, and is a global of `main.*`
+2. Look for errors in the script's log (`read_logs` with `kind=mcpTool`)
+3. A handler that returns a string that is not JSON fails the call; return data
+4. Test the handler in a `*.test.ts` file, calling it with a context you build
 
 ### Schema Validation Issues
 
@@ -703,13 +625,13 @@ If arguments aren't being passed correctly:
 
 ## Next Steps
 
-- See the complete example in [`mcp_tools_demo`](https://github.com/lpajunen/aiwebengine-examples/tree/main/src/mcp_tools_demo)
+- See the complete example in [`mcp_tools_demo`](https://github.com/lpajunen/aiwebengine-examples/tree/main/mcp_tools_demo)
 - Learn about [JavaScript APIs](../reference/javascript-apis.md)
 - Explore [AI-Assisted Development](ai-development.md)
 - Check [Script Development Guide](scripts.md)
 
 ## Additional Resources
 
-- [MCP Specification](https://modelcontextprotocol.io/specification/2025-06-18)
+- [MCP Specification](https://modelcontextprotocol.io/specification)
 - [JSON Schema Documentation](https://json-schema.org/)
-- [Example MCP Tools Script](https://github.com/lpajunen/aiwebengine-examples/tree/main/src/mcp_tools_demo)
+- [Example MCP Tools Script](https://github.com/lpajunen/aiwebengine-examples/tree/main/mcp_tools_demo)

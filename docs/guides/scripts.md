@@ -1,37 +1,40 @@
 # Script Development Guide
 
-Complete guide to creating and managing JavaScript scripts in aiwebengine.
+How to write scripts for aiwebengine: structure, handlers, routes, requests and
+responses, state, and how scripts work together.
 
 ## Table of Contents
 
 - [Script Basics](#script-basics)
-- [Script Structure](#script-structure)
+- [Files and Modules](#files-and-modules)
 - [Handler Functions](#handler-functions)
 - [Route Registration](#route-registration)
 - [Request Handling](#request-handling)
 - [Response Formatting](#response-formatting)
 - [State Management](#state-management)
 - [Error Handling](#error-handling)
+- [Scripts Working Together](#scripts-working-together)
 - [Best Practices](#best-practices)
-- [Advanced Patterns](#advanced-patterns)
 
 ## Script Basics
 
 ### What is a Script?
 
-A script in aiwebengine is a JavaScript file that:
+A script is a tree of files stored in the engine's database. Its entrypoint is
+`main.js` (or `main.ts`, `main.tsx`, `main.jsx`). A script:
 
-- Defines handler functions to process HTTP requests
-- Registers routes to map URLs to handlers
-- Can manage state, make external API calls, and serve content
-- Runs in a secure QuickJS JavaScript environment
+- Defines handler functions for HTTP requests, MCP tools, streams and jobs
+- Registers them in `init()`
+- Keeps state in storage or its own database tables
+- Runs in a sandboxed QuickJS runtime, with no build step: TypeScript and JSX
+  are transpiled when the script loads
+
+Its name is a slug: lower-case letters, digits, `-` and `_`.
 
 ### Minimal Script Example
 
 ```javascript
 function helloHandler(context) {
-  const req = context.request;
-
   return ResponseBuilder.text("Hello, World!");
 }
 
@@ -50,226 +53,111 @@ Handlers always receive a single `context` argument; the HTTP request lives at
 ### Script Lifecycle
 
 ```text
-1. Script Created     → JavaScript file written
-2. Script Loaded      → Engine reads the file
-3. Script Executed    → JavaScript code runs
-4. init() Called      → Routes registered
-5. Ready for Requests → Handlers respond to HTTP requests
+1. Files written     → every write records a revision of the script
+2. init() runs       → the engine bundles the tree, runs it, and calls init();
+                       registrations made there take effect
+3. Requests arrive   → for each one the program runs again from the top,
+                       then the registered handler is called
 ```
 
-## Script Structure
+`init()` runs when the engine starts and after every write (unless the script
+is pinned to an earlier revision). You never call it yourself. Because the
+program runs from the top for each invocation, top-level code should only
+define things — see [State Management](#state-management).
 
-### Recommended Structure
+## Files and Modules
 
-return { valid: true };
-}
+A script can be one file or many. Imports name the file exactly, extension
+included:
 
-function createResponse(status, data) {
-return {
-status: status,
-body: JSON.stringify(data),
-contentType: "application/json",
-};
-}
+```text
+my-app/
+├── main.ts             ← entrypoint: init() and the handler names
+├── lib/handlers.ts     ← handler implementations
+├── lib/store.ts        ← data access
+├── lib/handlers.test.ts
+├── skills/faq.md       ← imported as text
+└── public/app.css      ← may be served by a file route
+```
 
-// ============================================
-// Handler Functions
-// ============================================
+```typescript
+// main.ts
+import { listItems, addItem } from "./lib/handlers.ts";
+import faq from "./skills/faq.md"; // the file's text
 
-function listItemsHandler(context) {
-console.log(`Listing items: ${items.length} total`);
-return createResponse(200, { items: items });
-}
-
-function createItemHandler(context) {
-const req = context.request;
-
-const item = {
-id: nextId++,
-name: req.form.name,
-created: new Date().toISOString(),
-};
-
-const validation = validateItem(item);
-if (!validation.valid) {
-return createResponse(400, { error: validation.error });
-}
-
-items.push(item);
-console.log(`Item created: ${item.id}`);
-
-return createResponse(201, { item: item });
-}
-
-// ============================================
-// Initialization
-// ============================================
+// Handlers are named by string and must be globals of main.ts
+Object.assign(globalThis, { listItems, addItem });
 
 function init() {
-// Register routes
-routeRegistry.registerRoute("/api/items", { handler: "listItemsHandler", method: "GET" });
-routeRegistry.registerRoute("/api/items", { handler: "createItemHandler", method: "POST" });
-
-// Log initialization
-console.log("Items API initialized");
+  routeRegistry.registerRoute("/my-app/items", { handler: "listItems" });
+  routeRegistry.registerRoute("/my-app/items", {
+    handler: "addItem",
+    method: "POST",
+  });
 }
+```
 
-````
+Rules worth knowing:
 
-### Key Sections
-
-1. **Header Comment** - Documentation
-2. **Constants** - Configuration values
-3. **Data Storage** - Global state (if needed)
-4. **Helpers** - Utility functions
-5. **Handlers** - Request processors
-6. **Initialization** - Route registration
-7. **Init Call** - Execute setup
+- `main.*` never uses `export`; modules under it do.
+- A handler is either a top-level function of `main.*` or a function made
+  global there with `Object.assign(globalThis, {...})`. A name that is not a
+  global function is a 500 on the first request; `check_script` reports it as
+  `missing-handler` before you deploy.
+- `.json`, `.md` and `.txt` imports are data: you get the content, never code.
+- Tests (`*.test.ts`) cannot import `main.*`, which is another reason to keep
+  handlers in `lib/`.
 
 ## Handler Functions
 
 ### Handler Signature
 
-All handlers receive a single `context` object. Most HTTP handlers immediately alias `context.request` so existing patterns using `req` stay familiar:
-
 ```javascript
 function handlerName(context) {
   const req = context.request;
-
-  return {
-    status: 200,
-    body: "response content",
-    contentType: "text/plain",
-  };
+  return ResponseBuilder.text("response content");
 }
-````
+```
 
 ### Context Overview
 
-Route handlers have access to the following `context` fields:
+- `request`: the HTTP request — method, path, headers, query, params, form, body
+- `args`: an MCP tool's or prompt's arguments; `null` for HTTP routes
+- `kind`: the invocation type (`httpRoute`, `scheduled`, `mcpTool`, etc.)
+- `scriptUri` / `handlerName`: which script and handler are running
+- `invocationId`: the id this invocation's log lines are filed under
+- `meta`: what a scheduled job or task was given (`meta.schedule`, `meta.task`)
 
-- `request`: HTTP method, path, headers, query params, form/body
-- `args`: handler arguments (MCP tools and prompts; null for plain HTTP routes)
-- `kind`: invocation type (`httpRoute`, `scheduled`, `mcpTool`, etc.)
-- `scriptUri` / `handlerName`: metadata about the executing script
-- `meta`, `connectionMetadata`: populated for streaming handlers
-
-### Request Object Structure (context.request)
-
-The `context.request` object contains:
+### Request Object (context.request)
 
 ```javascript
 {
-  method: "GET",           // HTTP method
-  path: "/api/users",      // Request path
-  query: {                 // Query parameters
-    page: "1",
-    limit: "10"
-  },
-  form: {                  // Form data (POST/PUT)
-    name: "John",
-    email: "john@example.com"
-  },
-  headers: {               // Request headers
-    "content-type": "application/json",
-    "user-agent": "Mozilla/5.0..."
-  }
+  method: "POST",
+  path: "/api/users/42",
+  query: { page: "1" },            // ?page=1
+  params: { id: "42" },            // from "/api/users/:id"
+  form: { name: "John" },          // form-encoded or multipart fields
+  files: [],                       // multipart uploads, base64 in `data`
+  headers: /* Headers */,          // headers.get("content-type") or headers["content-type"]
+  body: "...",                     // the raw body; text() returns it, json() parses it
+  auth: { isAuthenticated, userId, userEmail, userName, isEditor, isAdmin }
 }
 ```
 
-### Response Object Structure
+### Response Object
 
-Handlers must return:
-
-```javascript
-{
-  status: 200,                    // HTTP status code (required)
-  body: "Response content",       // Response body (required)
-  contentType: "text/plain"       // MIME type (optional, defaults to text/plain)
-}
-```
-
-### Handler Examples
-
-**Simple text response:**
-
-```javascript
-function textHandler(context) {
-  return {
-    status: 200,
-    body: "Plain text response",
-    contentType: "text/plain; charset=UTF-8",
-  };
-}
-```
-
-**JSON API response:**
-
-```javascript
-function jsonHandler(context) {
-  const data = {
-    message: "Success",
-    timestamp: new Date().toISOString(),
-    data: [1, 2, 3],
-  };
-
-  return {
-    status: 200,
-    body: JSON.stringify(data),
-    contentType: "application/json",
-  };
-}
-```
-
-**HTML page:**
-
-```javascript
-function htmlHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>My Page</title>
-      <link rel="stylesheet" href="/style.css">
-    </head>
-    <body>
-      <h1>Welcome</h1>
-      <p>This is a dynamic page.</p>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html; charset=UTF-8",
-  };
-}
-```
-
-**Error response:**
-
-```javascript
-function errorHandler(context) {
-  return {
-    status: 404,
-    body: JSON.stringify({ error: "Resource not found" }),
-    contentType: "application/json",
-  };
-}
-```
+A handler returns `{ status, body?, bodyBase64?, contentType?, headers? }`,
+usually built with `ResponseBuilder`.
 
 ## Route Registration
 
-### The `routeRegistry.registerRoute()` Function
+### `routeRegistry.registerRoute()`
 
 ```javascript
 routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" });
 routeRegistry.registerRoute(path, { stream: true, authorize: "fnName" });
 routeRegistry.registerRoute(path, { file: "public/app.css" });
 ```
-
-**Parameters:**
 
 - `path` (string) - URL path starting with `/`
 - `spec` (object) - exactly one of:
@@ -279,116 +167,51 @@ routeRegistry.registerRoute(path, { file: "public/app.css" });
   - `file` (string) - a file under `public/` in the script's tree
 
 It returns `{ ok: true }`, or `{ ok: false, reason }` when the registration
-was refused, and throws when the call itself is malformed. See the JavaScript
-API reference for the rest of the spec.
+was refused, and throws when the call itself is malformed. Always read the
+result: a path another script on the same host already holds is refused, and
+the reason names that script. Registration only works inside `init()`.
+
+Routes are shared by every script on a host, so give your paths a prefix of
+your own (`/my-app/...`).
 
 ### Route Specificity and Matching
 
-When multiple routes could match the same request path, the engine selects the **most specific** route:
+When several patterns match a path, the most specific wins, whatever order they
+were registered in:
 
-**Priority Order:**
+1. **Exact paths** first
+2. **Parameterized routes** (`:param`) next
+3. **Wildcard routes** (a trailing `/*`) last
 
-1. **Exact matches** - Highest priority
-2. **Parameterized routes** (`:param`) - Medium priority
-3. **Wildcard routes** (`/*`) - Lowest priority
-
-**Specificity Scoring:**
-
-Routes are scored based on their pattern:
-
-- Each exact path segment: +1000 points
-- Each parameter segment (`:param`): +100 points
-- Wildcard depth: -10 points per level
-
-**Example:**
+Patterns are scored: each exact segment +1000, each `:param` +100, and a
+wildcard −10 per level it covers. `*` works only as the last segment.
 
 ```javascript
 function init() {
-  // Register multiple overlapping routes
-  routeRegistry.registerRoute("/api/scripts/*", {
-    handler: "getScript",
-    method: "GET",
-  }); // Score: 1990
-  routeRegistry.registerRoute("/api/scripts/*/owners", {
+  routeRegistry.registerRoute("/api/scripts/*", { handler: "getScript" }); // 1990
+  routeRegistry.registerRoute("/api/scripts/:name", { handler: "getByName" }); // 2100
+  routeRegistry.registerRoute("/api/scripts/:name/owners", {
     handler: "manageOwners",
-    method: "GET",
-  }); // Score: 2990
-  routeRegistry.registerRoute("/api/scripts/:name", {
-    handler: "getByName",
-    method: "GET",
-  }); // Score: 2100
-  routeRegistry.registerRoute("/api/scripts/search", {
-    handler: "search",
-    method: "GET",
-  }); // Score: 3000
+  }); // 3100
+  routeRegistry.registerRoute("/api/scripts/search", { handler: "search" }); // exact
 }
 
-// Request routing:
-// GET /api/scripts/search        → search (exact match, highest score)
-// GET /api/scripts/my-script     → getByName (param match)
-// GET /api/scripts/foo/owners    → manageOwners (specific wildcard)
-// GET /api/scripts/foo/bar       → getScript (general wildcard)
+// GET /api/scripts/search        → search
+// GET /api/scripts/my-script     → getByName
+// GET /api/scripts/foo/owners    → manageOwners
+// GET /api/scripts/foo/bar       → getScript
 ```
 
-**Best Practices:**
-
-- ✅ Register specific routes before general ones (order doesn't matter, specificity wins)
-- ✅ Use exact paths for well-known endpoints (`/api/scripts/search`)
-- ✅ Use parameters for dynamic segments (`/api/scripts/:name`)
-- ✅ Use wildcards sparingly for catch-all handlers
-- ❌ Avoid overlapping wildcards that could cause confusion
-
-### Registration Examples
-
-**Basic route:**
-
-```javascript
-routeRegistry.registerRoute("/api/hello", {
-  handler: "helloHandler",
-  method: "GET",
-});
-```
-
-**Multiple methods on same path:**
-
-```javascript
-routeRegistry.registerRoute("/api/users", {
-  handler: "listUsers",
-  method: "GET",
-});
-routeRegistry.registerRoute("/api/users", {
-  handler: "createUser",
-  method: "POST",
-});
-routeRegistry.registerRoute("/api/users", {
-  handler: "updateUser",
-  method: "PUT",
-});
-routeRegistry.registerRoute("/api/users", {
-  handler: "deleteUser",
-  method: "DELETE",
-});
-```
-
-**RESTful API:**
+### A RESTful API
 
 ```javascript
 function init() {
-  // Collection endpoints
-  routeRegistry.registerRoute("/api/users", {
-    handler: "listUsers",
-    method: "GET",
-  });
+  routeRegistry.registerRoute("/api/users", { handler: "listUsers" });
   routeRegistry.registerRoute("/api/users", {
     handler: "createUser",
     method: "POST",
   });
-
-  // Resource endpoints
-  routeRegistry.registerRoute("/api/users/:id", {
-    handler: "getUser",
-    method: "GET",
-  });
+  routeRegistry.registerRoute("/api/users/:id", { handler: "getUser" });
   routeRegistry.registerRoute("/api/users/:id", {
     handler: "updateUser",
     method: "PUT",
@@ -398,70 +221,11 @@ function init() {
     method: "DELETE",
   });
 }
-```
-
-Path parameters like `:id` are extracted into `req.params`. You can also use query parameters for additional filtering:
-
-```javascript
-// Access path parameters directly
-routeRegistry.registerRoute("/api/users/:id", {
-  handler: "getUser",
-  method: "GET",
-});
 
 function getUser(context) {
-  const req = context.request;
-  const id = req.params.id; // Access path parameter directly
-  // ... use id to fetch user
-}
-
-// Query parameters still work for additional filtering
-routeRegistry.registerRoute("/api/users/:id/posts", {
-  handler: "getUserPosts",
-  method: "GET",
-});
-
-function getUserPosts(context) {
-  const req = context.request;
-  const userId = req.params.id; // Path parameter
-  const page = req.query.page || "1"; // Query parameter
-  const limit = req.query.limit || "10"; // Query parameter
-  // ... fetch posts for user with pagination
-}
-```
-
-### Route Organization
-
-**Organize by feature:**
-
-```javascript
-function init() {
-  // User routes
-  routeRegistry.registerRoute("/api/users", {
-    handler: "listUsers",
-    method: "GET",
-  });
-  routeRegistry.registerRoute("/api/users", {
-    handler: "createUser",
-    method: "POST",
-  });
-
-  // Product routes
-  routeRegistry.registerRoute("/api/products", {
-    handler: "listProducts",
-    method: "GET",
-  });
-  routeRegistry.registerRoute("/api/products", {
-    handler: "createProduct",
-    method: "POST",
-  });
-
-  // Page routes
-  routeRegistry.registerRoute("/", { handler: "homePage", method: "GET" });
-  routeRegistry.registerRoute("/about", {
-    handler: "aboutPage",
-    method: "GET",
-  });
+  const id = context.request.params.id; // from :id
+  const page = context.request.query.page || "1"; // from ?page=
+  // ...
 }
 ```
 
@@ -469,157 +233,101 @@ function init() {
 
 ### Query Parameters
 
-Access via `context.request.query` (or alias to `req`):
-
 ```javascript
 function searchHandler(context) {
   const req = context.request;
   const query = req.query.q || "";
   const page = parseInt(req.query.page || "1");
-  const limit = parseInt(req.query.limit || "10");
-
-  console.log(`Search: q="${query}", page=${page}, limit=${limit}`);
-
-  // Perform search...
-  const results = performSearch(query, page, limit);
-
-  return {
-    status: 200,
-    body: JSON.stringify(results),
-    contentType: "application/json",
-  };
+  // GET /search?q=javascript&page=2
+  return ResponseBuilder.json(performSearch(query, page));
 }
-
-routeRegistry.registerRoute("/search", {
-  handler: "searchHandler",
-  method: "GET",
-});
-// Test: /search?q=javascript&page=2&limit=20
 ```
 
-### Form Data (POST/PUT)
+`req.searchParams` (a `URLSearchParams`) gives repeated keys with `getAll`.
 
-Access via `context.request.form`:
+### Form Data
+
+`req.form` holds the fields of a form-encoded or multipart body:
 
 ```javascript
 function createUserHandler(context) {
-  const req = context.request;
-  const name = req.form.name;
-  const email = req.form.email;
-  const age = parseInt(req.form.age || "0");
-
-  // Validate
+  const { name, email } = context.request.form;
   if (!name || !email) {
-    return {
-      status: 400,
-      body: JSON.stringify({ error: "Name and email required" }),
-      contentType: "application/json",
-    };
+    return ResponseBuilder.error(400, "Name and email required");
   }
-
-  // Create user
-  const user = { id: generateId(), name, email, age };
-  saveUser(user);
-
-  return {
-    status: 201,
-    body: JSON.stringify({ user: user }),
-    contentType: "application/json",
-  };
+  // ...
+  return ResponseBuilder.json({ name, email }, 201);
 }
-
-routeRegistry.registerRoute("/api/users", {
-  handler: "createUserHandler",
-  method: "POST",
-});
 ```
+
+A browser form posting to your own script needs no CSRF token: a signed-in
+state-changing request from another origin is refused before your handler runs.
 
 ### JSON Request Body
 
-Parse JSON from form data:
+`req.json()` parses the body and throws when it is not JSON:
 
 ```javascript
 function apiHandler(context) {
-  const req = context.request;
+  let data;
   try {
-    // If client sends JSON with Content-Type: application/json
-    // It may be available in req.form as a single key
-    const jsonData = req.form.body ? JSON.parse(req.form.body) : req.form;
-
-    console.log(`Received data: ${JSON.stringify(jsonData)}`);
-
-    return {
-      status: 200,
-      body: JSON.stringify({ received: jsonData }),
-      contentType: "application/json",
-    };
-  } catch (error) {
-    return {
-      status: 400,
-      body: JSON.stringify({ error: "Invalid JSON" }),
-      contentType: "application/json",
-    };
+    data = context.request.json();
+  } catch {
+    return ResponseBuilder.error(400, "Body must be JSON");
   }
+  return ResponseBuilder.json({ received: data });
 }
 ```
 
 ### Headers
 
-Access request headers via `context.request.headers`:
-
 ```javascript
 function headerHandler(context) {
-  const req = context.request;
-  const userAgent = req.headers["user-agent"] || "Unknown";
-  const contentType = req.headers["content-type"] || "None";
-  const authHeader = req.headers["authorization"] || "";
-
-  console.log(`User-Agent: ${userAgent}`);
-
-  return {
-    status: 200,
-    body: JSON.stringify({
-      userAgent: userAgent,
-      contentType: contentType,
-      hasAuth: authHeader.length > 0,
-    }),
-    contentType: "application/json",
-  };
+  const headers = context.request.headers;
+  return ResponseBuilder.json({
+    userAgent: headers.get("user-agent") || "Unknown",
+    hasAuth: headers.has("authorization"),
+  });
 }
 ```
 
-## Response Formatting
+### Who is calling
 
-### Response Builders (recommended)
-
-`ResponseBuilder` helpers are the recommended way to build responses — they set
-the status code and `Content-Type` for you, so handler code stays short:
+`req.auth` says who is signed in. `requireAuth()` returns the user or throws
+for an anonymous caller — uncaught, that is a 500 — so a handler that wants to
+answer 401 or redirect checks `isAuthenticated` instead:
 
 ```javascript
-// JSON responses
-return ResponseBuilder.json({ users: ["Alice", "Bob"] });
-return ResponseBuilder.json({ error: "Not found" }, 404);
-
-// Text responses
-return ResponseBuilder.text("Hello, World!");
-
-// HTML responses
-return ResponseBuilder.html("<h1>Welcome</h1>");
-
-// Error responses (JSON error body)
-return ResponseBuilder.error(400, "Invalid input");
-
-// No content (204)
-return ResponseBuilder.noContent();
-
-// Redirects (302)
-return ResponseBuilder.redirect("/new-location");
+function profileHandler(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) {
+    return ResponseBuilder.redirect("/auth/login?redirect=/my-app/profile");
+  }
+  return ResponseBuilder.json({ id: auth.userId, name: auth.userName });
+}
 ```
 
-Under the hood a response is just an object of the shape
-`{ status, body, contentType, headers }`. You can return that raw shape directly
-when you need something the builders don't cover — a custom `Content-Type`,
-extra `headers`, or binary `bodyBase64`:
+The engine knows three roles (editor, administrator, and everyone else). What a
+person may do inside your app — members, owners, moderators — is your script's
+own data, decided from `auth.userId`.
+
+## Response Formatting
+
+### Response Builders
+
+```javascript
+return ResponseBuilder.json({ users: ["Alice", "Bob"] }); // 200, application/json
+return ResponseBuilder.json({ error: "Not found" }, 404);
+return ResponseBuilder.text("Hello, World!"); // text/plain
+return ResponseBuilder.html("<h1>Welcome</h1>"); // text/html
+return ResponseBuilder.error(400, "Invalid input"); // {"error": "..."} as JSON
+return ResponseBuilder.noContent(); // 204
+return ResponseBuilder.redirect("/new-location"); // 302
+```
+
+A response is an object of the shape `{ status, body, contentType, headers }`,
+and you can return that directly when the builders don't cover it — a custom
+`Content-Type`, extra `headers`, or a binary `bodyBase64`:
 
 ```javascript
 return {
@@ -630,150 +338,110 @@ return {
 };
 ```
 
-### HTTP Status Codes
+### HTML with JSX
 
-Use appropriate status codes:
+A `.tsx` or `.jsx` file renders JSX to HTML strings on the server:
 
-**Success:**
+```tsx
+function Greeting(props: { name: string }) {
+  return <p>Hello {props.name}</p>;
+}
 
-- `200` - OK (successful GET, PUT, DELETE)
-- `201` - Created (successful POST)
-- `204` - No Content (successful but no body)
-
-**Client Errors:**
-
-- `400` - Bad Request (invalid input)
-- `401` - Unauthorized (authentication required)
-- `403` - Forbidden (insufficient permissions)
-- `404` - Not Found (resource doesn't exist)
-- `405` - Method Not Allowed (wrong HTTP method)
-- `422` - Unprocessable Entity (validation failed)
-
-**Server Errors:**
-
-- `500` - Internal Server Error (unexpected error)
-- `502` - Bad Gateway (upstream service error)
-- `503` - Service Unavailable (temporary)
-
-### Content Types
-
-Common MIME types:
-
-```javascript
-// Text
-contentType: "text/plain; charset=UTF-8";
-contentType: "text/html; charset=UTF-8";
-contentType: "text/css";
-
-// Application
-contentType: "application/json";
-contentType: "application/xml";
-contentType: "application/pdf";
-contentType: "application/javascript";
-
-// Images
-contentType: "image/jpeg";
-contentType: "image/png";
-contentType: "image/gif";
-contentType: "image/svg+xml";
+function pageHandler(context: HandlerContext) {
+  return ResponseBuilder.html(
+    <main>
+      <h1>Dashboard</h1>
+      <Greeting name="aiwebengine" />
+    </main>,
+  );
+}
 ```
-
-The MIME types above matter mainly when you return the raw response shape;
-`ResponseBuilder.json`/`text`/`html` set the `Content-Type` for you.
 
 ## State Management
 
-### In-Memory Storage
+**Variables do not survive between requests.** Each invocation runs the
+program from the top, so `let counter = 0` at the top level is `0` again on the
+next request, and the next request may be served by another instance of a
+cluster anyway. Keep state in one of these:
 
-Scripts can maintain state between requests:
+| Store             | Scope                                | Good for                                         |
+| ----------------- | ------------------------------------ | ------------------------------------------------ |
+| `scriptStorage`   | The script, shared by every user     | Settings, small caches, a value one writer owns  |
+| `personalStorage` | One signed-in user within the script | Preferences, drafts, per-person notes            |
+| `database`        | The script's own tables              | Anything many people change, lists, queries      |
+| `secretStorage`   | The script, or one user              | API keys — used as `{{secret:NAME}}`, never read |
+
+### Key-value storage
+
+Both stores follow the browser `Storage` interface; values are strings of at
+most 1 MB.
 
 ```javascript
-// Global variables persist across requests
-let counter = 0;
-let users = [];
-let cache = {};
-
 function incrementHandler(context) {
-  counter++;
-  return jsonResponse(200, { counter: counter });
-}
-
-function resetHandler(context) {
-  counter = 0;
-  return jsonResponse(200, { counter: counter });
+  const count = parseInt(scriptStorage.getItem("counter") ?? "0") + 1;
+  scriptStorage.setItem("counter", String(count));
+  return ResponseBuilder.json({ counter: count });
 }
 ```
 
-**Important:** State is lost when:
+Two requests can read and write the same key at the same time, so a counter
+many people change can lose updates. Use a database table for those.
 
-- Server restarts
-- Script is reloaded
-- Script is updated
-
-### Session-like Storage
+### Database tables
 
 ```javascript
-const sessions = {};
-
-function loginHandler(context) {
-  const req = context.request;
-  const sessionId = generateSessionId();
-  sessions[sessionId] = {
-    user: req.form.username,
-    created: Date.now(),
-  };
-
-  return jsonResponse(200, { sessionId: sessionId });
+function init() {
+  database.ensureTable("items", {
+    columns: [
+      { name: "owner", type: "text" },
+      { name: "title", type: "text" },
+      { name: "done", type: "boolean", default: "false" },
+    ],
+  });
+  routeRegistry.registerRoute("/my-app/items", { handler: "listItems" });
+  routeRegistry.registerRoute("/my-app/items", {
+    handler: "addItem",
+    method: "POST",
+  });
 }
 
-function getUserHandler(context) {
-  const req = context.request;
-  const sessionId = req.headers["x-session-id"];
-  const session = sessions[sessionId];
+function listItems(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) return ResponseBuilder.error(401, "Sign in");
+  return ResponseBuilder.json(
+    database.query("items", { where: { owner: auth.userId }, limit: 100 }),
+  );
+}
 
-  if (!session) {
-    return errorResponse(401, "Invalid session");
-  }
-
-  return jsonResponse(200, { user: session.user });
+function addItem(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) return ResponseBuilder.error(401, "Sign in");
+  const { title } = context.request.json();
+  if (!title) return ResponseBuilder.error(400, "title is required");
+  const row = database.insert("items", { owner: auth.userId, title });
+  return ResponseBuilder.json(row, 201);
 }
 ```
 
-### Caching Pattern
+`database.transaction(fn)` groups writes, and `query(..., { forUpdate: true })`
+inside one stops two requests from acting on the same read. See the API
+reference.
+
+### Caching an upstream call
+
+Cache in storage, with the time it was fetched:
 
 ```javascript
-const cache = {};
-const CACHE_TTL = 60000; // 60 seconds
+const CACHE_TTL_MS = 60000;
 
-function getCachedData(key) {
-  const cached = cache[key];
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
-  }
-  return null;
-}
-
-function setCachedData(key, data) {
-  cache[key] = {
-    data: data,
-    timestamp: Date.now(),
-  };
-}
-
-function apiHandler(context) {
-  const req = context.request;
-  const cacheKey = `users_${req.query.page || 1}`;
-
-  // Check cache
-  let data = getCachedData(cacheKey);
-
-  if (!data) {
-    // Fetch fresh data
-    data = fetchUsers(req.query.page);
-    setCachedData(cacheKey, data);
-  }
-
-  return jsonResponse(200, data);
+function getRates() {
+  const cached = JSON.parse(scriptStorage.getItem("rates") ?? "null");
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+  const response = fetch("https://api.example.com/rates");
+  if (!response.ok) throw new Error(`Upstream answered ${response.status}`);
+  const data = response.json();
+  scriptStorage.setItem("rates", JSON.stringify({ at: Date.now(), data }));
+  return data;
 }
 ```
 
@@ -781,435 +449,93 @@ function apiHandler(context) {
 
 ### Try-Catch Pattern
 
-Always wrap risky operations:
+A handler that throws answers 500 and the error is logged. Catch what you can
+answer better:
 
 ```javascript
 function riskyHandler(context) {
-  const req = context.request;
   try {
-    // Operations that might fail
-    const data = JSON.parse(req.form.data);
-    const result = processData(data);
-
-    return jsonResponse(200, { result: result });
+    const data = context.request.json();
+    return ResponseBuilder.json({ result: processData(data) });
   } catch (error) {
-    console.error(`Error in riskyHandler: ${error.message}`);
-    return errorResponse(500, "Internal server error");
+    console.error(`riskyHandler: ${error.message}`);
+    return ResponseBuilder.error(500, "Internal server error");
   }
 }
 ```
 
 ### Validation
 
-Validate all inputs:
-
 ```javascript
 function createItemHandler(context) {
-  const req = context.request;
-  // Validate required fields
-  if (!req.form.name) {
-    return errorResponse(400, "Name is required");
+  const form = context.request.form;
+  if (!form.name) return ResponseBuilder.error(400, "Name is required");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email || "")) {
+    return ResponseBuilder.error(400, "Invalid email format");
   }
-
-  if (!req.form.email) {
-    return errorResponse(400, "Email is required");
+  if (form.name.length > 100) {
+    return ResponseBuilder.error(400, "Name too long (max 100 characters)");
   }
-
-  // Validate format
-  if (!isValidEmail(req.form.email)) {
-    return errorResponse(400, "Invalid email format");
-  }
-
-  // Validate length
-  if (req.form.name.length > 100) {
-    return errorResponse(400, "Name too long (max 100 characters)");
-  }
-
-  // Process valid data
-  const item = createItem(req.form);
-  return jsonResponse(201, { item: item });
-}
-
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-```
-
-### Centralized Error Handler
-
-```javascript
-function handleError(error, context) {
-  const errorId = Date.now().toString(36);
-  console.error(`[${errorId}] Error in ${context}: ${error.message}`);
-
-  return {
-    status: 500,
-    body: JSON.stringify({
-      error: "Internal server error",
-      errorId: errorId,
-    }),
-    contentType: "application/json",
-  };
-}
-
-function myHandler(context) {
-  try {
-    // Your logic
-    return jsonResponse(200, { success: true });
-  } catch (error) {
-    return handleError(error, "myHandler");
-  }
-}
-```
-
-## Best Practices
-
-### 1. Use Descriptive Names
-
-**Good:**
-
-```javascript
-function createUserHandler(context) {}
-function getUserByIdHandler(context) {}
-function updateUserEmailHandler(context) {}
-```
-
-**Bad:**
-
-```javascript
-function handler1(context) {}
-function func(context) {}
-function process(context) {}
-```
-
-### 2. Validate All Inputs
-
-```javascript
-function safeHandler(context) {
-  const req = context.request;
-  // Check required parameters
-  if (!req.query.id) {
-    return errorResponse(400, "Missing id parameter");
-  }
-
-  // Validate types
-  const id = parseInt(req.query.id);
-  if (isNaN(id)) {
-    return errorResponse(400, "Invalid id format");
-  }
-
-  // Check ranges
-  if (id < 1 || id > 1000000) {
-    return errorResponse(400, "ID out of range");
-  }
-
-  // Process validated data
-  return processId(id);
-}
-```
-
-### 3. Log Important Events
-
-```javascript
-function handler(context) {
-  const req = context.request;
-  console.log(`Request started: ${req.path}`);
-
-  try {
-    const result = doSomething();
-    console.log(`Request completed successfully`);
-    return jsonResponse(200, result);
-  } catch (error) {
-    console.error(`Request failed: ${error.message}`);
-    return errorResponse(500, "Internal error");
-  }
-}
-```
-
-### 4. Keep Handlers Focused
-
-**Good - Single Responsibility:**
-
-```javascript
-function listUsers(context) {
-  const users = getAllUsers();
-  return jsonResponse(200, { users: users });
-}
-
-function createUser(context) {
-  const user = buildUserFromForm(context.request.form);
-  saveUser(user);
-  return jsonResponse(201, { user: user });
-}
-```
-
-**Bad - Too Much in One Handler:**
-
-```javascript
-function usersHandler(context) {
-  const req = context.request;
-  if (req.method === "GET") {
-    // List logic
-  } else if (req.method === "POST") {
-    // Create logic
-  } else if (req.method === "PUT") {
-    // Update logic
-  } else if (req.method === "DELETE") {
-    // Delete logic
-  }
-  // Too complex!
-}
-```
-
-### 5. Use Helper Functions
-
-```javascript
-// Helpers
-function validateEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-function sanitizeInput(str) {
-  return str.trim().substring(0, 1000);
-}
-
-// Handler uses helpers
-function createHandler(context) {
-  const req = context.request;
-  const email = sanitizeInput(req.form.email);
-
-  if (!validateEmail(email)) {
-    return errorResponse(400, "Invalid email");
-  }
-
-  const id = generateId();
-  // ... continue processing
-}
-```
-
-## Inter-Script Communication
-
-### When Scripts Need to Communicate
-
-Scripts may need to coordinate with each other for:
-
-- **Event notifications** - User registration triggers email, analytics, and welcome message
-- **Workflow orchestration** - Order processing cascades through inventory, billing, and shipping
-- **Real-time updates** - Chat message broadcasts to notifications and activity tracking
-- **Decoupled architecture** - Services remain independent while coordinating behavior
-
-### Communication Methods
-
-aiwebengine provides several ways for scripts to communicate:
-
-**1. HTTP Routes (Request-Response)**
-
-Best for: Synchronous communication, return values needed
-
-```javascript
-// Service script: user-service.js
-function getUserHandler(context) {
-  const userId = context.request.query.id;
-  const user = findUser(userId);
-  return jsonResponse(200, { user: user });
-}
-
-function init() {
-  routeRegistry.registerRoute("/internal/users/get", {
-    handler: "getUserHandler",
-    method: "GET",
-  });
-}
-
-// Consumer script: profile-page.js
-function renderProfileHandler(context) {
-  const userId = context.request.query.userId;
-
-  // Call the other script's public URL. Loopback and private addresses are
-  // refused, so this is the engine's public host, not localhost.
-  const response = fetch(
-    "https://your-engine.example.com/internal/users/get?id=" + userId,
-  );
-  const data = response.json();
-
-  return renderProfile(data.user);
-}
-```
-
-**2. Script Storage (State Sharing)**
-
-Best for: Configuration, simple data sharing, caching
-
-```javascript
-// Writer script: config-manager.js
-function updateConfigHandler(context) {
-  const config = context.request.form;
-  scriptStorage.setItem("app:config", JSON.stringify(config));
-  return jsonResponse(200, { updated: true });
-}
-
-// Reader script: api-service.js
-function apiHandler(context) {
-  const configStr = scriptStorage.getItem("app:config");
-  const config = configStr ? JSON.parse(configStr) : {};
-
-  // Use config settings
-  const apiKey = config.apiKey || "default";
   // ...
 }
 ```
 
-**3. Server-Sent Event Streams (Real-Time Updates to Clients)**
+### Limits
 
-Best for: Client-facing real-time updates
+Each invocation has a wall-clock budget (10 s for a request by default) and a
+memory limit; `init()` has its own budget. The exact numbers for an engine are
+in its `/engine/openapi.json`, under `x-aiwebengine-limits`. Work in small
+steps and answer with an error rather than loop.
+
+## Scripts Working Together
+
+Every script has its own storage, tables and secrets; one script cannot read
+another's. To use another script, go through what it publishes.
+
+**1. Its MCP tools, with `tools`** — the usual way. The tool runs as the
+person making the request, with their permissions:
 
 ```javascript
-// Publisher script: chat-service.js
-function sendMessageHandler(context) {
-  const message = context.request.form;
-
-  // Broadcast to every client connected to the stream
-  routeRegistry.sendStreamMessage("/chat", {
-    message: message,
-    timestamp: new Date().toISOString(),
-  });
-
-  return jsonResponse(200, { sent: true });
-}
-
-function init() {
-  routeRegistry.registerRoute("/chat", { stream: true });
-  routeRegistry.registerRoute("/chat/send", {
-    handler: "sendMessageHandler",
-    method: "POST",
-  });
+function dashboardHandler(context) {
+  const open = tools.call(
+    "backlog_list",
+    { status: "open" },
+    { readOnly: true },
+  );
+  return ResponseBuilder.json({ open });
 }
 ```
 
-### Choosing the Right Method
+`tools.list(area?)` lists what is reachable. An anonymous request, `init()` and
+a scheduled job cannot call tools: there is nobody to act as.
 
-| Method             | Use When                            | Pros                               | Cons                             |
-| ------------------ | ----------------------------------- | ---------------------------------- | -------------------------------- |
-| **HTTP Routes**    | Need synchronous response or result | Request-response, familiar pattern | Tighter coupling, overhead       |
-| **Script Storage** | Simple config/state sharing         | Fast, simple                       | No notifications, manual polling |
-| **SSE Streams**    | Client needs real-time updates      | Push updates without polling       | Client-facing, one-way only      |
+**2. Its HTTP routes, with `fetch`** — for a public API the other script
+serves. `fetch` reaches public hosts only, so call the engine's public URL,
+and the request carries no session of the person you are serving.
 
-## Advanced Patterns
+**3. Server-Sent Event streams** — for pushing updates to browsers. A script
+broadcasts on its own streams with `routeRegistry.sendStreamMessage(path, data)`.
 
-### Middleware Pattern
+| Method       | Use when                                 | Runs as            |
+| ------------ | ---------------------------------------- | ------------------ |
+| `tools.call` | You need another script's data or action | The calling person |
+| `fetch`      | The other script has a public HTTP API   | Anonymous          |
+| SSE streams  | Browsers need live updates               | —                  |
 
-```javascript
-// Middleware functions
-function requireAuth(context, handler) {
-  const req = context.request;
-  const token = req.headers["authorization"];
-  if (!token) {
-    return errorResponse(401, "Authentication required");
-  }
+## Best Practices
 
-  // Validate token...
-  if (!isValidToken(token)) {
-    return errorResponse(401, "Invalid token");
-  }
-
-  // Call actual handler
-  return handler(context);
-}
-
-function logRequest(context, handler) {
-  const req = context.request;
-  console.log(`${req.method} ${req.path}`);
-  const response = handler(context);
-  console.log(`Response: ${response.status}`);
-  return response;
-}
-
-// Protected handler
-function protectedDataHandler(context) {
-  return requireAuth(context, (ctx) => {
-    return logRequest(ctx, (finalCtx) => {
-      return jsonResponse(200, { secret: "data" });
-    });
-  });
-}
-```
-
-### Factory Pattern
-
-```javascript
-function createCrudHandlers(resourceName, storage) {
-  return {
-    list: function (context) {
-      return jsonResponse(200, { [resourceName]: storage });
-    },
-
-    create: function (context) {
-      const req = context.request;
-      const item = { id: generateId(), ...req.form };
-      storage.push(item);
-      return jsonResponse(201, { [resourceName]: item });
-    },
-
-    // ... more handlers
-  };
-}
-
-// Usage
-const users = [];
-const userHandlers = createCrudHandlers("users", users);
-
-function init() {
-  routeRegistry.registerRoute("/api/users", {
-    handler: "listUsersHandler",
-    method: "GET",
-  });
-  routeRegistry.registerRoute("/api/users", {
-    handler: "createUserHandler",
-    method: "POST",
-  });
-}
-
-function listUsersHandler(context) {
-  return userHandlers.list(context);
-}
-
-function createUserHandler(context) {
-  return userHandlers.create(context);
-}
-```
-
-### Pagination Pattern
-
-```javascript
-function paginatedHandler(context) {
-  const req = context.request;
-  const page = parseInt(req.query.page || "1");
-  const limit = parseInt(req.query.limit || "10");
-
-  const offset = (page - 1) * limit;
-  const allItems = getAllItems();
-  const totalItems = allItems.length;
-  const totalPages = Math.ceil(totalItems / limit);
-
-  const items = allItems.slice(offset, offset + limit);
-
-  return jsonResponse(200, {
-    items: items,
-    pagination: {
-      page: page,
-      limit: limit,
-      totalItems: totalItems,
-      totalPages: totalPages,
-      hasNext: page < totalPages,
-      hasPrev: page > 1,
-    },
-  });
-}
-```
+1. **Prefix your paths** (`/my-app/...`); routes are shared per host.
+2. **Validate every input** and answer 400 with a reason.
+3. **Keep handlers in `lib/`** and make them global in `main.*`, so tests can
+   import them.
+4. **Write tests** as `*.test.ts` files and run them with `run_tests` (or
+   `make test`).
+5. **Check before deploying**: `check_script` runs `init()` without publishing
+   anything and reports missing handlers and refused routes.
+6. **Log what you will want to know** when a handler fails; `console.error`
+   for failures.
+7. **Never put a key in a file**: store it as a secret and use
+   `{{secret:NAME}}` in `fetch` headers.
 
 ## Next Steps
 
@@ -1221,54 +547,20 @@ function paginatedHandler(context) {
 
 ## Quick Reference
 
-### Essential Functions
-
-```javascript
-routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" }); // Register route
-console.log(message); // Write to logs
-```
-
-### Handler Template
-
 ```javascript
 function myHandler(context) {
   const req = context.request;
   try {
-    // Extract parameters
     const param = req.query.param || req.form.param;
-
-    // Validate
-    if (!param) {
-      return {
-        status: 400,
-        body: JSON.stringify({ error: "Missing parameter" }),
-        contentType: "application/json",
-      };
-    }
-
-    // Process
-    const result = process(param);
-
-    // Return success
-    return {
-      status: 200,
-      body: JSON.stringify({ result: result }),
-      contentType: "application/json",
-    };
+    if (!param) return ResponseBuilder.error(400, "Missing parameter");
+    return ResponseBuilder.json({ result: process(param) });
   } catch (error) {
-    console.error(`Error: ${error.message}`);
-    return {
-      status: 500,
-      body: JSON.stringify({ error: "Internal error" }),
-      contentType: "application/json",
-    };
+    console.error(`myHandler: ${error.message}`);
+    return ResponseBuilder.error(500, "Internal error");
   }
 }
 
 function init() {
-  routeRegistry.registerRoute("/my-endpoint", {
-    handler: "myHandler",
-    method: "GET",
-  });
+  routeRegistry.registerRoute("/my-app/endpoint", { handler: "myHandler" });
 }
 ```

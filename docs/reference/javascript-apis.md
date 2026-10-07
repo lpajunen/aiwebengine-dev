@@ -11,7 +11,7 @@ function myHandler(context) {
   const req = context.request;
 
   // Access req.method, req.path, req.query, req.form, req.headers, req.body
-  // Use context.args, context.invocationType, context.metadata as needed
+  // Use context.args, context.kind, context.meta as needed
 }
 ```
 
@@ -19,9 +19,8 @@ The examples below follow this pattern—code snippets declare `const req = cont
 
 Two fields say what kind of run this is and identify it:
 
-- `context.kind` (and its older name `context.invocationType`) is one of
-  `httpRoute`, `streamCustomization`, `init`, `scheduled`, `mcpTool`,
-  `mcpPrompt`, `test` or `eval`.
+- `context.kind` is one of `httpRoute`, `streamCustomization`, `init`,
+  `scheduled`, `mcpTool`, `mcpPrompt`, `test` or `eval`.
 - `context.invocationId` identifies this invocation. Every log line the handler
   writes is filed under it, so
   `GET /engine/read_logs?request_id=<invocationId>` returns exactly the lines
@@ -125,19 +124,18 @@ function notifyHandler(context) {
   return { status: 200, body: "Notification sent" };
 }
 
-// Register the handler
-routeRegistry.registerRoute("/notify", {
-  handler: "notifyHandler",
-  method: "POST",
-});
+function init() {
+  routeRegistry.registerRoute("/notifications", { stream: true });
+  routeRegistry.registerRoute("/notify", {
+    handler: "notifyHandler",
+    method: "POST",
+  });
+}
 ```
 
 **Real-time Chat Example:**
 
 ```javascript
-// Register a chat stream
-routeRegistry.registerRoute("/chat", { stream: true });
-
 function sendMessage(context) {
   const req = context.request;
   const { user, message } = req.form;
@@ -157,10 +155,13 @@ function sendMessage(context) {
   return { status: 200, body: "Message sent" };
 }
 
-routeRegistry.registerRoute("/chat/send", {
-  handler: "sendMessage",
-  method: "POST",
-});
+function init() {
+  routeRegistry.registerRoute("/chat", { stream: true });
+  routeRegistry.registerRoute("/chat/send", {
+    handler: "sendMessage",
+    method: "POST",
+  });
+}
 ```
 
 ### routeRegistry.sendStreamMessageFiltered(path, data, filter, matchMode)
@@ -205,13 +206,17 @@ routeRegistry.sendStreamMessageFiltered(
 
 ### Listing what is registered
 
-Use the engine's HTTP API at `/engine/list_routes`, which returns every
-registration in the engine — script routes, SSE streams and asset routes —
-as `{host, routes}`:
+The engine operation `list_routes` returns every registration in the engine —
+script routes, SSE streams and file routes — as `{host, routes, count}`. Call
+it over HTTP on the management host, as the `list_routes` MCP tool, or from a
+script with `engine.call`:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" "$MANAGE_HOST/engine/list_routes"
+```
 
 ```javascript
-const { routes } = await (await fetch("/engine/list_routes")).json();
-
+const { routes } = engine.call("list_routes", {});
 routes.forEach((route) => {
   // method is the HTTP method for handlers, or "STREAM" / "ASSET"
   console.log(`${route.method} ${route.path} -> ${route.handler}`);
@@ -533,9 +538,9 @@ function saveUserPreference(context) {
 
 **Security Notes:**
 
-- User ID is handled transparently by the engine - scripts never see user IDs directly
+- The engine keys the store by the signed-in user; a script cannot name another user's store
 - Each user can only access their own data
-- Data persists across sessions when PostgreSQL is configured
+- Data persists across sessions and engine restarts
 - Unauthenticated requests cannot access personal storage
 
 ## Secret Storage API
@@ -543,7 +548,7 @@ function saveUserPreference(context) {
 The global `secretStorage` object manages secrets (API keys, tokens, passwords)
 scoped to the current script. Secrets are encrypted at rest and are never
 returned in plaintext — you check whether one exists and reference its value in
-outbound `fetch` requests with the `{{secret:KEY}}` / `{{KEY}}` injection syntax
+outbound `fetch` requests with the `{{secret:KEY}}` injection syntax
 (see the HTTP Fetch section below).
 
 Secrets live at two levels for a script:
@@ -571,7 +576,7 @@ function callApiHandler(context) {
     headers: { Authorization: "Bearer {{secret:WEATHER_API_KEY}}" },
   });
 
-  return ResponseBuilder.json(JSON.parse(response).body);
+  return ResponseBuilder.json(response.json());
 }
 ```
 
@@ -727,15 +732,16 @@ Makes HTTP requests to external APIs with built-in security features including s
 
 **Parameters:**
 
-- `url` (string): The URL to request
-- `options` (string, optional): JSON string containing request options
+- `url` (string): The URL to request — http or https, to a public host
+- `options` (object, optional): request options
 
 **Options Object:**
 
 - `method` (string, optional): HTTP method - `"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, `"PATCH"`. Default: `"GET"`
 - `headers` (object, optional): Request headers as key-value pairs
 - `body` (string, optional): Request body for POST/PUT/PATCH requests
-- `timeout_ms` (number, optional): Timeout in milliseconds. Default: 30000 (30 seconds)
+- `timeout` (number, optional): Timeout in milliseconds
+- `binary` (boolean, optional): answer with the body as `bodyBase64`
 
 **Returns:** A response object with
 
@@ -743,6 +749,7 @@ Makes HTTP requests to external APIs with built-in security features including s
 - `ok` (boolean): `true` if status is 2xx
 - `headers` (object): Response headers
 - `body` (string): Response body
+- `bodyBase64` (string): the body as base64, when `binary` was set
 - `text()`: the body as text
 - `json()`: the body parsed as JSON (throws if it is not JSON)
 
@@ -898,7 +905,7 @@ These URLs will be rejected for security reasons:
 1. **Always use try-catch**: Network requests can fail in many ways
 2. **Check response.ok**: Don't assume requests always succeed
 3. **Use secrets for API keys**: Never hardcode API keys in scripts
-4. **Set appropriate timeouts**: Adjust `timeout_ms` based on expected response time
+4. **Set appropriate timeouts**: Adjust `timeout` based on expected response time
 5. **Handle rate limits**: Implement retry logic for 429 responses
 6. **Log errors**: Use `console.log()` to track fetch failures
 7. **Validate response data**: Parse and validate JSON responses before using them
@@ -943,19 +950,24 @@ eventSource.onerror = function (event) {
 - **Limit message frequency**: Avoid overwhelming clients with too many messages
 - **Use meaningful paths**: Organize streams logically (e.g., `/chat/room1`, `/notifications`)
 - **Use filtered broadcasting**: Use `routeRegistry.sendStreamMessageFiltered()` for personalized messages instead of creating dynamic endpoints
-- **Leverage metadata**: Store user/room information in connection metadata for efficient filtering
+- **Leverage metadata**: Return user/room information from the stream's `authorize` function; `sendStreamMessageFiltered` matches against it
 
 ## Request Object
 
-The `req` parameter passed to handler functions contains information about the HTTP request.
+`context.request` (aliased `req` below) describes the HTTP request.
 
 ### Properties
 
-- `method` (string): HTTP method (`"GET"`, `"POST"`, `"PUT"`, `"DELETE"`)
+- `method` (string): HTTP method (`"GET"`, `"POST"`, `"PUT"`, `"DELETE"`, ...)
 - `path` (string): Request path (e.g., `"/api/users/123"`)
 - `query` (object): Query parameters as key-value pairs
-- `form` (object): Form data for POST requests (key-value pairs)
-- `headers` (object): Request headers
+- `searchParams` (`URLSearchParams`): the same, for repeated keys
+- `params` (object): `:name` segments of the route path
+- `form` (object): Form fields of a form-encoded or multipart body
+- `files` (array): Files uploaded in a multipart body
+- `headers` (`Headers`): Request headers — `headers.get("content-type")` or `headers["content-type"]`
+- `body` (string): The raw body; `text()` returns it and `json()` parses it (throwing if it is not JSON)
+- `auth` (object): Who is calling — `isAuthenticated`, `userId`, `userEmail`, `userName`, `isEditor`, `isAdmin`, `requireAuth()`
 
 ### Examples
 
@@ -995,7 +1007,9 @@ Handler functions must return a response object that defines how the server resp
 
 ### Optional Properties
 
-- `contentType` (string): MIME type (defaults to `"text/plain; charset=UTF-8"`)
+- `contentType` (string): MIME type
+- `headers` (object): Extra response headers
+- `bodyBase64` (string): A binary body, in place of `body`
 
 ### Response Examples
 
@@ -1139,13 +1153,14 @@ function deleteHandler(context) {
 }
 ```
 
-### ResponseBuilder.redirect(location)
+### ResponseBuilder.redirect(location, status)
 
 Creates a redirect response.
 
 **Parameters:**
 
 - `location` (string): Redirect URL
+- `status` (number, optional): HTTP status code (default: 302)
 
 **Returns:** Response object
 
@@ -1219,9 +1234,9 @@ Basic console logging (output goes to server logs).
   Reading logs back is the HTTP API's job: `GET /engine/read_logs` returns
   `{uri, logs, count, timestamp}`, with each entry shaped
   `{scriptUri, message, level, timestamp, seq, requestId, kind, route}`. Omit
-  `uri` for every script (newest first) or pass one for a single script (oldest
-  first); `level`, `since`, `limit`, `contains`, `request_id`, `kind`, `route`
-  and `after_seq` narrow the result. `GET /engine/script_logs/stream` follows
+  `script` for every script (newest first) or pass one for a single script
+  (oldest first); `level`, `since`, `limit`, `contains`, `request_id`, `kind`,
+  `route`, `revision` and `after_seq` narrow the result. `GET /engine/script_logs/stream` follows
   the log live over Server-Sent Events with the same filters.
   `POST /engine/clear_logs` clears one script's logs. The engine answers all three
   as the signed-in user, so an Administrator or an owner of the script sees its
@@ -1249,9 +1264,9 @@ Reading them back from a page, with the visitor's own session:
 const { logs } = await (await fetch("/engine/read_logs?limit=100")).json();
 
 // One script's errors, oldest first
-const uri = encodeURIComponent("https://example.com/api-users");
+const script = "api-users";
 const errors = await (
-  await fetch(`/engine/read_logs?script=${uri}&level=ERROR`)
+  await fetch(`/engine/read_logs?script=${script}&level=ERROR`)
 ).json();
 
 // Each entry has: scriptUri, message, level, timestamp (in milliseconds),
@@ -1263,7 +1278,7 @@ logs.forEach((log) => {
 });
 
 // Follow the log as it is written
-const source = new EventSource(`/engine/script_logs/stream?uri=${uri}`);
+const source = new EventSource(`/engine/script_logs/stream?script=${script}`);
 source.addEventListener("log", (event) => {
   const entry = JSON.parse(event.data);
   console.log(`[${entry.level}] ${entry.message}`);
@@ -1357,7 +1372,7 @@ const hello = "world";
 
 ## Scheduler Service
 
-Scripts can use `schedulerService` to register background jobs that run even when no HTTP requests are active. Jobs live entirely in memory and are cleared automatically whenever the script is reinitialized or deleted.
+Scripts can use `schedulerService` to register background jobs that run even when no HTTP requests are active. Jobs are stored in the database, so they survive a restart and run on one instance of a cluster; a script's jobs are cleared whenever it is reinitialized or deleted, and its `init()` registers them again. A one-off job whose handler throws is retried, up to five attempts.
 
 > **Requirements:**
 >
@@ -1417,7 +1432,7 @@ function sendReport(context) {
 - `name`: Job name (defaults to handler name)
 - `type`: `"one-off"` or `"recurring"`
 - `scheduledFor`: Current execution time in UTC
-- `intervalSeconds`: Interval length for recurring jobs (or `null`)
+- `intervalSeconds` / `intervalMilliseconds`: Interval length for recurring jobs (or `null`)
 
 ### Complete Example
 
@@ -1454,7 +1469,7 @@ function init(context) {
 Tips:
 
 1. Pick deterministic `name` values so re-registration overwrites the previous job instead of creating duplicates.
-2. Keep scheduled handlers idempotent—if the engine restarts, missed jobs resume on the next interval.
+2. Keep scheduled handlers idempotent—a retried or resumed job may run work that already partly happened.
 3. Log meaningful progress or failures. The engine also records `FATAL` log entries when a scheduled handler throws.
 
 ## Error Handling

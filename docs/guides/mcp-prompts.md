@@ -1,26 +1,43 @@
 # MCP Prompts Guide
 
-This guide explains how to create and use MCP (Model Context Protocol) prompts in the AI Web Engine.
+How to publish MCP (Model Context Protocol) prompts from a script: reusable
+templates an AI client fills in with arguments and hands to the model.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
 - [What are MCP Prompts?](#what-are-mcp-prompts)
-- [Prompts vs Tools](#prompts-vs-tools)
 - [Registering Prompts](#registering-prompts)
-- [Prompt Arguments](#prompt-arguments)
+- [The Handler](#the-handler)
 - [Testing Prompts](#testing-prompts)
 - [Best Practices](#best-practices)
-- [Examples](#examples)
+- [Example: Form Handler Generator](#example-form-handler-generator)
 
 ## Quick Start
 
 ```javascript
-// In your script's init() function
-function init(context) {
-  // Register a prompt with arguments
+function createRestEndpoint(context) {
+  const { resourceName, method } = context.arguments;
+  return {
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text:
+            `Write an aiwebengine handler for ${method} /${resourceName}. ` +
+            `Register it in init() with routeRegistry.registerRoute, validate ` +
+            `the input, answer with ResponseBuilder.json, and store rows with ` +
+            `database.insert / database.query.`,
+        },
+      },
+    ],
+  };
+}
+
+function init() {
   mcpRegistry.registerPrompt("create_rest_endpoint", {
-    description: "Generate a complete REST API endpoint with handler and route",
+    description: "Write a REST endpoint for an aiwebengine script",
     arguments: [
       {
         name: "resourceName",
@@ -33,45 +50,76 @@ function init(context) {
         required: true,
       },
     ],
-    handler: "create_rest_endpoint",
+    handler: "createRestEndpoint",
   });
-
-  return { success: true };
 }
+```
 
-// Implement the prompt handler (same name as prompt)
-function create_rest_endpoint(args) {
-  const { resourceName, method } = args;
+## What are MCP Prompts?
 
-  // Generate the code template
-  const code = `
-// ${method} handler for ${resourceName}
-function handle${resourceName}${method}(req, res) {
-  // TODO: Implement ${resourceName} ${method} logic
-  return {
-    success: true,
-    data: {}
-  };
-}
+A prompt is a named template the person picks in their AI client (often as a
+slash command). The client asks for the arguments, calls `prompts/get`, and
+puts the messages your handler returns into the conversation.
 
-// Register the endpoint
-endpoints.register("${method} /api/${resourceName}", handle${resourceName}${method});
-  `.trim();
+| Feature     | **Tools**                                 | **Prompts**                                       |
+| ----------- | ----------------------------------------- | ------------------------------------------------- |
+| Who invokes | The model decides to call it              | The person picks it                               |
+| Returns     | Data                                      | Conversation messages                             |
+| Use for     | Reading or changing data, running actions | Reusable instructions, workflows, starting points |
 
+## Registering Prompts
+
+```javascript
+mcpRegistry.registerPrompt(name, { description, arguments, handler });
+```
+
+- `name` (string): 1-100 characters
+- `description` (string): what the prompt is for, 1-1000 characters
+- `arguments` (array, optional): `{ name, description?, required? }` each
+- `handler` (string): the name of a global function of `main.*`
+
+Register only in `init()`. The call answers `{ ok: true }` or
+`{ ok: false, reason }`. Registering takes an editor who owns the script, and a
+script's prompts are replaced each time its `init()` runs.
+
+## The Handler
+
+The handler is called with `{ mode, arguments }` — not the request context the
+other handlers receive — and runs as the person calling.
+
+**Prompt mode** (`prompts/get`): `context.mode === "prompt"`, and
+`context.arguments` holds what the person filled in. Answer
+`{ messages: [...] }`, each `{ role: "user" | "assistant", content: { type:
+"text", text } }`. Throw an `Error` when the arguments are unusable.
+
+**Completion mode** (`completion/complete`, an autocomplete while the person
+types an argument): `context.mode === "completion"`, with
+`completingArgument`, `partialValue` and the `arguments` given so far. Answer
+`{ values: [...], total?, hasMore? }`.
+
+```javascript
+function createRestEndpoint(context) {
+  if (context.mode === "completion") {
+    if (context.completingArgument === "method") {
+      const values = ["GET", "POST", "PUT", "DELETE"].filter((m) =>
+        m.startsWith(context.partialValue.toUpperCase()),
+      );
+      return { values, total: values.length, hasMore: false };
+    }
+    return { values: [] };
+  }
+
+  const { resourceName, method } = context.arguments;
+  if (!["GET", "POST", "PUT", "DELETE"].includes(method)) {
+    throw new Error("method must be GET, POST, PUT or DELETE");
+  }
   return {
     messages: [
       {
         role: "user",
         content: {
           type: "text",
-          text: `Create a ${method} endpoint for ${resourceName}`,
-        },
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: code,
+          text: `Write an aiwebengine handler for ${method} /${resourceName}.`,
         },
       },
     ],
@@ -79,171 +127,42 @@ endpoints.register("${method} /api/${resourceName}", handle${resourceName}${meth
 }
 ```
 
-## What are MCP Prompts?
-
-MCP prompts are **reusable templates** that help AI assistants generate code or content based on user input. Unlike MCP tools which perform actions, prompts:
-
-- Provide structured workflows for common tasks
-- Help AI assistants understand what code to generate
-- Define clear inputs (arguments) needed for generation
-- Return messages that guide the conversation
-
-Think of prompts as "code recipes" that AI assistants can follow to create consistent, high-quality output.
-
-## Prompts vs Tools
-
-| Feature     | **Tools**                                         | **Prompts**                                            |
-| ----------- | ------------------------------------------------- | ------------------------------------------------------ |
-| Purpose     | Execute actions                                   | Generate templates                                     |
-| Returns     | Data/results                                      | Conversation messages                                  |
-| When to use | Reading files, modifying data, running operations | Creating code, providing workflows, guiding generation |
-| Example     | `read_file`, `write_file`, `search_files`         | `create_rest_endpoint`, `add_form_handler`             |
-
-**Use Tools when you need to:**
-
-- Read or write files
-- Query databases
-- Perform calculations
-- Execute operations
-
-**Use Prompts when you need to:**
-
-- Generate code templates
-- Provide structured workflows
-- Guide AI through complex tasks
-- Offer reusable patterns
-
-## Registering Prompts
-
-### Basic Registration
+A prompt can read the script's own data to build its messages — a project's
+conventions from a file, recent items from a table:
 
 ```javascript
-mcpRegistry.registerPrompt(name, { description, arguments, handler });
-```
+import conventions from "./resources/conventions.md";
 
-**Parameters:**
-
-- `name` (string, required): Unique identifier (1-100 characters, alphanumeric + underscores)
-- `description` (string, required): What the prompt generates (1-1000 characters)
-- `arguments` (array, optional): argument definitions, `{ name, description, required }`
-- `handler` (string, required): Name of the JavaScript function that generates messages
-
-**Handler Function:**
-
-- Named as specified in the registration
-- Receives **context object** with mode and arguments
-- In **prompt mode** (`context.mode === "prompt"`): returns messages array
-- In **completion mode** (`context.mode === "completion"`): returns completion suggestions
-- Has access to all standard APIs (console, scriptStorage, fetch, etc.)
-
-**Context Object Structure:**
-
-```javascript
-// Prompt mode (prompts/get)
-{
-  mode: "prompt",
-  arguments: { /* all provided arguments */ }
+function reviewChecklist(context) {
+  return {
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: `Review this change against our conventions:\n\n${conventions}`,
+        },
+      },
+    ],
+  };
 }
-
-// Completion mode (completion/complete)
-{
-  mode: "completion",
-  completingArgument: "argumentName",  // which argument is being completed
-  partialValue: "partial text",        // what user has typed so far
-  arguments: { /* previously completed arguments */ }
-}
-```
-
-### Security Requirements
-
-- Registration is allowed to the script's owners, Editors and Administrators —
-  the engine decides from the signed-in user, not from the script
-- All registrations are audit-logged
-- Script URI is automatically tracked
-- Prompts are cleared when scripts update
-
-## Prompt Arguments
-
-Arguments define what information the prompt needs to generate content.
-
-### Argument Structure
-
-```javascript
-{
-  name: "argumentName",      // Required: parameter name
-  description: "what it is", // Required: clear explanation
-  required: true             // Required: whether it's mandatory
-}
-```
-
-### Example with Multiple Arguments
-
-```javascript
-mcpRegistry.registerPrompt("create_form_handler", {
-  description: "Generate an HTML form with POST handler",
-  handler: "createFormHandler",
-  arguments: [
-    {
-      name: "formName",
-      description: "The form name (e.g., 'contact', 'registration')",
-      required: true,
-    },
-    {
-      name: "fields",
-      description: "Comma-separated field names (e.g., 'name, email, message')",
-      required: true,
-    },
-    {
-      name: "submitPath",
-      description: "The form submission path",
-      required: false,
-    },
-  ],
-});
 ```
 
 ## Testing Prompts
 
-### 1. List Available Prompts
+`/mcp` takes a bearer token whose audience is that host's `/mcp` (in a
+checkout with the repository tooling, `make oauth-login` stores one).
 
 ```bash
+# List prompts
 curl -X POST https://example.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "prompts/list"
-  }'
-```
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}'
 
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "prompts": [
-      {
-        "name": "create_rest_endpoint",
-        "description": "Generate a complete REST API endpoint",
-        "arguments": [
-          {
-            "name": "resourceName",
-            "description": "The resource name",
-            "required": true
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### 2. Get Prompt with Arguments
-
-```bash
+# Get one, filled in
 curl -X POST https://example.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
@@ -251,270 +170,76 @@ curl -X POST https://example.com/mcp \
     "method": "prompts/get",
     "params": {
       "name": "create_rest_endpoint",
-      "arguments": {
-        "resourceName": "products",
-        "method": "GET"
-      }
+      "arguments": { "resourceName": "products", "method": "GET" }
     }
   }'
-```
 
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "messages": [
-      {
-        "role": "user",
-        "content": {
-          "type": "text",
-          "text": "Create a GET endpoint for products"
-        }
-      },
-      {
-        "role": "assistant",
-        "content": {
-          "type": "text",
-          "text": "// GET handler for products\nfunction handleProductsGET(req, res) ..."
-        }
-      }
-    ]
-  }
-}
-```
-
-### 3. Test Completions
-
-```bash
+# Complete an argument
 curl -X POST https://example.com/mcp \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,
     "method": "completion/complete",
     "params": {
-      "ref": {
-        "type": "ref/prompt",
-        "name": "create_rest_endpoint"
-      },
-      "argument": {
-        "name": "method",
-        "value": "P"
-      }
+      "ref": { "type": "ref/prompt", "name": "create_rest_endpoint" },
+      "argument": { "name": "method", "value": "P" }
     }
   }'
 ```
 
-**Response:**
+The completion answers:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 3,
   "result": {
-    "completion": {
-      "values": ["POST", "PUT", "PATCH"],
-      "total": 3,
-      "hasMore": false
-    }
+    "completion": { "values": ["POST", "PUT"], "total": 2, "hasMore": false }
   }
 }
 ```
 
-### 4. Test via VS Code MCP Client
-
-Configure `.vscode/mcp.json`:
+In VS Code, add the engine to `.vscode/mcp.json` and the prompts appear as
+slash commands in chat:
 
 ```json
 {
-  "mcpServers": {
-    "aiwebengine": {
-      "url": "https://example.com/mcp"
-    }
+  "servers": {
+    "aiwebengine": { "type": "http", "url": "https://example.com/mcp" }
   }
 }
 ```
 
-Then in AI assistant:
-
-1. Ask to list available prompts
-2. Use a prompt with arguments
-3. Review generated code
+A handler can also be tested without MCP: call it from a `*.test.ts` file with
+`{ mode: "prompt", arguments: {...} }` and check the messages.
 
 ## Best Practices
 
-### 1. Write Clear Descriptions
+1. **Describe the outcome** in `description`: "Write a REST endpoint with
+   validation and a database table", not "Makes an endpoint".
+2. **Name and describe each argument**, with an example:
+   `"Comma-separated field names (e.g., 'name, email, message')"`.
+3. **Offer completions** for arguments with a known set of values.
+4. **Validate in prompt mode, never in completion mode**: a half-typed
+   argument is not an error.
+5. **Ask for working code in the engine's idiom** — handlers named in
+   `init()`, `ResponseBuilder`, `database` — when the prompt generates code,
+   so the result runs without translation.
 
-**Good:**
-
-```javascript
-"Generate a REST API endpoint with handler function, route registration, error handling, and JSON response formatting";
-```
-
-**Bad:**
-
-```javascript
-"Makes an endpoint";
-```
-
-### 2. Define Precise Arguments
-
-**Good:**
+## Example: Form Handler Generator
 
 ```javascript
-{
-  name: "method",
-  description: "HTTP method (GET, POST, PUT, DELETE)",
-  required: true
-}
-```
+function createFormHandler(context) {
+  if (context.mode === "completion") return { values: [] };
 
-**Bad:**
-
-```javascript
-{
-  name: "type",
-  description: "The type",
-  required: true
-}
-```
-
-### 3. Provide Examples in Descriptions
-
-```javascript
-{
-  name: "fields",
-  description: "Comma-separated field names (e.g., 'name, email, message')",
-  required: true
-}
-```
-
-### 4. Support Both Prompt and Completion Modes
-
-```javascript
-function myPromptHandler(context) {
-  // Handle completion mode
-  if (context.mode === "completion") {
-    const { completingArgument, partialValue, arguments: args } = context;
-
-    if (completingArgument === "method") {
-      const methods = ["GET", "POST", "PUT", "DELETE"];
-      const filtered = methods.filter((m) =>
-        m.toLowerCase().startsWith(partialValue.toLowerCase()),
-      );
-      return {
-        values: filtered,
-        total: filtered.length,
-        hasMore: false,
-      };
-    }
-
-    return { values: [], total: 0, hasMore: false };
-  }
-
-  // Handle prompt mode
-  const { arguments: args } = context;
-  return {
-    messages: [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: `User's request using ${args.param}`,
-        },
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: `Generated code or explanation`,
-        },
-      },
-    ],
-  };
-}
-```
-
-### 5. Validate Arguments
-
-```javascript
-function myPromptHandler(context) {
-  // Skip validation in completion mode
-  if (context.mode === "completion") {
-    // Handle completions...
-    return { values: [], total: 0, hasMore: false };
-  }
-
-  const { arguments: args } = context;
-
-  if (!args.required_param) {
-    throw new Error("required_param is missing");
-  }
-
-  const validMethods = ["GET", "POST", "PUT", "DELETE"];
-  if (!validMethods.includes(args.method)) {
-    throw new Error(
-      `Invalid method. Must be one of: ${validMethods.join(", ")}`,
-    );
-  }
-
-  // Generate content...
-}
-```
-
-## Examples
-
-### Example 1: REST Endpoint Generator
-
-```javascript
-// Register prompt
-mcpRegistry.registerPrompt("create_rest_endpoint", {
-  description:
-    "Generate a REST API endpoint with handler and route registration",
-  arguments: [
-    {
-      name: "resourceName",
-      description: "Resource name (e.g., 'users', 'products')",
-      required: true,
-    },
-    {
-      name: "method",
-      description: "HTTP method (GET, POST, PUT, DELETE)",
-      required: true,
-    },
-    {
-      name: "path",
-      description: "URL path (e.g., '/api/users')",
-      required: true,
-    },
-  ],
-  handler: "create_rest_endpoint",
-});
-
-// Handler function (same name as prompt)
-function create_rest_endpoint(args) {
-  const { resourceName, method, path } = args;
-
-  const code = `
-// ${method} handler for ${resourceName}
-function handle${resourceName}${method}(request) {
-  console.log("${method} ${path} called");
-  
-  // TODO: Implement ${resourceName} ${method} logic here
-  
-  return {
-    success: true,
-    data: []
-  };
-}
-
-// Register the endpoint
-endpoints.register("${method} ${path}", handle${resourceName}${method});
-console.log("Registered ${method} ${path}");
-  `.trim();
+  const { formName, fields, submitPath } = context.arguments;
+  const fieldList = fields
+    .split(",")
+    .map((f) => f.trim())
+    .filter(Boolean);
+  if (fieldList.length === 0) throw new Error("fields is empty");
 
   return {
     messages: [
@@ -522,128 +247,47 @@ console.log("Registered ${method} ${path}");
         role: "user",
         content: {
           type: "text",
-          text: `Create a ${method} endpoint at ${path} for ${resourceName}`,
-        },
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: code,
-        },
-      },
-    ],
-  };
-}
-```
-
-### Example 2: Form Handler Generator
-
-```javascript
-// Register prompt
-mcpRegistry.registerPrompt("create_form_handler", {
-  description: "Generate HTML form with POST handler",
-  arguments: [
-    {
-      name: "formName",
-      description: "Form name (e.g., 'contact', 'registration')",
-      required: true,
-    },
-    {
-      name: "fields",
-      description: "Comma-separated fields (e.g., 'name, email, message')",
-      required: true,
-    },
-    {
-      name: "submitPath",
-      description: "Form submission path (e.g., '/submit_contact')",
-      required: true,
-    },
-  ],
-  handler: "create_form_handler",
-});
-
-// Handler function (same name as prompt)
-function create_form_handler(args) {
-  const { formName, fields, submitPath } = args;
-  const fieldList = fields.split(",").map((f) => f.trim());
-
-  const htmlFields = fieldList
-    .map((field) => {
-      const label = field.charAt(0).toUpperCase() + field.slice(1);
-      if (field === "message") {
-        return `
-    <label for="${field}">${label}:</label>
-    <textarea id="${field}" name="${field}" required></textarea>`;
-      }
-      return `
-    <label for="${field}">${label}:</label>
-    <input type="${field === "email" ? "email" : "text"}" id="${field}" name="${field}" required>`;
-    })
-    .join("\n");
-
-  const code = `
-// ${formName} form handler
-function render${formName}Form() {
-  return \`
-    <form method="POST" action="${submitPath}">
-      <h2>${formName.charAt(0).toUpperCase() + formName.slice(1)} Form</h2>
-      ${htmlFields}
-      <button type="submit">Submit</button>
-    </form>
-  \`;
-}
-
-function handle${formName}Submit(context) {
-  const formData = context.request.form;
-  
-  // Validate fields
-  ${fieldList
-    .map(
-      (f) => `
-  if (!formData.${f}) {
-    return { error: "${f} is required" };
-  }`,
-    )
-    .join("")}
-  
-  // TODO: Process form submission
-  console.log("${formName} form submitted:", formData);
-  
-  return {
-    success: true,
-    message: "Form submitted successfully"
-  };
-}
-
-// Register endpoints
-endpoints.register("GET /${formName}", render${formName}Form);
-endpoints.register("POST ${submitPath}", handle${formName}Submit);
-  `.trim();
-
-  return {
-    messages: [
-      {
-        role: "user",
-        content: {
-          type: "text",
-          text: `Create a ${formName} form with fields: ${fields}`,
-        },
-      },
-      {
-        role: "assistant",
-        content: {
-          type: "text",
-          text: code,
+          text: [
+            `Write an aiwebengine script with a "${formName}" form.`,
+            `GET ${submitPath} serves an HTML form with the fields: ${fieldList.join(", ")}.`,
+            `POST ${submitPath} reads context.request.form, answers 400 naming any missing field,`,
+            `and stores the submission with database.insert in a table created by`,
+            `database.ensureTable in init(). Register both routes in init().`,
+          ].join("\n"),
         },
       },
     ],
   };
+}
+
+function init() {
+  mcpRegistry.registerPrompt("create_form_handler", {
+    description: "Write a script serving an HTML form and storing submissions",
+    arguments: [
+      {
+        name: "formName",
+        description: "Form name (e.g., 'contact', 'registration')",
+        required: true,
+      },
+      {
+        name: "fields",
+        description: "Comma-separated fields (e.g., 'name, email, message')",
+        required: true,
+      },
+      {
+        name: "submitPath",
+        description: "Path of the form (e.g., '/contact')",
+        required: true,
+      },
+    ],
+    handler: "createFormHandler",
+  });
 }
 ```
 
 ## See Also
 
-- [MCP Tools Guide](mcp-tools.md) - Learn about MCP tools for actions
-- [Quick Start Guide](../getting-started/01-first-script.md) - Get started with AI Web Engine
+- [MCP Tools Guide](mcp-tools.md) - Tools for actions
+- [Quick Start Guide](../getting-started/01-first-script.md) - Your first script
 - [JavaScript API Reference](../reference/javascript-apis.md) - Full API documentation
+- [`mcp_prompts_demo`](https://github.com/lpajunen/aiwebengine-examples/tree/main/mcp_prompts_demo) - A working example

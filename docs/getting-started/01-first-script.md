@@ -21,33 +21,32 @@ Before you start, make sure you have:
 
 ## Step 1: Understanding Script Structure
 
-Every aiwebengine script has three key parts:
+A script is a tree of files whose entrypoint is `main.js` (or `main.ts`). A
+script that serves HTTP has two parts:
 
 ```javascript
-// 1. Handler Function - processes requests
+// 1. Handler function - processes requests
 function myHandler(context) {
   const req = context.request;
 
   return ResponseBuilder.text("Hello!");
 }
 
-// 2. Initialization Function - registers routes
+// 2. init() - registers routes; the engine calls it, you never do
 function init() {
   routeRegistry.registerRoute("/hello", {
     handler: "myHandler",
     method: "GET",
   });
 }
-
-// 3. Init call - runs when script loads
 ```
 
 **Key Concepts:**
 
 - **Handler functions** receive a single `context` object; the HTTP request is `context.request`
 - **`ResponseBuilder`** helpers (`.text`, `.json`, `.html`, `.error`, `.redirect`) build the response and set its `Content-Type`
-- **`init()` function** registers your routes when the script loads
-- **`routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" })`** maps URLs to handler functions
+- **`init()`** is optional. The engine calls it when the script is loaded and on every save; it is the only place a registration takes effect
+- **`routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" })`** maps URLs to handler functions. The handler is named by string and must be a top-level function of `main.js`
 
 ## Step 2: Create Your First Script
 
@@ -59,19 +58,19 @@ function init() {
 http://localhost:3000/editor
 ```
 
-1. **Click "New Script"**
+1. **Click "+ New"**
 
-1. **Enter script name:**
+1. **Enter the script name** (lower-case letters, digits, `-` and `_`):
 
 ```text
-hello.js
+hello
 ```
 
-1. **Paste this code:**
+1. **Replace the starter code with this:**
 
 ```javascript
 /**
- * hello.js - Your first aiwebengine script
+ * hello - Your first aiwebengine script
  *
  * A simple greeting API that demonstrates:
  * - Request handling
@@ -104,8 +103,6 @@ function init() {
   });
   console.log("Hello script initialized successfully");
 }
-
-// Initialize the script
 ```
 
 1. **Click "Save"**
@@ -169,7 +166,7 @@ Your script is logging each request. Let's see the logs:
 ### Using the Editor
 
 1. Go to `http://localhost:3000/editor`
-2. Select your `hello.js` script
+2. Select your `hello` script
 3. Click the "Logs" tab at the top
 4. You'll see entries like:
 
@@ -191,13 +188,14 @@ curl -H "Authorization: Bearer $TOKEN" "http://localhost:3000/engine/read_logs?s
 
 ### The Handler Context (`context`)
 
-Every handler receives a single `context` object. It always includes:
+Every handler receives a single `context` object:
 
-- `request`: normalized HTTP request information
-- `args`: handler arguments (MCP tools and prompts; absent for plain HTTP routes)
-- `kind`: invocation type (`httpRoute`, `scheduled`, `mcpTool`, etc.)
-- `scriptUri` / `handlerName`: metadata about the running script
-- `meta` and `connectionMetadata`: optional maps for stream handlers
+- `request`: the HTTP request (for other kinds of invocation, an object with an empty `query`)
+- `args`: an MCP tool's or prompt's arguments; `null` for HTTP routes
+- `kind`: the invocation type (`httpRoute`, `scheduled`, `mcpTool`, etc.)
+- `scriptUri` / `handlerName`: which script and handler are running
+- `invocationId`: the id this invocation's log lines are filed under
+- `meta`: what a scheduled job or task was given (`meta.schedule`, `meta.task`)
 
 Pattern most handlers use:
 
@@ -224,13 +222,15 @@ When a client makes a request to `/hello?name=Alice`, `context.request` looks li
 
 ### The Response Object
 
-Your handler must return:
+Your handler returns a response, usually built with `ResponseBuilder`. What it
+builds is a plain object, and you may return one directly:
 
 ```javascript
 {
   status: 200,              // HTTP status code
-  body: "Hello, Alice!",    // Response content
-  contentType: "text/plain; charset=UTF-8" // MIME type (optional)
+  body: "Hello, Alice!",    // Response content (or bodyBase64 for binary)
+  contentType: "text/plain; charset=UTF-8", // MIME type (optional)
+  headers: { "Cache-Control": "no-store" }  // extra headers (optional)
 }
 ```
 
@@ -302,19 +302,19 @@ Response:
 
 ## Common Mistakes and Solutions
 
-### ❌ Mistake 1: Forgetting to call `init()`
+### ❌ Mistake 1: Registering outside `init()`
 
 ```javascript
-function init() {
-  routeRegistry.registerRoute("/hello", {
-    handler: "helloHandler",
-    method: "GET",
-  });
+function helloHandler(context) {
+  /* ... */
 }
-// Forgot to call init()!
+
+routeRegistry.registerRoute("/hello", { handler: "helloHandler" }); // Top level!
+init(); // Never call init() yourself
 ```
 
-**Solution:** Always call `init()` at the end of your script.
+**Solution:** Register inside `function init()` and let the engine call it.
+Top-level code runs again on every request, so keep it to definitions.
 
 ### ❌ Mistake 2: Handler name mismatch
 
@@ -341,7 +341,7 @@ function badHandler(context) {
 }
 ```
 
-**Solution:** Always return a response object with `status` and `body`.
+**Solution:** Always return a response, for example `ResponseBuilder.text("Done")`.
 
 ### ❌ Mistake 4: Wrong content type for JSON
 
@@ -353,7 +353,7 @@ return {
 };
 ```
 
-**Solution:** Use `"application/json"` when returning JSON data.
+**Solution:** Use `ResponseBuilder.json(data)`, which sets the content type.
 
 ## Next Steps
 
@@ -372,11 +372,9 @@ Now that you've created your first script, you can:
 // Register a route
 routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" });
 
-// Write to logs
+// Write to logs; read them in the editor's Logs tab,
+// or with GET /engine/read_logs?script=<name>
 console.log(message);
-
-// Read logs back over the engine's HTTP API
-const { logs } = await (await fetch("/engine/read_logs")).json();
 ```
 
 ### Handler Template
@@ -411,13 +409,18 @@ function init() {
 
 ## IDE Support with TypeScript Definitions
 
-For better development experience with autocomplete and type checking in your IDE (VS Code, WebStorm, etc.), add this reference comment at the top of your scripts:
+For autocomplete and type checking in your IDE (VS Code, WebStorm, etc.), download the engine's type definitions into your checkout. A repository that includes `scripts/tooling.mk` does it with `make fetch-types`; otherwise:
 
-```javascript
-/// <reference path="https://your-engine.com/engine/types/v0.1.0/aiwebengine.d.ts" />
+```bash
+mkdir -p types
+curl -o types/aiwebengine.d.ts http://localhost:3000/engine/types/v0.1.0/aiwebengine.d.ts
 ```
 
-Replace `your-engine.com` with your actual engine URL (e.g., `localhost:3000` for local development).
+Then reference the file at the top of each script. The path is relative to the script and must be a local file — TypeScript does not follow a URL:
+
+```javascript
+/// <reference path="../types/aiwebengine.d.ts" />
+```
 
 ### Benefits
 
@@ -429,7 +432,7 @@ Replace `your-engine.com` with your actual engine URL (e.g., `localhost:3000` fo
 ### Example with Type Support
 
 ```javascript
-/// <reference path="http://localhost:3000/engine/types/v0.1.0/aiwebengine.d.ts" />
+/// <reference path="../types/aiwebengine.d.ts" />
 
 /**
  * @param {HandlerContext} context

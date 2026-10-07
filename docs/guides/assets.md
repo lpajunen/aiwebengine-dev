@@ -1,134 +1,57 @@
 # Asset Management Guide
 
-Learn how to work with static files like images, CSS, JavaScript, and other assets in aiwebengine.
+How to work with a script's files — stylesheets, client-side JavaScript,
+images, documents — and how to serve them.
 
-Current engine versions store assets by name and expose them over HTTP after you register a file route with `routeRegistry.registerRoute(path, { file })`. Use `files` to manage file contents and the route registry to choose public URLs; only files under `public/` may be served.
+## How Files Work
 
-## Overview
+A script is a tree of files stored in the engine's database. Its entrypoint is
+`main.js` (or `main.ts`, `main.tsx`, `main.jsx`); every other file sits beside
+it at a path such as `lib/util.ts`, `public/app.css` or `skills/faq.md`. There
+is no directory on the server to copy files into.
 
-Assets are static files that your scripts can serve to clients. They can include:
+Which files the world may reach is decided by directory:
 
-- **Images** - PNG, JPEG, GIF, SVG
-- **Stylesheets** - CSS files
-- **Scripts** - Client-side JavaScript
-- **Documents** - PDF, text files
-- **Fonts** - WOFF, TTF files
-- **Any other static content**
+| Directory     | Who can reach it                                                            |
+| ------------- | --------------------------------------------------------------------------- |
+| `public/`     | Anyone, once a file route in `init()` names the file                        |
+| `resources/`  | MCP clients, once `init()` registers it with `mcpRegistry.registerResource` |
+| anything else | Only the script itself (imports, `files.read`)                              |
 
-## How Assets Work
+Nothing is served automatically. A file is published at the path a **file
+route** gives it:
 
-### Automatic Serving
-
-aiwebengine automatically serves files from the `assets/` directory:
-
-```text
-assets/logo.png       → http://yourserver.com/logo.png
-assets/style.css      → http://yourserver.com/style.css
-assets/app.js         → http://yourserver.com/app.js
-assets/docs/guide.pdf → http://yourserver.com/docs/guide.pdf
+```javascript
+function init() {
+  routeRegistry.registerRoute("/my-app/app.css", { file: "public/app.css" });
+  routeRegistry.registerRoute("/my-app/logo.png", { file: "public/logo.png" });
+}
 ```
 
-The server automatically:
+A file route names one file; register one route per file you publish. The
+engine sets the content type from the file's stored MIME type. A file route
+serves the file as it is now, so changing the file needs no redeploy. See
+[Serving Files: File Routes](asset-registration.md) for the details.
 
-- Sets correct MIME types based on file extensions
-- Handles HTTP GET requests for assets
-- Serves files efficiently
+## Adding Files
 
-### Directory Structure
+### The web editor
 
-Organize assets in subdirectories:
+1. Open `/editor` and switch to the **Assets** tab.
+2. Choose the script.
+3. **Upload** files from your computer, or **+ New** to create a text file.
+   Give a file you want to serve a path under `public/`.
 
-```text
-assets/
-├── css/
-│   ├── main.css
-│   └── theme.css
-├── js/
-│   ├── app.js
-│   └── utils.js
-├── images/
-│   ├── logo.png
-│   └── banner.jpg
-├── fonts/
-│   └── custom.woff2
-└── docs/
-    └── manual.pdf
-```
+### From a checkout
 
-## Managing Assets
+In a repository that includes `scripts/tooling.mk`, a script is a directory:
+`main.js` plus every other file under it, at the same relative path.
+`make deploy-changed` writes what changed; see
+[Deployment Workflow](../getting-started/03-deployment-workflow.md).
 
-### Method 1: Web Editor (Easiest)
+### From a script: `files`
 
-**Upload assets via the editor:**
-
-1. Open `http://localhost:3000/editor`
-2. Click "Assets" in sidebar
-3. Click "Upload Assets"
-4. Select files from your computer
-5. Assets are immediately available
-
-**View assets:**
-
-- Browse in the Assets section
-- Preview images directly
-- Download or delete as needed
-
-**Example: Upload a stylesheet**
-
-1. Create `style.css` locally:
-
-   ```css
-   body {
-     font-family: Arial, sans-serif;
-     max-width: 800px;
-     margin: 0 auto;
-     padding: 20px;
-   }
-   ```
-
-2. Upload via editor
-3. Use in your scripts:
-
-   ```javascript
-   function pageHandler(context) {
-     return {
-       status: 200,
-       body: `
-         <!DOCTYPE html>
-         <html>
-         <head>
-           <link rel="stylesheet" href="/css/style.css">
-         </head>
-         <body>
-           <h1>Styled Page</h1>
-         </body>
-         </html>
-       `,
-       contentType: "text/html",
-     };
-   }
-   ```
-
-### Method 2: Direct File Placement
-
-**Copy files to the assets directory:**
-
-```bash
-# Copy a single file
-cp logo.png /path/to/aiwebengine/assets/
-
-# Copy directory structure
-cp -r public/* /path/to/aiwebengine/assets/
-
-# Using rsync
-rsync -av local-assets/ server:/path/to/aiwebengine/assets/
-```
-
-Files are immediately available at their URLs.
-
-### Method 3: API-Based (Programmatic)
-
-**Use `files`, the script's own tree:**
+`files` reads and writes the running script's own tree:
 
 ```javascript
 // List this script's files
@@ -142,7 +65,7 @@ const css = files.read("public/styles.css");
 // Read a binary file as base64
 const logoB64 = files.read("public/logo.png", { encoding: "base64" });
 
-// Create or update a file
+// Create or replace a file
 files.write("public/new-image.png", base64EncodedContent, {
   encoding: "base64",
 });
@@ -151,822 +74,210 @@ files.write("public/new-image.png", base64EncodedContent, {
 files.delete("public/old-image.png");
 ```
 
-**Example: Upload from form**
+`files` cannot write the entrypoint (`main.*`). Every write is recorded as a
+revision of the script. For content that only changes with a deploy, an import
+is better than a read: `import policy from "./skills/refund.md"` gives the
+file's text, cached with the program.
+
+**Example: accept an upload.** A multipart form's files arrive in
+`context.request.files`, already base64:
 
 ```javascript
 function uploadHandler(context) {
   const req = context.request;
-  const assetName = "public/" + req.form.name; // "public/uploads-file.jpg"
-  const mimetype = req.form.mimetype; // "image/jpeg"
-  const contentB64 = req.form.content; // Base64 string
+  if (!req.auth.isAuthenticated) {
+    return ResponseBuilder.error(401, "Sign in to upload");
+  }
+  const upload = req.files[0];
+  if (!upload || !upload.filename) {
+    return ResponseBuilder.error(400, "No file in the form");
+  }
+  const name = upload.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = "public/uploads/" + name;
 
   try {
-    files.write(assetName, contentB64, { encoding: "base64", mimetype });
-    console.log(`Asset uploaded: ${assetName}`);
-
-    return {
-      status: 201,
-      body: JSON.stringify({
-        message: "Asset uploaded",
-        assetName: assetName,
-      }),
-      contentType: "application/json",
-    };
+    files.write(path, upload.data, {
+      encoding: "base64",
+      mimetype: upload.contentType,
+    });
   } catch (error) {
-    console.error(`Upload failed: ${error.message}`);
-    return {
-      status: 500,
-      body: JSON.stringify({ error: "Upload failed" }),
-      contentType: "application/json",
-    };
+    return ResponseBuilder.error(400, error.message);
   }
+  return ResponseBuilder.json({ path }, 201);
 }
 
-routeRegistry.registerRoute("/upload-asset", {
-  handler: "uploadHandler",
-  method: "POST",
-});
+// Files written at runtime are served by a handler rather than a file route,
+// since a file route names one file and is registered in init().
+function serveUpload(context) {
+  const path = "public/uploads/" + context.request.params.name;
+  const data = files.read(path, { encoding: "base64" });
+  if (data === null) return ResponseBuilder.error(404, "No such upload");
+  const info = files.list().find((file) => file.path === path);
+  return {
+    status: 200,
+    bodyBase64: data,
+    contentType: info ? info.mimetype : "application/octet-stream",
+  };
+}
+
+function uploadFormHandler(context) {
+  return ResponseBuilder.html(`<!DOCTYPE html>
+<html><body>
+  <form method="POST" action="/my-app/upload" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button type="submit">Upload</button>
+  </form>
+</body></html>`);
+}
+
+function init() {
+  routeRegistry.registerRoute("/my-app/upload", {
+    handler: "uploadFormHandler",
+  });
+  routeRegistry.registerRoute("/my-app/upload", {
+    handler: "uploadHandler",
+    method: "POST",
+  });
+  routeRegistry.registerRoute("/my-app/uploads/:name", {
+    handler: "serveUpload",
+  });
+}
 ```
 
-### Method 4: The engine's HTTP API (`/engine/{operation}`)
+A request body is bounded by the engine's upload limit, and a file by
+10,000,000 bytes.
 
-`files` works on the files of the script that is running. To manage
-another script's assets — from a page, a deployment tool, or a script that
-builds other scripts — call the engine's file operations (`list_files`, `read_file`, `write_file`, `write_files`, `edit_file`, `delete_file`), each `POST /engine/{operation}` with a JSON body (the read-only ones also take `GET` with the arguments in the query). A file is named by its `path` within the script, and a script's entrypoint is the file named `main.ts` (or `.js`, `.tsx`, `.jsx`). The engine answers as the
-signed-in user, so an owner of the script, a user with the asset capability, or
-an Administrator gets through and everyone else is refused.
+### Another script's files: engine operations
 
-**List, or read one asset:**
+`files` reaches only the running script. To manage another script's files —
+from a page, a deployment tool, or a script that builds other scripts — use the
+engine's file operations: `list_files`, `read_file`, `write_file`,
+`create_file`, `write_files`, `edit_file` and `delete_file`. Each is
+`POST /engine/<operation>` with a JSON body on the management host (the
+read-only ones also take `GET` with the arguments in the query), the MCP tool
+of the same name, or `engine.call("<operation>", args)` from a script. The
+engine answers as the signed-in person: an owner of the script or an
+administrator gets through.
 
-```javascript
-const script = encodeURIComponent("my-app");
+**List, or read one file:**
 
-// Every file the script owns
-const list = await (await fetch(`/engine/list_files?script=${script}`)).json();
-
-// One file: `content` is text when `encoding` is "utf8", base64 otherwise
-const file = await (
-  await fetch(`/engine/read_file?script=${script}&path=app.css`)
-).json();
+```bash
+curl -H "Authorization: Bearer $TOKEN" "$MANAGE_HOST/engine/list_files?script=my-app"
+curl -H "Authorization: Bearer $TOKEN" "$MANAGE_HOST/engine/read_file?script=my-app&path=public/app.css"
 ```
 
-A read carries the `sha256`, `bytes` and `total_lines` of the whole asset
-alongside its content. For a text asset you can ask for part of it instead of
-transferring the file:
+A read answers with `content` (text when `encoding` is `"utf8"`, base64
+otherwise) and the file's `sha256`, `bytes` and `total_lines`. For a text file
+you can ask for part of it:
 
 | Parameter | Meaning                                                                    |
 | --------- | -------------------------------------------------------------------------- |
 | `lines`   | Inclusive 1-based line range: `120-180`, `120-` to the end, or `120` alone |
 | `grep`    | Regular expression; answers with matching line numbers and their text      |
 
-```javascript
-// Lines 120-180 as text, not base64
-const range = await (
-  await fetch(
-    `/engine/read_file?script=${script}&path=lib/util.ts&lines=120-180`,
-  )
-).json();
-// { encoding, content, start_line, end_line, sha256, bytes, total_lines, ... }
+**Write one file** with `write_file` and `{ script, path, text }` (or `content`
+as base64 for binary). `create_file` takes the same arguments and refuses a
+path that is already taken.
 
-// Where is renderCart defined?
-const hits = await (
-  await fetch(
-    `/engine/read_file?script=${script}&path=lib/util.ts&grep=function%20renderCart`,
-  )
-).json();
-// { encoding, matches: [{ line, text, truncated }], match_count, sha256, ... }
-```
+**Write several at once** with `write_files`. Writing a script's modules one
+request at a time makes the engine act on each partial state: every
+single-file write reinitializes the script, on every instance of a cluster,
+from a tree that is still being uploaded. One batch is one transaction, one
+revision and one `init()`:
 
-**Write one file** with `POST /engine/write_file` and `{ script, path, text }` (or `content` as base64 for binary), the HTTP form of `files.write` for any script you may write. `create_file` takes the same body and refuses a path that is already taken.
-
-**Write several at once** with `/engine/write_files`. A script's modules
-are one unit of change, and writing them one request at a time makes the engine
-act on each partial state: every single-asset write invalidates the prepared
-program and notifies the rest of the cluster, so every other instance
-reinitializes the script once per file, each time from a tree that is still
-being uploaded. One batch is one transaction, one notification, and one
-`init()`:
-
-```javascript
-const result = await (
-  await fetch(`/engine/write_files`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      script: "my-app",
-      files: [
-        { name: "lib/util.ts", content_base64: utilB64 },
-        {
-          name: "lib/cart.ts",
-          content_base64: cartB64,
-          mimetype: "text/plain",
-        },
-        { name: "app.css", content_base64: cssB64, sha256: cssSha },
-      ],
-      reinit: "after", // or "never" to leave init() alone
-    }),
-  })
-).json();
+```json
+{
+  "script": "my-app",
+  "files": [
+    { "name": "lib/util.ts", "text": "export const RETRIES = 3;\n" },
+    { "name": "public/logo.png", "content_base64": "iVBORw0KGgo..." },
+    {
+      "name": "public/app.css",
+      "text": "body { margin: 0; }\n",
+      "sha256": "..."
+    }
+  ],
+  "remove": ["public/old.css"],
+  "reinit": "after"
+}
 ```
 
 Up to 256 files and 10 MB of content per batch. `mimetype` is inferred from the
-extension when omitted, and a `sha256` that does not match the decoded content
-rejects the whole batch. Nothing is written if any file is rejected.
+extension when omitted, and a `sha256` that does not match rejects the whole
+batch. Nothing is written if any file is rejected. The answer carries a
+`check` report — read its diagnostics first.
 
-**Edit an asset in place** with `/engine/edit_file` — the point of it is what
-is _not_ in the request. A caller changing three lines sends those three lines,
-not the module:
+**Edit a file in place** with `edit_file`, sending only what changes:
 
-```javascript
-const patched = await (
-  await fetch(`/engine/edit_file`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      script: "my-app",
-      path: "lib/util.ts",
-      edits: [
-        { old_string: "const RETRIES = 3;", new_string: "const RETRIES = 5;" },
-        { old_string: "log(", new_string: "console.log(", replace_all: true },
-      ],
-      base_sha256: file.sha256,
-    }),
-  })
-).json();
-// { sha256, bytes, replacements, init: { ... } }
+```json
+{
+  "script": "my-app",
+  "path": "lib/util.ts",
+  "edits": [
+    { "old_string": "RETRIES = 3", "new_string": "RETRIES = 5" },
+    { "old_string": "log(", "new_string": "console.log(", "replace_all": true }
+  ],
+  "base_sha256": "<sha256 from read_file>"
+}
 ```
 
 Each `old_string` must be present, and unique unless `replace_all` is set; up
-to 128 edits are checked and applied in memory before anything is stored, so a
-patch that does not match writes nothing and answers `400`. `base_sha256` is
-the precondition: pass the `sha256` a read reported and the patch is refused
-with `409` if the stored content has moved on since — a change to a known
-version rather than to whatever happens to be there.
+to 128 edits are checked together, and a patch that does not match writes
+nothing. With `base_sha256`, the patch is refused if the file changed since it
+was read.
 
-**Delete** with `POST /engine/delete_file` and `{ script, path }`.
+**Delete** with `delete_file` and `{ script, path }`.
 
-Every one of these has an equivalent MCP tool (`list_files`, `read_file`,
-`write_file`, `write_files`, `edit_file`, `delete_file`), which is how an
-AI assistant edits a script's modules without resending them.
+## Using Files in Pages
 
-## Using Assets in Scripts
-
-### Linking Stylesheets
+Link to the paths your file routes publish:
 
 ```javascript
-function styledPageHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>My Page</title>
-      <!-- Link to CSS assets -->
-      <link rel="stylesheet" href="/css/main.css">
-      <link rel="stylesheet" href="/css/theme.css">
-    </head>
-    <body>
-      <h1>Styled Content</h1>
-    </body>
-    </html>
-  `;
+function homeHandler(context) {
+  return ResponseBuilder.html(`<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="/my-app/app.css">
+</head>
+<body>
+  <img src="/my-app/logo.png" alt="Logo">
+  <div id="app"></div>
+  <script src="/my-app/app.js" defer></script>
+</body>
+</html>`);
+}
 
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html",
-  };
+function init() {
+  routeRegistry.registerRoute("/my-app", { handler: "homeHandler" });
+  routeRegistry.registerRoute("/my-app/app.css", { file: "public/app.css" });
+  routeRegistry.registerRoute("/my-app/logo.png", { file: "public/logo.png" });
+  routeRegistry.registerRoute("/my-app/app.js", { file: "public/app.js" });
 }
 ```
 
-### Loading JavaScript
-
-```javascript
-function appPageHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>App</title>
-    </head>
-    <body>
-      <div id="app"></div>
-      
-      <!-- Load JavaScript assets -->
-      <script src="/js/utils.js"></script>
-      <script src="/js/app.js"></script>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html",
-  };
-}
-```
-
-### Embedding Images
-
-```javascript
-function galleryHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <body>
-      <h1>Gallery</h1>
-      
-      <!-- Reference image assets -->
-      <img src="/images/logo.png" alt="Logo">
-      <img src="/images/banner.jpg" alt="Banner">
-      <img src="/images/icon.svg" alt="Icon">
-      
-      <!-- Background images via CSS -->
-      <div style="
-        background-image: url('/images/background.jpg');
-        height: 300px;
-      ">
-        Content
-      </div>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html",
-  };
-}
-```
-
-### Referencing Documents
-
-```javascript
-function resourcesHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <body>
-      <h1>Resources</h1>
-      
-      <!-- Links to documents -->
-      <ul>
-        <li><a href="/docs/manual.pdf">User Manual (PDF)</a></li>
-        <li><a href="/docs/guide.txt">Quick Guide (Text)</a></li>
-        <li><a href="/downloads/template.zip">Template (ZIP)</a></li>
-      </ul>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html",
-  };
-}
-```
-
-## Asset Organization Patterns
-
-### By Type
-
-```text
-assets/
-├── css/
-├── js/
-├── images/
-├── fonts/
-└── docs/
-```
-
-**Pros:** Clear separation, easy to find
-**Cons:** Mixed purposes in same category
-
-### By Feature
-
-```text
-assets/
-├── home/
-│   ├── hero.jpg
-│   ├── home.css
-│   └── home.js
-├── dashboard/
-│   ├── dashboard.css
-│   └── dashboard.js
-└── shared/
-    ├── common.css
-    └── logo.png
-```
-
-**Pros:** Related assets together
-**Cons:** Harder to find all CSS files
-
-### Hybrid Approach
-
-```text
-assets/
-├── global/
-│   ├── css/
-│   ├── js/
-│   └── images/
-├── features/
-│   ├── blog/
-│   ├── shop/
-│   └── auth/
-└── vendor/
-    ├── bootstrap.css
-    └── jquery.js
-```
-
-**Pros:** Best of both worlds
-**Cons:** More complex structure
-
-## Dynamic Asset Management
-
-### Asset Gallery Script
-
-```javascript
-function assetGalleryHandler(context) {
-  // Get all assets with metadata
-  // Every image this script serves from public/
-  const images = files
-    .list()
-    .filter(
-      (file) =>
-        file.path.startsWith("public/") && file.mimetype.startsWith("image/"),
-    );
-
-  // Build HTML gallery
-  const imageCards = images
-    .map((asset) => {
-      return `
-      <div class=\"image-card\">
-        <img src=\"/${asset.name}\" alt=\"${asset.name}\">
-        <p>${asset.name} (${Math.round(asset.size / 1024)}KB)</p>
-      </div>
-    `;
-    })
-        <img src="${path}" alt="${path}">
-        <p>${path}</p>
-      </div>
-    `;
-    })
-    .join("");
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Asset Gallery</title>
-      <style>
-        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-        .image-card { border: 1px solid #ddd; padding: 10px; }
-        .image-card img { max-width: 100%; height: auto; }
-      </style>
-    </head>
-    <body>
-      <h1>Asset Gallery</h1>
-      <div class="gallery">
-        ${imageCards}
-      </div>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html",
-  };
-}
-
-routeRegistry.registerRoute("/assets-gallery", { handler: "assetGalleryHandler", method: "GET" });
-```
-
-### Asset Upload Form
-
-```javascript
-function uploadFormHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Upload Asset</title>
-    </head>
-    <body>
-      <h1>Upload Asset</h1>
-      <form id="uploadForm">
-        <label>
-          File Path (e.g., /images/photo.jpg):
-          <input type="text" id="path" required>
-        </label><br>
-        
-        <label>
-          File:
-          <input type="file" id="file" required>
-        </label><br>
-        
-        <button type="submit">Upload</button>
-      </form>
-      
-      <div id="result"></div>
-      
-      <script>
-        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-          e.preventDefault();
-          
-          const path = document.getElementById('path').value;
-          const file = document.getElementById('file').files[0];
-          
-          // Read file as base64
-          const reader = new FileReader();
-          reader.onload = async function(e) {
-            const base64 = e.target.result.split(',')[1];
-            
-            // Send to server
-            const response = await fetch('/api/upload-asset', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                path: path,
-                mimetype: file.type,
-                content: base64
-              })
-            });
-            
-            const result = await response.json();
-            document.getElementById('result').innerHTML = 
-              response.ok 
-                ? '<p style="color: green;">Upload successful!</p>' 
-                : '<p style="color: red;">Upload failed: ' + result.error + '</p>';
-          };
-          reader.readAsDataURL(file);
-        });
-      </script>
-    </body>
-    </html>
-  `;
-
-  return {
-    status: 200,
-    body: html,
-    contentType: "text/html",
-  };
-}
-
-routeRegistry.registerRoute("/upload-form", {
-  handler: "uploadFormHandler",
-  method: "GET",
-});
-```
-
-## Asset API Reference
-
-### `files.list()`
-
-Every file of the script, sorted by path.
-
-```javascript
-files.list();
-// [
-//   {
-//     "path": "public/logo.png",
-//     "size": 1024,
-//     "mimetype": "image/png",
-//     "createdAt": 1768732500000,
-//     "updatedAt": 1768732500000
-//   },
-//   { ... }
-// ]
-```
-
-### `files.read(path, options?)`
-
-The file as text, or as base64 with `{ encoding: "base64" }`. Answers `null`
-when there is no such file, and throws for a binary file read as text.
-
-```javascript
-const logoB64 = files.read("public/logo.png", { encoding: "base64" });
-```
-
-### `files.write(path, content, options?)`
-
-Creates or replaces a file. `content` is text, or base64 with
-`{ encoding: "base64" }`; the MIME type comes from the extension unless
-`{ mimetype }` is given.
-
-```javascript
-files.write("public/new.png", "iVBORw0KGgoAAAANS...", { encoding: "base64" });
-```
-
-### `files.delete(path)`
-
-Removes a file. Answers `true`, or `false` when there was nothing to remove.
-
-```javascript
-files.delete("public/old-image.png");
-```
-
-## MIME Types Reference
-
-Common MIME types for assets:
-
-### Images
-
-```javascript
-"image/jpeg"; // .jpg, .jpeg
-"image/png"; // .png
-"image/gif"; // .gif
-"image/svg+xml"; // .svg
-"image/webp"; // .webp
-"image/x-icon"; // .ico
-```
-
-### Stylesheets & Scripts
-
-```javascript
-"text/css"; // .css
-"application/javascript"; // .js
-"application/json"; // .json
-```
-
-### Documents
-
-```javascript
-"application/pdf"; // .pdf
-"text/plain"; // .txt
-"text/html"; // .html
-"text/markdown"; // .md
-```
-
-### Fonts
-
-```javascript
-"font/woff"; // .woff
-"font/woff2"; // .woff2
-"font/ttf"; // .ttf
-"font/otf"; // .otf
-```
-
-### Archives
-
-```javascript
-"application/zip"; // .zip
-"application/gzip"; // .gz
-"application/x-tar"; // .tar
-```
-
-## Best Practices
-
-### 1. Organize Consistently
-
-Choose an organization pattern and stick to it:
-
-```text
-assets/
-├── css/
-├── js/
-└── images/
-```
-
-### 2. Use Descriptive Names
-
-**Good:**
-
-- `header-logo.png`
-- `main-stylesheet.css`
-- `user-profile-default.jpg`
-
-**Bad:**
-
-- `img1.png`
-- `style.css`
-- `pic.jpg`
-
-### 3. Optimize Assets
-
-- Compress images before uploading
-- Minify CSS and JavaScript
-- Use appropriate formats (WebP for images, WOFF2 for fonts)
-
-### 4. Version Assets
-
-Include versions in filenames for cache busting:
-
-```text
-app.v1.js → app.v2.js
-style-2024-01.css
-```
-
-Or use query parameters:
-
-```html
-<script src="/app.js?v=2"></script>
-```
-
-### 5. Clean Up Unused Assets
-
-Regularly remove assets that are no longer referenced:
-
-```javascript
-function cleanupHandler(context) {
-  const unusedAssets = findUnusedAssets(files.list());
-
-  unusedAssets.forEach((file) => {
-    files.delete(file.path);
-    console.log(`Deleted unused file: ${file.path}`);
-  });
-
-  return {
-    status: 200,
-    body: JSON.stringify({
-      deleted: unusedAssets.length,
-    }),
-    contentType: "application/json",
-  };
-}
-```
-
-## Common Patterns
-
-### Responsive Images
-
-```javascript
-function responsiveImageHandler(context) {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <body>
-      <!-- Responsive image with srcset -->
-      <img 
-        src="/images/photo-800.jpg"
-        srcset="
-          /images/photo-400.jpg 400w,
-          /images/photo-800.jpg 800w,
-          /images/photo-1200.jpg 1200w
-        "
-        sizes="(max-width: 600px) 400px, 800px"
-        alt="Photo"
-      >
-    </body>
-    </html>
-  `;
-
-  return { status: 200, body: html, contentType: "text/html" };
-}
-```
-
-### CSS Themes
-
-```javascript
-function themedPageHandler(context) {
-  const req = context.request;
-  const theme = req.query.theme || "light";
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <link rel="stylesheet" href="/css/base.css">
-      <link rel="stylesheet" href="/css/theme-${theme}.css">
-    </head>
-    <body>
-      <h1>Themed Page</h1>
-    </body>
-    </html>
-  `;
-
-  return { status: 200, body: html, contentType: "text/html" };
-}
-```
-
-### Progressive Web App (PWA)
-
-```javascript
-function pwaManifestHandler(context) {
-  const manifest = {
-    name: "My App",
-    short_name: "App",
-    icons: [
-      { src: "/images/icon-192.png", sizes: "192x192", type: "image/png" },
-      { src: "/images/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-    start_url: "/",
-    display: "standalone",
-    theme_color: "#ffffff",
-    background_color: "#ffffff",
-  };
-
-  return {
-    status: 200,
-    body: JSON.stringify(manifest),
-    contentType: "application/json",
-  };
-}
-
-routeRegistry.registerRoute("/manifest.json", {
-  handler: "pwaManifestHandler",
-  method: "GET",
-});
-```
+Routes are shared by every script on a host and the first script to register a
+path keeps it, so prefix your paths with something your own (here `/my-app`).
+
+## Tips
+
+- **Keep served files under `public/`, everything else out of it.** A module,
+  a prompt or a data file outside `public/` cannot be served by mistake.
+- **Version client files for caching**: `app.v2.js`, or `app.js?v=2`.
+- **Images**: compress before uploading; a file is at most 10 MB.
+- **Many files**: use `write_files` (or `make deploy-changed`) rather than one
+  write per file.
 
 ## Troubleshooting
 
-### Asset Not Loading
-
-**Check:**
-
-- File exists in `assets/` directory
-- Path is correct (case-sensitive)
-- MIME type is correct
-- No typos in URL
-
-### Images Not Displaying
-
-**Check:**
-
-- Image format is supported
-- File is not corrupted
-- Path starts with `/`
-- Browser console for errors
-
-### CSS Not Applied
-
-**Check:**
-
-- `<link>` tag in `<head>`
-- Correct `href` path
-- CSS syntax is valid
-- Browser cache (try hard refresh: Ctrl+F5)
-
-### JavaScript Not Running
-
-**Check:**
-
-- `<script>` tag placement (before closing `</body>` or with `defer`)
-- Console for JavaScript errors
-- Correct `src` path
+| Symptom                    | Check                                                                                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| A file answers 404         | Is there a file route for that path in `init()`, and does it name a file that exists?                       |
+| The file route was refused | The file must be under `public/`, and the path must not be held by another script. The refusal names which. |
+| The wrong content type     | Upload with the right extension, or pass `mimetype` when writing.                                           |
+| `files.read` throws        | A binary file needs `{ encoding: "base64" }`.                                                               |
 
 ## Next Steps
 
-- **[Script Development](scripts.md)** - Learn to create dynamic content
-- **[Logging Guide](logging.md)** - Debug asset issues
-- **[Examples](../examples/index.md)** - See asset usage in practice
-- **[API Reference](../reference/javascript-apis.md)** - Complete API docs
-
-## Quick Reference
-
-```javascript
-// List this script's files: each has path, size, mimetype, createdAt, updatedAt
-const all = files.list();
-
-// Read text, or base64 for binary (null if missing)
-const css = files.read("public/styles.css");
-const logoB64 = files.read("public/logo.png", { encoding: "base64" });
-
-// Create or update
-files.write("public/new.png", base64Content, { encoding: "base64" });
-
-// Delete
-files.delete("public/old.png");
-```
-
-Another script's assets, over the engine's HTTP API:
-
-```javascript
-const script = encodeURIComponent("my-app");
-
-// List, read a whole asset, read a line range, or search it
-await fetch(`/engine/list_files?script=${script}`);
-await fetch(`/engine/read_file?script=${script}&path=app.css`);
-await fetch(
-  `/engine/read_file?script=${script}&path=lib/util.ts&lines=120-180`,
-);
-await fetch(
-  `/engine/read_file?script=${script}&path=lib/util.ts&grep=renderCart`,
-);
-
-// Write many files as one transaction and one init()
-await fetch(`/engine/write_files`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    script: "my-app",
-    files: [{ name: "app.css", content_base64: cssB64 }],
-  }),
-});
-
-// Change a few lines without resending the file
-await fetch(`/engine/edit_file`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    script: "my-app",
-    path: "lib/util.ts",
-    edits: [{ old_string: "RETRIES = 3", new_string: "RETRIES = 5" }],
-    base_sha256: sha,
-  }),
-});
-```
+- **[Serving Files: File Routes](asset-registration.md)** - File routes in detail
+- **[Script Development](scripts.md)** - Dynamic content
+- **[API Reference](../reference/javascript-apis.md)** - `files` and every other global

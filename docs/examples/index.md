@@ -14,6 +14,8 @@ or deploy one from a checkout of that repository with its `make` targets.
 | Script                                                           | Shows                                                        |
 | ---------------------------------------------------------------- | ------------------------------------------------------------ |
 | `hello`                                                          | The smallest script: one route                               |
+| `jooss`                                                          | A multilingual greeting with a `scriptStorage` call counter  |
+| `architecture`                                                   | Serving an SVG diagram from a handler                        |
 | `welcome`                                                        | A static welcome page                                        |
 | `blog`                                                           | An HTML page with styling                                    |
 | `markdown_blog`                                                  | Rendering Markdown files with `convert`                      |
@@ -27,7 +29,7 @@ or deploy one from a checkout of that repository with its `make` targets.
 | `auth_roles_demo`                                                | Reading the signed-in user and their roles                   |
 | `mcp_tools_demo`                                                 | Registering MCP tools                                        |
 | `mcp_prompts_demo`                                               | Registering MCP prompts                                      |
-| `github_mcp_issues`                                              | `McpClient` against GitHub's MCP server                      |
+| `github`, `github_mcp_issues`                                    | `McpClient` against GitHub's MCP server                      |
 | `typescript`, `jsx`, `tsx`                                       | Entrypoints in TypeScript and JSX                            |
 | `import_example`                                                 | Importing a script's own modules                             |
 | `meeting-bingo`, `meetup-planner`, `joke-page`, `daily-aphorism` | Small complete apps                                          |

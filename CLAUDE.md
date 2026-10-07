@@ -48,7 +48,7 @@ happens.
 
 `scripts/upload-script.js` uploads a server-side script plus an optional asset directory. It reads
 the OAuth token from `schemas/token.json` (run `make oauth-login` first — the token is **not** taken
-from `.env`), uploads the entrypoint to `POST $MANAGE_HOST/engine/write_file` (under its own name, `main.ts`), then the
+from `.env`), uploads the entrypoint to `POST $MANAGE_HOST/engine/write_file` (under its own file name, e.g. `main.js`), then the
 assets through `POST $MANAGE_HOST/engine/write_files`. Convenience wrappers with the correct paths already
 wired:
 
@@ -169,7 +169,7 @@ script.
 
 ## Documentation
 
-The user-facing docs under `docs/` (getting-started, guides, examples, reference, tools)
+The user-facing docs under `docs/` (getting-started, guides, examples, reference)
 are the authoritative description of the platform's scripting model and APIs — consult them before
 writing or changing a server-side script. They are served by `docs/main.js` once deployed.
 

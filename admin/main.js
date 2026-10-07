@@ -56,7 +56,7 @@ function handleManagerUI(context) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management - AIWebEngine</title>
-    <link rel="stylesheet" href="/engine.css">
+    <link rel="stylesheet" href="/engine/engine.css">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
         /* Manager-specific overrides */

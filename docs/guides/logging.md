@@ -124,13 +124,11 @@ The easiest way to view logs:
 
 1. Open `/editor`
 2. Click "Logs" tab
-3. Select your script from dropdown
-4. Logs auto-refresh every 5 seconds
+3. Logs auto-refresh every 5 seconds while the tab is open
 
 **Features:**
 
 - Real-time updates
-- Filter by script
 - Jump to latest button (scrolls view to newest entry)
 - Timestamps included
 
@@ -142,7 +140,7 @@ entries, everyone else is refused.
 
 | Parameter    | Meaning                                                                                   |
 | ------------ | ----------------------------------------------------------------------------------------- |
-| `uri`        | One script's logs; omit for every script                                                  |
+| `script`     | One script's logs; omit for every script                                                  |
 | `level`      | Only entries at this level, e.g. `ERROR`                                                  |
 | `since`      | Only entries at or after this time (epoch millis or RFC 3339)                             |
 | `limit`      | Keep at most this many of the newest matching entries                                     |
@@ -150,13 +148,14 @@ entries, everyone else is refused.
 | `request_id` | Only the entries one invocation emitted, by `x-request-id` or a non-HTTP invocation's id  |
 | `kind`       | Only entries from invocations of this kind, e.g. `httpRoute`, `scheduled`, `init`         |
 | `route`      | Only entries logged while serving this registered route pattern, e.g. `/things/:id`       |
+| `revision`   | Only entries logged while this revision of the script was running                         |
 | `after_seq`  | Only entries written after this `seq` — read forward from where a previous response ended |
 
 The response is `{uri, logs, count, timestamp}`. Each entry is
 
 ```json
 {
-  "scriptUri": "https://example.com/api-users",
+  "scriptUri": "api-users",
   "message": "[api-users] created user 42",
   "level": "LOG",
   "timestamp": 1787583751340,
@@ -177,21 +176,23 @@ The filters are what make an interleaved log legible — one invocation's output
 picked out of everything the cluster wrote while it ran:
 
 ```javascript
-const uri = encodeURIComponent("https://example.com/api-users");
+const script = "api-users";
 
 // Everything one request logged, in order
 const one = await (
-  await fetch(`/engine/read_logs?script=${uri}&request_id=req_1787583751296_11`)
+  await fetch(
+    `/engine/read_logs?script=${script}&request_id=req_1787583751296_11`,
+  )
 ).json();
 
 // Only what the scheduled jobs said
 const ticks = await (
-  await fetch(`/engine/read_logs?script=${uri}&kind=scheduled&limit=50`)
+  await fetch(`/engine/read_logs?script=${script}&kind=scheduled&limit=50`)
 ).json();
 
 // One route, errors only
 const failures = await (
-  await fetch(`/engine/read_logs?script=${uri}&route=/users/:id&level=ERROR`)
+  await fetch(`/engine/read_logs?script=${script}&route=/users/:id&level=ERROR`)
 ).json();
 ```
 
@@ -208,44 +209,32 @@ logs.forEach((log) => {
 });
 ```
 
-To narrow to one script, pass its URI:
+To narrow to one script, pass its name:
 
 ```javascript
-const uri = "https://example.com/api-users";
-const response = await fetch(
-  `/engine/read_logs?script=${encodeURIComponent(uri)}&level=ERROR`,
-);
+const response = await fetch("/engine/read_logs?script=api-users&level=ERROR");
 const { logs, count } = await response.json();
 ```
 
-From a server-side handler, forward the caller's credentials so the engine
-applies **their** permissions rather than answering anonymously:
+From a script, call the same operation with `engine.call`. It runs as the
+person making the request, so the engine applies **their** permissions:
 
 ```javascript
 function logsHandler(context) {
-  const req = context.request;
-  const headers = {};
-  if (req.headers.authorization)
-    headers.Authorization = req.headers.authorization;
-  if (req.headers.cookie) headers.Cookie = req.headers.cookie;
-
-  const response = JSON.parse(
-    fetch(`https://${req.headers.host}/engine/read_logs?limit=100`, {
-      headers: headers,
-    }),
-  );
-
-  return {
-    status: response.status,
-    body: response.body,
-    contentType: "application/json",
-  };
+  try {
+    const result = engine.call("read_logs", {
+      script: "api-users",
+      limit: 100,
+    });
+    return ResponseBuilder.json(result);
+  } catch (error) {
+    return ResponseBuilder.error(403, error.message);
+  }
 }
 
-routeRegistry.registerRoute("/my-logs", {
-  handler: "logsHandler",
-  method: "GET",
-});
+function init() {
+  routeRegistry.registerRoute("/my-logs", { handler: "logsHandler" });
+}
 ```
 
 ### Clearing with `POST /engine/clear_logs`
@@ -258,20 +247,20 @@ pruner's job (`[logs]` in the configuration).
 await fetch("/engine/clear_logs", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ uri }),
+  body: JSON.stringify({ script: "api-users" }),
 });
 ```
 
 ### Method 3: Following the log with `GET /engine/script_logs/stream`
 
 A listing answers what a script _did_; the stream answers what it is doing
-**now**. It is Server-Sent Events, and it takes the same `uri`, `level`,
+**now**. It is Server-Sent Events, and it takes the same `script`, `level`,
 `contains`, `request_id`, `kind` and `route` filters as the listing:
 
 ```javascript
-const uri = encodeURIComponent("https://example.com/api-users");
+const script = "api-users";
 const source = new EventSource(
-  `/engine/script_logs/stream?uri=${uri}&backlog=50`,
+  `/engine/script_logs/stream?script=${script}&backlog=50`,
 );
 
 let lastSeq = 0;
@@ -298,7 +287,7 @@ gap — reconnect with `after_seq` set to the last one seen:
 
 ```javascript
 const resumed = new EventSource(
-  `/engine/script_logs/stream?uri=${uri}&after_seq=${lastSeq}`,
+  `/engine/script_logs/stream?script=${script}&after_seq=${lastSeq}`,
 );
 ```
 
@@ -307,49 +296,31 @@ so it shows the whole cluster's output — every instance writes to the same
 table — and only what was actually committed, not lines a rolled-back
 transaction never kept.
 
-### Method 4: Server Logs
+### Method 4: The engine's own log
 
-Check server console or log files:
-
-```bash
-# If running with cargo
-cargo run
-# Logs appear in console
-
-# If running as service
-journalctl -u aiwebengine -f
-
-# Log files (if configured)
-tail -f /var/log/aiwebengine/server.log
-```
+A script's `console` lines go to the database and are read with the methods
+above. The engine process writes its own log — startup, requests, errors outside
+any script — to standard output, so it is wherever your deployment sends that:
+the terminal running `cargo run`, `docker compose logs`, or the service
+manager's journal.
 
 ## Log Viewer Scripts
 
 ### Basic Log Viewer
 
-Both viewers below share this helper, which calls `/engine/read_logs` with
-the caller's own credentials so the engine applies their permissions:
+Both viewers below share this helper, which calls the `read_logs` operation
+as the calling user, so the engine applies their permissions:
 
 ```javascript
-/** Read log entries over the engine's HTTP API, as the calling user. */
-function readLogs(req, query) {
-  const headers = {};
-  if (req.headers.authorization)
-    headers.Authorization = req.headers.authorization;
-  if (req.headers.cookie) headers.Cookie = req.headers.cookie;
-
-  const response = JSON.parse(
-    fetch(`https://${req.headers.host}/engine/read_logs${query}`, {
-      headers: headers,
-    }),
-  );
-  return JSON.parse(response.body).logs || [];
+/** Read log entries as the calling user. */
+function readLogs(args) {
+  return engine.call("read_logs", args).logs || [];
 }
 ```
 
 ```javascript
 function logViewerHandler(context) {
-  const logs = readLogs(context.request, "");
+  const logs = readLogs({ limit: 100 });
 
   const logItems = logs
     .map((log) => {
@@ -383,10 +354,9 @@ function logViewerHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/logs-viewer", {
-  handler: "logViewerHandler",
-  method: "GET",
-});
+function init() {
+  routeRegistry.registerRoute("/logs-viewer", { handler: "logViewerHandler" });
+}
 ```
 
 ### Advanced Log Viewer with Filtering
@@ -396,7 +366,7 @@ function advancedLogViewerHandler(context) {
   const filter = context.request.query.filter || "";
   const level = context.request.query.level || "all";
 
-  const logs = readLogs(context.request, "");
+  const logs = readLogs({ limit: 500 });
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
@@ -409,10 +379,7 @@ function advancedLogViewerHandler(context) {
       if (level === "error" && (log.level || "").toLowerCase() !== "error") {
         return false;
       }
-      if (
-        level === "warning" &&
-        (log.level || "").toLowerCase() !== "warning"
-      ) {
+      if (level === "warning" && (log.level || "").toLowerCase() !== "warn") {
         return false;
       }
     }
@@ -466,7 +433,7 @@ function advancedLogViewerHandler(context) {
             const level = (log.level || "").toLowerCase();
             let className = "log-entry";
             if (level === "error") className += " error";
-            else if (level === "warning") className += " warning";
+            else if (level === "warn") className += " warning";
             else if (level === "info") className += " info";
 
             return `<div class="${className}">${log.message}</div>`;
@@ -484,10 +451,11 @@ function advancedLogViewerHandler(context) {
   };
 }
 
-routeRegistry.registerRoute("/advanced-logs", {
-  handler: "advancedLogViewerHandler",
-  method: "GET",
-});
+function init() {
+  routeRegistry.registerRoute("/advanced-logs", {
+    handler: "advancedLogViewerHandler",
+  });
+}
 ```
 
 ## Debugging Techniques
@@ -622,12 +590,12 @@ redeploying, and taking it out again:
 curl -X POST "$MANAGE_HOST/engine/eval_script" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d 'scriptStorage.getItem("app:config")'
+  -d '{"script": "my-app", "source": "scriptStorage.getItem(\"app:config\")"}'
 ```
 
 The reply is `{ok, value, valueType, console, durationMs, rolledBack}`. The
 snippet can call the script's own functions and reach any module its entrypoint
-imports. Database writes roll back unless you pass `rollback=false`, and
+imports. Database writes roll back unless you pass `"rollback": false`, and
 registrations do nothing. See
 [Deployment Workflow](../getting-started/03-deployment-workflow.md#checking-a-script-before-it-goes-live)
 for `check` and `run_tests` alongside it.
@@ -681,57 +649,11 @@ function deleteUserHandler(context) {
 }
 ```
 
-### Metric Collection
+### Counting
 
-```javascript
-const metrics = {
-  requests: 0,
-  errors: 0,
-  totalDuration: 0,
-};
-
-function metricsHandler(context) {
-  const req = context.request;
-  const start = Date.now();
-  metrics.requests++;
-
-  try {
-    const result = processRequest(req);
-    const duration = Date.now() - start;
-    metrics.totalDuration += duration;
-
-    console.log(`[METRICS] Request completed in ${duration}ms`);
-
-    return result;
-  } catch (error) {
-    metrics.errors++;
-    console.log(`[METRICS] Request failed: ${error.message}`);
-    throw error;
-  }
-}
-
-function statsHandler(context) {
-  const avgDuration =
-    metrics.requests > 0 ? metrics.totalDuration / metrics.requests : 0;
-
-  const stats = {
-    totalRequests: metrics.requests,
-    totalErrors: metrics.errors,
-    averageDuration: Math.round(avgDuration),
-    errorRate:
-      metrics.requests > 0
-        ? ((metrics.errors / metrics.requests) * 100).toFixed(2) + "%"
-        : "0%",
-  };
-
-  return jsonResponse(200, stats);
-}
-
-routeRegistry.registerRoute("/stats", {
-  handler: "statsHandler",
-  method: "GET",
-});
-```
+Top-level code runs again on every request, so a counter kept in a variable
+starts from zero each time. Keep counts in a `database` table (or
+`scriptStorage`, when only one writer touches the key) and log the event.
 
 ## Best Practices
 
@@ -761,34 +683,16 @@ console.log(
 console.log("Order created");
 ```
 
-### 3. Log Levels (Manual)
+### 3. Use Log Levels
 
-Implement log levels yourself:
+`console.info`, `console.warn`, `console.error` and `console.debug` record their
+level with the entry, and `read_logs` filters on it (`level=ERROR`):
 
 ```javascript
-function logError(message) {
-  console.log(`[ERROR] ${message}`);
-}
-
-function logWarning(message) {
-  console.log(`[WARNING] ${message}`);
-}
-
-function logInfo(message) {
-  console.log(`[INFO] ${message}`);
-}
-
-function logDebug(message) {
-  if (DEBUG_MODE) {
-    console.log(`[DEBUG] ${message}`);
-  }
-}
-
-// Usage
-logInfo("Server started");
-logWarning("Cache miss for key: users_list");
-logError("Database connection failed");
-logDebug("Variable value: " + someVar);
+console.info("Server started");
+console.warn("Cache miss for key: users_list");
+console.error("Database connection failed");
+console.debug("Variable value: " + someVar);
 ```
 
 ### 4. Don't Log in Loops (Usually)
@@ -841,8 +745,7 @@ console.log(`Card ending in ${sanitizeCardNumber(cardNumber)}`);
 
 - `console.log()` is actually being called
 - Script executed successfully (no errors before log call)
-- Correct script selected in log viewer
-- Logs viewer refreshed
+- The Logs tab is open (it refreshes every 5 seconds)
 
 ### Too Many Logs
 
@@ -875,23 +778,23 @@ console.log(`Card ending in ${sanitizeCardNumber(cardNumber)}`);
 // Write a log message
 console.log("Message");
 
-// Read logs over the engine's HTTP API (every script, newest first)
+// From a page on the management host: every script, newest first
 const { logs } = await (await fetch("/engine/read_logs?limit=100")).json();
 
 // Narrow to one script, one level, the newest 50 entries
-const uri = encodeURIComponent("https://example.com/api-users");
+const script = "api-users";
 const recent = await (
-  await fetch(`/engine/read_logs?script=${uri}&level=ERROR&limit=50`)
+  await fetch(`/engine/read_logs?script=${script}&level=ERROR&limit=50`)
 ).json();
 
 // Everything one invocation logged
 const trace = await (
-  await fetch(`/engine/read_logs?script=${uri}&request_id=${requestId}`)
+  await fetch(`/engine/read_logs?script=${script}&request_id=${requestId}`)
 ).json();
 
 // Follow the log live (SSE), replaying the newest 50 entries first
 const source = new EventSource(
-  `/engine/script_logs/stream?uri=${uri}&backlog=50`,
+  `/engine/script_logs/stream?script=${script}&backlog=50`,
 );
 source.addEventListener("log", (e) => console.log(JSON.parse(e.data).message));
 
@@ -899,14 +802,10 @@ source.addEventListener("log", (e) => console.log(JSON.parse(e.data).message));
 await fetch("/engine/clear_logs", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ uri }),
+  body: JSON.stringify({ script }),
 });
 
-// Log helper functions
-function logError(msg) {
-  console.log(`[ERROR] ${msg}`);
-}
-function logInfo(msg) {
-  console.log(`[INFO] ${msg}`);
-}
+// Levels
+console.error("Something failed");
+console.warn("Something looks wrong");
 ```

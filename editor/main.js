@@ -758,7 +758,7 @@ function apiAIAssistant(context) {
         success: false,
         error: "Anthropic API key not configured",
         message:
-          "Please set SECRET_ANTHROPIC_API_KEY environment variable or configure secrets.values.anthropic_api_key in config file",
+          "Store a secret named anthropic_api_key for the editor script (the Secrets tab, or the write_secret tool)",
       }),
       contentType: "application/json",
     };
@@ -792,8 +792,9 @@ CRITICAL: You MUST respond with ONLY valid JSON. No markdown, no code blocks, no
 WHAT ARE aiwebengine SCRIPTS?
 - JavaScript files that handle HTTP requests
 - Return HTML pages, JSON APIs, file uploads, etc.
-- Use handler functions that take a request and return a response
-- Must have an init() function that registers routes
+- Use handler functions that take a context and return a response
+- Register routes in an init() function; the engine calls it, the script never does
+- Top-level code runs again on every request: variables do NOT keep state between requests. Keep state in scriptStorage, personalStorage or database
 
 AVAILABLE JAVASCRIPT APIs:
 1. routeRegistry - Object containing all HTTP route and stream-related functions:
@@ -819,12 +820,12 @@ AVAILABLE JAVASCRIPT APIs:
    - Returns { delivered, connections, failed }; throws on failure
    - Use for personalized broadcasting to specific users/groups on stable endpoints
 
-   To introspect what is registered, call the engine's HTTP API rather than a
-   global: POST /engine/list_routes returns {host, routes: [{path, method,
-   handler, script_uri, summary, description, tags}]}, where method is the HTTP
-   method for handlers and "STREAM" or "ASSET" for stream and asset
-   registrations. Pass {"host": "..."} to see only one host. The caller's
-   session decides what comes back.
+   To introspect what is registered, call the engine operation list_routes:
+   engine.call("list_routes", {}) returns {host, routes: [{path, method,
+   handler, script_uri, summary, description, tags}], count}, where method is
+   the HTTP method for handlers and "STREAM" or "ASSET" for stream and file
+   routes. Pass {host: "..."} to see only one host. It runs as the person making
+   the request, so their permissions decide what comes back.
 
 2. Console logging - Write messages to server logs and retrieve log entries
    - console.log(message) - General logging (level: LOG)
@@ -833,11 +834,11 @@ AVAILABLE JAVASCRIPT APIs:
    - console.warn(message) - Warning-level logging (level: WARN)
    - console.error(message) - Error-level logging (level: ERROR)
    - message: string
-   - To read logs back, call POST /engine/read_logs, which returns
-     {uri, logs: [{scriptUri, message, level, timestamp}], count, timestamp}.
-     Omit script for every script (newest first) or pass {"script": "..."} for one
-     script (oldest first); level, since and limit narrow the result.
-     POST /engine/clear_logs with a script clears one script's logs.
+   - To read logs back, call engine.call("read_logs", {script: "..."}), which
+     returns {uri, logs: [{scriptUri, message, level, timestamp}], count,
+     timestamp}. Omit script for every script (newest first); level, since and
+     limit narrow the result. engine.call("clear_logs", {script: "..."}) clears
+     one script's logs. Both run as the person making the request.
 
 3. scriptStorage - Persistent key-value storage shared by everyone using the script
    - Implements the WHATWG Storage interface, exactly like localStorage in a browser
@@ -853,7 +854,7 @@ AVAILABLE JAVASCRIPT APIs:
    - Named access works (store.foo, "foo" in store, delete store.foo,
      Object.keys(store)), but each key is a database round trip
    - Each script has its own isolated storage namespace
-   - Data persists across requests and server restarts (when PostgreSQL configured)
+   - Data persists across requests and server restarts
 
 4. personalStorage - Persistent key-value storage per script per user
    - Same WHATWG Storage interface as scriptStorage, scoped to one signed-in user
@@ -864,18 +865,18 @@ AVAILABLE JAVASCRIPT APIs:
    - REQUIRES AUTHENTICATION: every method throws a SecurityError DOMException
      when nobody is logged in, so guard on context.request.auth.isAuthenticated
      or catch the error
-   - User ID is handled transparently by the engine - scripts never see user IDs directly
-   - Data persists across requests and server restarts (when PostgreSQL configured)
+   - The engine keys the store by the signed-in user; a script cannot reach another user's store
+   - Data persists across requests and server restarts
    - Use for: user preferences, shopping carts, personalized settings, per-user state
 
 5. secretStorage - Manage secrets without ever reading their values back
    - secretStorage.exists(identifier) - Check if a secret exists (returns boolean);
      looks at the signed-in user's secrets first, then the script's
    - secretStorage.setSecret(identifier, value) - Store a secret for the signed-in
-     user (returns a message; strings starting with "Error" report the failure)
+     user (returns undefined; throws an Error on failure)
    - secretStorage.removeSecret(identifier) - Remove one of the user's secrets (returns boolean)
-   - secretStorage.clear() - Remove all of the user's secrets for this script (returns a message)
-   - Writes REQUIRE AUTHENTICATION; they report an error string when nobody is logged in
+   - secretStorage.clear() - Remove all of the user's secrets for this script (returns undefined)
+   - Writes REQUIRE AUTHENTICATION; they throw when nobody is logged in
    - SECURITY: Secret values are NEVER exposed to JavaScript
    - Use {{secret:identifier}} syntax in fetch() headers to inject secret values
    - identifier: string (secret name)
@@ -914,8 +915,9 @@ AVAILABLE JAVASCRIPT APIs:
    - handler: string (name of JavaScript function that handles tool execution)
    - Returns { ok: true }, or { ok: false, reason } outside init(); throws on a malformed call
    
-   The handler function receives context with context.args containing the tool arguments.
-   It should return a JSON string with the tool result.
+   The handler function receives context with context.args containing the tool arguments,
+   and context.request.auth naming the person calling.
+   It returns plain data (an object); the engine serializes it. Throw an Error for a failure.
 
    Example:
    mcpRegistry.registerTool("getCurrentTime", { description: "Get current time in specified timezone", inputSchema: {
@@ -927,15 +929,14 @@ AVAILABLE JAVASCRIPT APIs:
 
    function getCurrentTimeHandler(context) {
      const timezone = context.args.timezone || "UTC";
-     return JSON.stringify({
+     return {
        timestamp: new Date().toISOString(),
        timezone: timezone
-     });
+     };
    }
 
-   MCP tools are accessible at:
-   - GET /mcp/tools/list - List all registered tools
-   - POST /mcp/tools/call - Execute a tool with { "name": "toolName", "arguments": {...} }
+   MCP clients reach the tools through the engine's /mcp endpoint (JSON-RPC
+   tools/list and tools/call, with an OAuth bearer token).
 
 9. schedulerService - Background job scheduler
 
@@ -954,6 +955,15 @@ AVAILABLE JAVASCRIPT APIs:
   - The register calls answer { ok: true, jobId, name, nextRun }, or { ok: false, reason } outside init(); a malformed call throws
 
   Scheduled handlers run without an HTTP caller and receive context.meta.schedule containing jobId, name, type (one-off/recurring), scheduledFor (UTC timestamp), and intervalSeconds (null for one-off jobs).
+
+10. database - The script's own SQL tables (use for anything many people change)
+  database.ensureTable(name, { columns: [{ name, type }], uniqueIndexes? }) - create or extend a table; call it at the top of init()
+  - type: "integer" | "bigint" | "float" | "text" | "boolean" | "timestamp" | "reference"
+  - every table has its own id column
+  database.insert(name, row) - returns the stored row with its id
+  database.query(name, { where?, limit?, orderBy?, order? }) - returns rows; where is { col: value } or { col: { $gt, $gte, $lt, $lte, $ne } }
+  database.update(name, id, changes), database.delete(name, id), database.upsert(name, keyColumns, row), database.deleteWhere(name, where)
+  database.transaction(fn) - commits when fn returns, rolls back when it throws
 
 RESPONSE FORMAT - YOU MUST RESPOND WITH ONLY THIS JSON STRUCTURE:
 
@@ -1040,7 +1050,7 @@ RULES:
 1. ALWAYS respond with ONLY valid JSON - no other text
 2. Include complete, working JavaScript code
 3. Use try-catch blocks in all handlers
-4. ALWAYS include init() function that calls at least one registration function:
+4. ALWAYS include an init() function (never call it yourself) that calls at least one registration function:
    - For HTTP services and streams: routeRegistry.registerRoute(path, spec)
    - A script may use multiple registration types
 5. Use Response builders (ResponseBuilder.json(), ResponseBuilder.html(), ResponseBuilder.text(), ResponseBuilder.error(status, message)) instead of manual response objects

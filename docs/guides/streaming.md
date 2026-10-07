@@ -1,1179 +1,328 @@
 # Real-Time Streaming Guide
 
-This guide covers aiwebengine's real-time streaming capabilities using Server-Sent Events (SSE). Learn how to build live, interactive applications that push updates to clients in real-time.
+How to push live updates to browsers with Server-Sent Events (SSE): register a
+stream, decide who may subscribe, and send to everyone or to a chosen few.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [API Reference](#api-reference)
-- [Selective Broadcasting](#selective-broadcasting)
+- [Who May Subscribe, and Selective Broadcasting](#who-may-subscribe-and-selective-broadcasting)
 - [Client Integration](#client-integration)
 - [Use Cases](#use-cases)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
-- [Advanced Topics](#advanced-topics)
-- [Next Steps](#next-steps)
 
 ## Overview
 
-aiwebengine provides built-in support for real-time streaming through Server-Sent Events (SSE). This allows you to:
-
-- Push live updates to connected clients
-- Build real-time dashboards and notifications
-- Create chat systems and collaborative tools
-- Stream live data updates without polling
-
-**Key Features:**
-
-- **Simple API**: Just two JavaScript functions to get started
-- **Multi-client support**: Broadcast to multiple connected clients simultaneously
-- **Automatic cleanup**: Connections are managed automatically
-- **Standard protocol**: Uses SSE, compatible with EventSource API
-- **No external dependencies**: Built into the core engine
-
-## Architecture
-
-### Components
-
-1. **Stream Registry**: Manages registered stream paths and active connections
-2. **Connection Manager**: Handles client connections and cleanup
-3. **JavaScript Engine Integration**: Provides `routeRegistry.registerRoute(path, { stream: true })` and `routeRegistry.sendStreamMessage()`
-4. **SSE Server**: Handles HTTP connections and message broadcasting
-
-### Flow Diagram
+A script registers a stream path in `init()`; browsers connect to it with the
+standard `EventSource` API; the script sends messages to it from any handler,
+scheduled job or task.
 
 ```text
-JavaScript Script          Stream Registry          Connected Clients
-     |                          |                         |
-     | routeRegistry.           |                         |
-     | registerRoute(path,      |                         |
-     |   { stream: true })      |                         |
-     |------------------------->|                         |
-     |                          |                         |
-     |                          | <--- Client connects ---|
-     |                          |                         |
-     | routeRegistry.           |                         |
-     | sendStreamMessage()      |                         |
-     |------------------------->|                         |
-     |                          |---- Send to specific -->|
-     |                          |---- stream clients ---->|
+script                      engine                         browsers
+  | init(): registerRoute     |                               |
+  |   (path, {stream: true})  |                               |
+  |-------------------------->|  <--- new EventSource(path) --|
+  |                           |       (authorize runs here)   |
+  | sendStreamMessage(path,…) |                               |
+  |-------------------------->|---- data: {...} ------------->|
 ```
 
-### Connection Lifecycle
-
-1. **Registration**: Script calls `routeRegistry.registerRoute('/path', { stream: true })` to create a stream endpoint
-2. **Client Connection**: Browser connects using `new EventSource('/path')`
-3. **Broadcasting**: Script calls `routeRegistry.sendStreamMessage('/path', data)` or `routeRegistry.sendStreamMessageFiltered('/path', data, filter)` to send data to clients
-4. **Cleanup**: Connections automatically cleaned up when clients disconnect
+- Every instance of a cluster delivers a message to its own connections; a
+  message sent on one instance reaches subscribers on all of them.
+- Connections are cleaned up when a client disconnects.
+- Messages go one way, server to browser. A browser sends with an ordinary
+  `POST` to a handler.
 
 ## Quick Start
 
-### 1. Basic Stream Setup
-
 ```javascript
-// Register a stream endpoint
-routeRegistry.registerRoute("/events", { stream: true });
-
-// Handler to send events
 function triggerEvent(context) {
-  routeRegistry.sendStreamMessage("/events", {
+  const result = routeRegistry.sendStreamMessage("/my-app/events", {
     type: "event",
     message: "Something happened!",
     timestamp: new Date().toISOString(),
   });
-
-  return { status: 200, body: "Event sent" };
+  return ResponseBuilder.json(result); // { delivered, connections, failed }
 }
 
-routeRegistry.registerRoute("/trigger", {
-  handler: "triggerEvent",
-  method: "POST",
-});
+function page(context) {
+  return ResponseBuilder.html(`<!DOCTYPE html>
+<html><body>
+  <div id="events"></div>
+  <script>
+    const events = new EventSource("/my-app/events");
+    events.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      document.getElementById("events").insertAdjacentHTML(
+        "beforeend", "<p>" + data.message + " at " + data.timestamp + "</p>");
+    };
+  </script>
+</body></html>`);
+}
+
+function init() {
+  routeRegistry.registerRoute("/my-app/events", { stream: true });
+  routeRegistry.registerRoute("/my-app/trigger", {
+    handler: "triggerEvent",
+    method: "POST",
+  });
+  routeRegistry.registerRoute("/my-app", { handler: "page" });
+}
 ```
 
-### 2. Client-Side Connection
+Open `/my-app` in a browser, then:
 
-```html
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Stream Example</title>
-  </head>
-  <body>
-    <div id="events"></div>
-
-    <script>
-      const eventSource = new EventSource("/events");
-
-      eventSource.onmessage = function (event) {
-        const data = JSON.parse(event.data);
-        document.getElementById("events").innerHTML +=
-          "<p>" + data.message + " at " + data.timestamp + "</p>";
-      };
-
-      eventSource.onerror = function (event) {
-        console.error("Stream error:", event);
-      };
-    </script>
-  </body>
-</html>
+```bash
+curl -X POST http://localhost:3000/my-app/trigger
 ```
-
-### 3. Test the Stream
-
-1. Load the HTML page in your browser
-2. Send a POST request to `/trigger`
-3. See the event appear in real-time!
 
 ## API Reference
 
-### routeRegistry Stream Functions
+### routeRegistry.registerRoute(path, { stream: true, authorize? })
 
-#### routeRegistry.registerRoute(path, { stream: true })
+Registers a Server-Sent Events endpoint. Only in `init()`.
 
-Registers a Server-Sent Events endpoint that clients can connect to.
+- `path` (string): starts with `/`, at most 500 characters; `:param` and a
+  trailing `/*` work. A connection is filed under the path the browser
+  opened, so with `/chat/:room/events` a message goes to
+  `/chat/general/events`, not to the pattern.
+- `authorize` (string, optional): the name of the function that decides who
+  may connect, and what the connection is filed under — see below. Without
+  one, anyone who can reach the host may connect.
 
-**Parameters:**
+**Returns** `{ ok: true }`, or `{ ok: false, reason }` when the path is held by
+another script or the call is made outside `init()`. **Throws** if the path is
+malformed or reserved, or the caller lacks the `ManageStreams` capability.
 
-- `path` (string): Stream path (must start with `/`, max 500 characters)
-- `authorize` (string, optional): name of the function that decides who may
-  connect. It answers `{ deny: 401 }` (or any 4xx) to refuse, or the filter
-  criteria — a flat object of strings — that `sendStreamMessageFiltered`
-  matches against. Without one, anyone who can reach the host may connect.
+### routeRegistry.sendStreamMessage(path, data)
 
-**Returns:** `{ ok: true }`, or `{ ok: false, reason }` when called outside
-`init()`
+Sends `data` (any JSON value) to every connection on `path`.
 
-**Throws:** if the path is malformed or reserved, or the caller lacks the
-`ManageStreams` capability
+**Returns** `{ delivered, connections, failed }`. A stream nobody is connected
+to answers zeros; a failure throws.
 
-**Example:**
+### routeRegistry.sendStreamMessageFiltered(path, data, filter?, matchMode?)
 
-```javascript
-routeRegistry.registerRoute("/notifications", { stream: true });
-routeRegistry.registerRoute("/chat/room1", { stream: true });
-routeRegistry.registerRoute("/status/server1", { stream: true });
-```
+Sends `data` only to the connections whose criteria — what `authorize`
+returned for them — match `filter`.
 
-**Path Requirements:**
+- `filter` (object of strings, optional): omit it, or pass `{}`, to reach every
+  connection.
+- `matchMode` (string, optional): `"subset"` (default) — every filter entry
+  must match — or `"overlap"`, where any one may.
 
-- Must start with `/`
-- Maximum 500 characters
-- Should be unique per script
-- Case-sensitive
+**Returns** `{ delivered, connections, failed }`.
 
-#### routeRegistry.sendStreamMessage(path, data)
+## Who May Subscribe, and Selective Broadcasting
 
-Sends a message to all clients connected to a specific stream path.
+The `authorize` function runs when a browser connects, with the connecting
+request in `context.request` (its `auth`, `params` and `query`). It answers
+either a refusal — `{ deny: 401 }`, or any 4xx, with an optional `reason` — or
+the connection's **criteria**: a flat object of strings that
+`sendStreamMessageFiltered` matches against.
 
-**Parameters:**
-
-- `path` (string): Stream path to send to (must start with `/`)
-- `data` (object): Data to send (will be JSON serialized)
-
-**Returns:** `{ delivered, connections, failed }`. A stream nobody is
-connected to answers zeros; a failure throws.
-
-**Example:**
+Because the criteria come from your function, a client cannot claim to be
+somebody else. Take identity from `auth`, never from a query parameter:
 
 ```javascript
-routeRegistry.sendStreamMessage("/notifications", {
-  type: "notification",
-  title: "New Message",
-  body: "You have a new message",
-  timestamp: new Date().toISOString(),
-  priority: "high",
-});
-```
-
-**Message Structure Best Practices:**
-
-- Include a `type` field to categorize messages
-- Add timestamps for ordering
-- Use consistent field names across your application
-- Keep messages reasonably sized (< 1MB recommended)
-
-#### routeRegistry.sendStreamMessageFiltered(path, data, filter, matchMode) [Advanced]
-
-Sends a message to specific clients connected to a stream path based on connection metadata filtering.
-
-**Parameters:**
-
-- `path` (string): Stream path to send to (must start with `/`)
-- `data` (object): Data to send (will be JSON serialized)
-- `filter` (object, optional): string values matched against the criteria
-  each connection's `authorize` function returned. Omit it, or pass `{}`, to
-  reach every connection.
-- `matchMode` (string, optional): `"subset"` (default) — every entry must
-  match — or `"overlap"`, where any one may.
-
-**Returns:** `{ delivered, connections, failed }`
-
-**Example:**
-
-```javascript
-// Send to connections where user_id matches "user123" and room is "general"
-routeRegistry.sendStreamMessageFiltered(
-  "/chat",
-  {
-    type: "chat_message",
-    message: "Hello everyone in general!",
-    timestamp: new Date().toISOString(),
-  },
-  {
-    user_id: "user123",
-    room: "general",
-  },
-);
-
-// Send to all connections (empty filter)
-routeRegistry.sendStreamMessageFiltered(
-  "/notifications",
-  {
-    type: "system_alert",
-    message: "System maintenance starting",
-  },
-  {},
-);
-```
-
-**Filter Format:**
-
-The `filter` is an object of string values that must match the
-connection's criteria:
-
-```javascript
-// Filter examples
-({ user_id: "user123" }); // Match specific user
-({ room: "general", role: "admin" }); // Match room AND role
-({}); // Match all connections (empty filter)
-```
-
-**Use Cases:**
-
-- **Chat Applications**: Send messages only to users in specific rooms or with certain permissions
-- **User-Specific Notifications**: Deliver personalized content to individual users
-- **Role-Based Broadcasting**: Send different messages based on user roles or groups
-- **Multi-Tenant Systems**: Filter by tenant, organization, or workspace
-
-### Stream Management
-
-Streams are automatically managed by the aiwebengine:
-
-- **Registration**: Streams persist until server restart or script reload
-- **Connections**: Multiple clients can connect to the same stream
-- **Broadcasting**: Messages sent to clients connected to the specified stream path
-- **Cleanup**: Stale connections automatically removed
-
-## Selective Broadcasting
-
-Selective broadcasting allows you to send messages to specific clients based on connection metadata, enabling personalized content delivery on stable endpoints without creating dynamic user-specific paths.
-
-### How It Works
-
-1. **Connection Metadata**: Each client connection can have associated metadata (key-value pairs)
-2. **Filtering**: When broadcasting, you provide filter criteria that match against this metadata
-3. **Targeted Delivery**: Only connections whose metadata matches the filter receive the message
-
-### Benefits
-
-- **Stable Endpoints**: Use one endpoint instead of many user-specific paths
-- **Scalability**: Avoid endpoint proliferation and memory leaks
-- **Personalization**: Deliver relevant content to specific users or groups
-- **Security**: Filter based on user permissions, roles, or context
-
-### Quick Example
-
-```javascript
-// Register one stream for all chat messages
-routeRegistry.registerRoute("/chat", { stream: true });
-
-// Send personalized messages using metadata filtering
-function sendPersonalMessage(context) {
-  const req = context.request;
-  const { targetUser, message } = req.form;
-
-  // Send only to connections where user_id matches targetUser
-  const result = sendStreamMessageToConnections(
-    "/chat",
-    {
-      type: "personal_message",
-      message: message,
-      from: "system",
-      timestamp: new Date().toISOString(),
-    },
-    JSON.stringify({
-      user_id: targetUser,
-    }),
-  );
-
-  return { status: 200, body: result };
-}
-
-routeRegistry.registerRoute("/chat/personal", {
-  handler: "sendPersonalMessage",
-  method: "POST",
-});
-```
-
-### Advanced Filtering
-
-```javascript
-// Multiple filter criteria (AND logic)
-sendStreamMessageToConnections(
-  "/notifications",
-  data,
-  JSON.stringify({
-    user_id: "user123",
-    role: "admin",
-    department: "engineering",
-  }),
-);
-
-// Room-based chat filtering
-sendStreamMessageToConnections(
-  "/chat",
-  data,
-  JSON.stringify({
-    room: "general",
-  }),
-);
-
-// Tenant-based filtering for multi-tenant apps
-sendStreamMessageToConnections(
-  "/updates",
-  data,
-  JSON.stringify({
-    tenant_id: "tenant123",
-    environment: "production",
-  }),
-);
-```
-
-### Client-Side Metadata Setup
-
-Connection metadata is specified when clients connect by including query parameters in the stream URL. These parameters become the connection's metadata and can be used for selective broadcasting.
-
-**Basic Example:**
-
-```javascript
-// Connect with user-specific metadata
-const eventSource = new EventSource("/chat?user_id=user123&room=general");
-
-// Connect with role-based metadata
-const adminSource = new EventSource(
-  "/notifications?role=admin&department=engineering",
-);
-
-// Connect with tenant metadata for multi-tenant apps
-const tenantSource = new EventSource(
-  "/updates?tenant_id=tenant123&environment=production",
-);
-```
-
-**Query Parameter Format:**
-
-- All query parameters in the connection URL become metadata key-value pairs
-- Values are automatically URL-decoded
-- Empty values are preserved as empty strings
-- Duplicate keys use the last value (standard URL behavior)
-
-**Examples:**
-
-```javascript
-// URL: /stream?user_id=john&role=admin&department=engineering
-// Metadata: { user_id: "john", role: "admin", department: "engineering" }
-
-// URL: /chat?room=general&mute=false
-// Metadata: { room: "general", mute: "false" }
-
-// URL: /notifications?priority=high&category=system
-// Metadata: { priority: "high", category: "system" }
-```
-
-**JavaScript Helper Function:**
-
-```javascript
-function connectWithMetadata(streamPath, metadata) {
-  const params = new URLSearchParams(metadata);
-  const url = `${streamPath}?${params.toString()}`;
-  return new EventSource(url);
-}
-
-// Usage
-const stream = connectWithMetadata("/chat", {
-  user_id: "user123",
-  room: "general",
-  role: "member",
-});
-```
-
-**Authentication Integration:**
-
-For authenticated applications, you can include user information in metadata:
-
-```javascript
-// Assuming you have user context from authentication
-function connectAuthenticatedStream(streamPath) {
-  const user = getCurrentUser(); // Your auth function
-  const metadata = {
-    user_id: user.id,
-    role: user.role,
-    tenant_id: user.tenantId,
-    // Add any other relevant metadata
-  };
-
-  return connectWithMetadata(streamPath, metadata);
-}
-
-// Usage
-const notifications = connectAuthenticatedStream("/notifications");
-const chat = connectAuthenticatedStream("/chat");
-```
-
-**Dynamic Metadata Updates:**
-
-If you need to change metadata during a session, you'll need to disconnect and reconnect with new parameters:
-
-```javascript
-function switchRoom(newRoom) {
-  // Close existing connection
-  if (eventSource) {
-    eventSource.close();
+// Who may watch an order, and which order a connection is about
+function mayWatchOrder(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) return { deny: 401 };
+  const orderId = context.request.query.order;
+  if (!orderId) return { deny: 400, reason: "order is required" };
+  const order = database.query("orders", { where: { id: Number(orderId) } })[0];
+  if (!order || order.owner !== auth.userId) {
+    return { deny: 404 };
   }
+  return { user_id: auth.userId, order_id: orderId };
+}
 
-  // Connect with new room metadata
-  eventSource = new EventSource(
-    `/chat?user_id=user123&room=${encodeURIComponent(newRoom)}`,
+function markShipped(context) {
+  const { orderId } = context.request.json();
+  // ... update the order ...
+  routeRegistry.sendStreamMessageFiltered(
+    "/shop/order-events",
+    { type: "shipped", orderId },
+    { order_id: String(orderId) },
   );
+  return ResponseBuilder.noContent();
+}
+
+function init() {
+  routeRegistry.registerRoute("/shop/order-events", {
+    stream: true,
+    authorize: "mayWatchOrder",
+  });
+  routeRegistry.registerRoute("/shop/ship", {
+    handler: "markShipped",
+    method: "POST",
+  });
 }
 ```
 
-**Best Practices for Metadata:**
+The browser connects with `new EventSource("/shop/order-events?order=1234")`;
+the session cookie identifies the person.
 
-1. **Keep it Simple**: Use simple key-value pairs, avoid complex nested objects
-2. **Be Consistent**: Use the same metadata keys across your application
-3. **URL Encode**: Always encode special characters in metadata values
-4. **Security**: Don't include sensitive information in metadata (it's visible in URLs)
-5. **Performance**: Prefer short, descriptive keys and values
-
-**Troubleshooting Metadata:**
+Filter examples:
 
 ```javascript
-// Debug metadata by logging connection setup
-console.log("Connecting to:", urlWithMetadata);
-
-// Verify metadata is being sent
-const testConnection = new EventSource(
-  "/test-metadata?debug=true&user_id=test",
-);
-testConnection.onmessage = (event) => {
-  console.log("Connection metadata:", event.data);
-};
+sendStreamMessageFiltered("/chat", msg, { user_id: "u-42" }); // one person
+sendStreamMessageFiltered("/chat", msg, { room: "general", role: "admin" }); // both must match
+sendStreamMessageFiltered("/chat", msg, { room: "a", room2: "b" }, "overlap"); // either may
+sendStreamMessageFiltered("/chat", msg, {}); // everyone
 ```
 
-### Use Cases for Selective Broadcasting
-
-#### 1. Chat Applications
-
-```javascript
-routeRegistry.registerRoute("/chat", { stream: true });
-
-function sendRoomMessage(context) {
-  const req = context.request;
-  const { room, message, sender } = req.form;
-
-  return sendStreamMessageToConnections(
-    "/chat",
-    {
-      type: "room_message",
-      room: room,
-      message: message,
-      sender: sender,
-      timestamp: new Date().toISOString(),
-    },
-    JSON.stringify({ room: room }),
-  );
-}
-
-function sendPrivateMessage(context) {
-  const req = context.request;
-  const { targetUser, message, sender } = req.form;
-
-  return sendStreamMessageToConnections(
-    "/chat",
-    {
-      type: "private_message",
-      message: message,
-      sender: sender,
-      timestamp: new Date().toISOString(),
-    },
-    JSON.stringify({ user_id: targetUser }),
-  );
-}
-
-routeRegistry.registerRoute("/chat/room", {
-  handler: "sendRoomMessage",
-  method: "POST",
-});
-routeRegistry.registerRoute("/chat/private", {
-  handler: "sendPrivateMessage",
-  method: "POST",
-});
-```
-
-#### 2. Role-Based Notifications
-
-```javascript
-routeRegistry.registerRoute("/notifications", { stream: true });
-
-function sendAdminAlert(context) {
-  const req = context.request;
-  const { message, priority } = req.form;
-
-  return sendStreamMessageToConnections(
-    "/notifications",
-    {
-      type: "admin_alert",
-      message: message,
-      priority: priority,
-      timestamp: new Date().toISOString(),
-    },
-    JSON.stringify({ role: "admin" }),
-  );
-}
-
-function sendUserNotification(context) {
-  const req = context.request;
-  const { userId, message } = req.form;
-
-  return sendStreamMessageToConnections(
-    "/notifications",
-    {
-      type: "user_notification",
-      message: message,
-      timestamp: new Date().toISOString(),
-    },
-    JSON.stringify({ user_id: userId }),
-  );
-}
-
-routeRegistry.registerRoute("/notify/admin", {
-  handler: "sendAdminAlert",
-  method: "POST",
-});
-routeRegistry.registerRoute("/notify/user", {
-  handler: "sendUserNotification",
-  method: "POST",
-});
-```
-
-#### 3. Multi-Tenant Applications
-
-```javascript
-routeRegistry.registerRoute("/tenant-updates", { stream: true });
-
-function broadcastTenantUpdate(context) {
-  const req = context.request;
-  const { tenantId, message } = req.form;
-
-  return sendStreamMessageToConnections(
-    "/tenant-updates",
-    {
-      type: "tenant_update",
-      message: message,
-      timestamp: new Date().toISOString(),
-    },
-    JSON.stringify({ tenant_id: tenantId }),
-  );
-}
-
-routeRegistry.registerRoute("/tenant/broadcast", {
-  handler: "broadcastTenantUpdate",
-  method: "POST",
-});
-```
-
-### Best Practices for Selective Broadcasting
-
-1. **Filter Design**
-   - Use consistent metadata keys across your application
-   - Plan your filtering strategy before implementing
-   - Consider performance impact of complex filters
-
-2. **Security**
-   - Validate filter criteria server-side
-   - Don't expose sensitive metadata in client responses
-   - Use appropriate capability checks for filtered broadcasts
-
-3. **Performance**
-   - Prefer simple filters (single key-value pairs)
-   - Avoid overly complex filter combinations
-   - Monitor broadcast performance with many connections
-
-4. **Error Handling**
-
-```javascript
-function safeBroadcast(context) {
-  try {
-    const result = sendStreamMessageToConnections("/chat", data, filter);
-    console.log("Broadcast result: " + result);
-    return { status: 200, body: result };
-  } catch (error) {
-    console.error("Broadcast failed: " + error.message);
-    return { status: 500, body: "Broadcast failed" };
-  }
-}
-```
-
-### Troubleshooting Selective Broadcasting
-
-1. **Messages Not Received**
-   - Check that connection metadata matches your filter exactly
-   - Verify filter JSON syntax
-   - Ensure connections have the expected metadata
-
-2. **Performance Issues**
-   - Monitor broadcast result strings for failure counts
-   - Check server logs for filtering performance
-   - Consider simplifying complex filters
-
-3. **Debugging**
-
-````javascript
-// Log broadcast results
-const result = sendStreamMessageToConnections("/test", data, filter);
-console.log("Broadcast result: " + result);
-
-// Test with empty filter to verify basic functionality
-sendStreamMessageToConnections("/test", { type: "test" }, "{}");
-```
+`authorize` throwing is not a refusal: it answers 500. Return `{ deny: ... }`.
 
 ## Client Integration
 
 ### EventSource API
 
-The standard way to connect to streams from browsers:
-
 ```javascript
-const eventSource = new EventSource("/your-stream-path");
+const events = new EventSource("/my-app/events");
 
-// Handle messages
-eventSource.onmessage = function (event) {
+events.onmessage = (event) => {
   const data = JSON.parse(event.data);
   console.log("Received:", data);
 };
-
-// Handle connection opened
-eventSource.onopen = function (event) {
-  console.log("Stream connected");
+events.onopen = () => console.log("Stream connected");
+events.onerror = () => {
+  // EventSource reconnects by itself; show "reconnecting" meanwhile
 };
+// events.close() when done
+```
 
-// Handle errors
-eventSource.onerror = function (event) {
-  console.error("Stream error:", event);
-  // EventSource automatically attempts to reconnect
-};
-
-// Close connection when done
-// eventSource.close();
-````
-
-### Advanced Client Handling
+Dispatching on a `type` field keeps one stream useful for several kinds of
+message:
 
 ```javascript
-class StreamManager {
-  constructor(streamPath, options = {}) {
-    this.streamPath = streamPath;
-    this.options = {
-      reconnectDelay: 3000,
-      maxReconnectAttempts: 5,
-      ...options,
-    };
-    this.reconnectAttempts = 0;
-    this.eventSource = null;
-    this.messageHandlers = new Map();
-  }
-
-  connect() {
-    this.eventSource = new EventSource(this.streamPath);
-
-    this.eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      this.handleMessage(data);
-    };
-
-    this.eventSource.onopen = () => {
-      console.log("Stream connected");
-      this.reconnectAttempts = 0;
-    };
-
-    this.eventSource.onerror = () => {
-      this.handleError();
-    };
-  }
-
-  handleMessage(data) {
-    const handler = this.messageHandlers.get(data.type);
-    if (handler) {
-      handler(data);
-    }
-  }
-
-  handleError() {
-    if (this.reconnectAttempts < this.options.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      setTimeout(() => {
-        console.log(`Reconnecting... (attempt ${this.reconnectAttempts})`);
-        this.connect();
-      }, this.options.reconnectDelay);
-    }
-  }
-
-  on(messageType, handler) {
-    this.messageHandlers.set(messageType, handler);
-  }
-
-  disconnect() {
-    if (this.eventSource) {
-      this.eventSource.close();
-    }
-  }
-}
-
-// Usage
-const stream = new StreamManager("/notifications");
-stream.on("notification", (data) => {
-  showNotification(data.title, data.body);
-});
-stream.on("update", (data) => {
-  updateUI(data);
-});
-stream.connect();
+const handlers = {
+  notification: (data) => showNotification(data.title, data.body),
+  update: (data) => updateUI(data),
+};
+events.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  (handlers[data.type] || console.log)(data);
+};
 ```
+
+A first page load should fetch the current state with an ordinary `GET`, since
+a stream delivers only what is sent after the connection opens.
 
 ### curl Testing
 
-You can test streams from the command line:
-
 ```bash
 # Connect to a stream
-curl -N -H "Accept: text/event-stream" http://localhost:3000/notifications
+curl -N -H "Accept: text/event-stream" http://localhost:3000/my-app/events
 
 # In another terminal, trigger an event
-curl -X POST http://localhost:3000/trigger-notification
+curl -X POST http://localhost:3000/my-app/trigger
 ```
 
 ## Use Cases
 
-### 1. Live Notifications
-
-Perfect for alerting users about important events:
+### Live Dashboard from a Scheduled Job
 
 ```javascript
-routeRegistry.registerRoute("/notifications", { stream: true });
-
-function sendAlert(context) {
-  const req = context.request;
-  const { type, message, priority } = req.form;
-
-  routeRegistry.sendStreamMessage("/notifications", {
-    type: "alert",
-    alertType: type,
-    message: message,
-    priority: priority || "normal",
-    timestamp: new Date().toISOString(),
-  });
-
-  return { status: 200, body: "Alert sent" };
-}
-
-routeRegistry.registerRoute("/send-alert", {
-  handler: "sendAlert",
-  method: "POST",
-});
-```
-
-### 2. Real-Time Dashboard
-
-Stream live metrics and status updates:
-
-```javascript
-routeRegistry.registerRoute("/dashboard", { stream: true });
-
-function updateMetrics(context) {
-  // Simulate gathering metrics
-  const metrics = {
+function publishMetrics(context) {
+  const counts = database.query("orders", { where: { status: "open" } }).length;
+  routeRegistry.sendStreamMessage("/ops/dashboard", {
     type: "metrics",
-    cpu: Math.random() * 100,
-    memory: Math.random() * 100,
-    requests: Math.floor(Math.random() * 1000),
-    timestamp: new Date().toISOString(),
-  };
-
-  routeRegistry.sendStreamMessage("/dashboard", metrics);
-  return { status: 200, body: "Metrics updated" };
-}
-
-routeRegistry.registerRoute("/update-metrics", {
-  handler: "updateMetrics",
-  method: "POST",
-});
-```
-
-### 3. Chat System
-
-Build real-time communication:
-
-```javascript
-routeRegistry.registerRoute("/chat", { stream: true });
-
-function sendMessage(context) {
-  const req = context.request;
-  const { user, room, message } = req.form;
-
-  routeRegistry.sendStreamMessage("/chat", {
-    type: "chat_message",
-    user: user,
-    room: room,
-    message: message,
-    timestamp: new Date().toISOString(),
+    openOrders: counts,
+    at: new Date().toISOString(),
   });
-
-  return { status: 200, body: "Message sent" };
 }
 
-routeRegistry.registerRoute("/chat/send", {
-  handler: "sendMessage",
-  method: "POST",
-});
+function init() {
+  routeRegistry.registerRoute("/ops/dashboard", {
+    stream: true,
+    authorize: "staffOnly",
+  });
+  schedulerService.registerRecurring({
+    handler: "publishMetrics",
+    intervalMilliseconds: 10000,
+    name: "publish-metrics",
+  });
+}
+
+function staffOnly(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) return { deny: 401 };
+  return database.query("staff", { where: { user_id: auth.userId } }).length
+    ? { user_id: auth.userId }
+    : { deny: 403 };
+}
 ```
 
-### 4. Live Data Feed
+A recurring job runs whether anybody watches; `delivered: 0` from
+`sendStreamMessage` is a cheap way to skip expensive work when nobody is
+connected.
 
-Stream continuous data updates:
+### Chat Rooms
 
 ```javascript
-routeRegistry.registerRoute("/data-feed", { stream: true });
-
-function broadcastData(context) {
-  const req = context.request;
-  // Simulate real-time data
-  const data = {
-    type: "data_update",
-    sensor_id: req.query.sensor,
-    value: Math.random() * 100,
-    unit: "celsius",
-    location: "server_room",
-    timestamp: new Date().toISOString(),
-  };
-
-  routeRegistry.sendStreamMessage("/data-feed", data);
-  return { status: 200, body: "Data broadcasted" };
+function mayJoin(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) return { deny: 401 };
+  return { user_id: auth.userId };
 }
 
-routeRegistry.registerRoute("/broadcast-data", {
-  handler: "broadcastData",
-  method: "GET",
-});
+function sendToRoom(context) {
+  const auth = context.request.auth;
+  if (!auth.isAuthenticated) return ResponseBuilder.error(401, "Sign in");
+  const room = context.request.params.room;
+  const { text } = context.request.json();
+  // Send to the path the browsers opened, not the pattern
+  routeRegistry.sendStreamMessage(`/chat/${room}/events`, {
+    type: "message",
+    from: auth.userName,
+    text,
+  });
+  return ResponseBuilder.noContent();
+}
+
+function init() {
+  routeRegistry.registerRoute("/chat/:room/events", {
+    stream: true,
+    authorize: "mayJoin",
+  });
+  routeRegistry.registerRoute("/chat/:room/send", {
+    handler: "sendToRoom",
+    method: "POST",
+  });
+}
 ```
 
 ## Best Practices
 
-### Stream Design
-
-1. **Use Descriptive Path Names**
-
-   ```javascript
-   // Good
-   routeRegistry.registerRoute("/notifications/user123", { stream: true });
-   routeRegistry.registerRoute("/chat/room/general", { stream: true });
-   routeRegistry.registerRoute("/status/server/production", { stream: true });
-
-   // Avoid
-   routeRegistry.registerRoute("/stream1", { stream: true });
-   routeRegistry.registerRoute("/s", { stream: true });
-   ```
-
-2. **Structure Your Messages Consistently**
-
-   ```javascript
-   // Recommended message structure
-   const message = {
-     type: "message_type", // Required: categorize messages
-     timestamp: new Date().toISOString(), // Recommended: for ordering
-     id: generateId(), // Optional: for deduplication
-     data: {/* actual payload */}, // Your data
-   };
-   ```
-
-3. **Handle Different Message Types**
-
-```javascript
-routeRegistry.sendStreamMessage('/notifications', { type: 'notification', ... });
-routeRegistry.sendStreamMessage('/updates', { type: 'update', ... });
-routeRegistry.sendStreamMessage('/errors', { type: 'error', ... });
-```
-
-### Client-Side Best Practices
-
-1. **Implement Reconnection Logic**
-   - EventSource automatically reconnects, but you may want custom logic
-   - Handle network failures gracefully
-   - Consider exponential backoff for reconnection attempts
-
-2. **Handle Message Types**
-
-   ```javascript
-   eventSource.onmessage = function (event) {
-     const data = JSON.parse(event.data);
-
-     switch (data.type) {
-       case "notification":
-         showNotification(data);
-         break;
-       case "update":
-         updateUI(data);
-         break;
-       case "error":
-         handleError(data);
-         break;
-       default:
-         console.warn("Unknown message type:", data.type);
-     }
-   };
-   ```
-
-3. **Clean Up Connections**
-
-```javascript
-// Close connections when navigating away
-window.addEventListener("beforeunload", function () {
-  if (eventSource) {
-    eventSource.close();
-  }
-});
-```
-
-### Performance Considerations
-
-1. **Message Frequency**
-   - Avoid sending too many messages per second
-   - Consider batching updates for high-frequency data
-   - Use throttling or debouncing when appropriate
-
-2. **Message Size**
-   - Keep messages reasonably small (< 1MB recommended)
-   - Consider compression for large datasets
-   - Use references instead of embedding large objects
-
-3. **Connection Limits**
-   - Browser limits concurrent SSE connections (typically 6 per domain)
-   - Consider multiplexing multiple data types on one stream
-   - Use appropriate stream paths to organize data
-
-### Error Handling
-
-1. **Server-Side**
-
-```javascript
-function safeHandler(context) {
-  try {
-    // Your logic here
-    routeRegistry.sendStreamMessage("/notifications", {
-      type: "success",
-      data: result,
-    });
-    return { status: 200, body: "OK" };
-  } catch (error) {
-    console.error("Error in handler: " + error.message);
-    routeRegistry.sendStreamMessage("/notifications", {
-      type: "error",
-      message: "Something went wrong",
-      timestamp: new Date().toISOString(),
-    });
-    return { status: 500, body: "Error occurred" };
-  }
-}
-```
-
-1. **Client-Side**
-
-```javascript
-eventSource.onerror = function (event) {
-  console.error("Stream error:", event);
-  // Handle the error appropriately
-  showErrorMessage("Connection lost. Attempting to reconnect...");
-};
-```
-
-### Security Considerations
-
-1. **Validate Stream Paths**
-   - Ensure stream paths don't expose sensitive information
-   - Consider using UUIDs for user-specific streams
-
-2. **Message Content**
-   - Don't send sensitive data in stream messages
-   - Validate and sanitize any user input before broadcasting
-
-3. **Rate Limiting** (Future Enhancement)
-   - Consider implementing rate limiting for stream registrations
-   - Monitor for abuse of the streaming endpoints
+- **Register streams in `init()`** and read the result; a path another script
+  holds is refused.
+- **One stream per kind of thing, filtered**, rather than a path per user: the
+  `authorize` criteria are what make a stable path personal.
+- **Identity comes from `auth`** in `authorize`, never from what the client
+  put in the URL.
+- **Give messages a `type`** and a timestamp, and keep them small.
+- **Send state the client can apply as-is** (the new value), so a reconnect
+  followed by one `GET` brings a client back in step.
+- **Handle reconnects in the client**: `EventSource` retries by itself; show
+  that it is reconnecting and refetch state when it opens again.
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Stream Not Receiving Messages**
-
-   ```javascript
-   // Check if stream is registered
-   console.log("Registering stream...");
-   routeRegistry.registerRoute("/my-stream", { stream: true });
-   console.log("Stream registered");
-
-   // Verify message sending
-   console.log("Sending message...");
-   routeRegistry.sendStreamMessage("/my-stream", {
-     type: "test",
-     message: "Hello",
-   });
-   console.log("Message sent");
-   ```
-
-2. **Client Connection Issues**
-
-   ```javascript
-   // Add detailed error handling
-   eventSource.onerror = function (event) {
-     console.error("EventSource failed:", event);
-     console.log("ReadyState:", eventSource.readyState);
-     // 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
-   };
-   ```
-
-3. **Browser Connection Limits**
-   - Check browser developer tools Network tab
-   - Look for "Too many connections" errors
-   - Consider using fewer concurrent streams
-
-### Debugging Tips
-
-1. **Server Logs**
-
-   ```javascript
-   console.log("Stream registered: /my-stream");
-   console.log("Broadcasting message: " + JSON.stringify(data));
-   ```
-
-2. **Client Console**
-
-   ```javascript
-   console.log("EventSource state:", eventSource.readyState);
-   console.log("Received message:", data);
-   ```
-
-3. **Network Inspection**
-   - Use browser DevTools Network tab
-   - Look for EventSource connections
-   - Check for proper `text/event-stream` content type
-
-### Performance Monitoring
-
-Track stream performance:
-
-```javascript
-let messageCount = 0;
-let connectionCount = 0;
-
-eventSource.onopen = () => {
-  connectionCount++;
-  console.log("Connections:", connectionCount);
-};
-
-eventSource.onmessage = (event) => {
-  messageCount++;
-  if (messageCount % 100 === 0) {
-    console.log("Messages received:", messageCount);
-  }
-};
-```
-
-## Advanced Topics
-
-### Multiple Stream Coordination
-
-When using multiple streams, coordinate them effectively:
-
-```javascript
-// Register different streams for different data types
-routeRegistry.registerRoute("/notifications", { stream: true }); // User notifications
-routeRegistry.registerRoute("/system-status", { stream: true }); // System health
-routeRegistry.registerRoute("/chat", { stream: true }); // Chat messages
-
-// Send targeted messages based on context
-function handleUserAction(context) {
-  const req = context.request;
-  // Notify about user action
-  routeRegistry.sendStreamMessage("/notifications", {
-    type: "user_action",
-    action: req.form.action,
-    user: req.form.user,
-  });
-
-  // Update system status if needed
-  if (req.form.action === "critical_operation") {
-    routeRegistry.sendStreamMessage("/system-status", {
-      type: "system_status",
-      status: "busy",
-      operation: req.form.action,
-    });
-  }
-
-  return { status: 200, body: "Action processed" };
-}
-```
-
-### Integration with External Systems
-
-Connect streams to external data sources:
-
-```javascript
-routeRegistry.registerRoute("/external-updates", { stream: true });
-
-// Webhook handler for external system notifications
-function webhookHandler(context) {
-  const req = context.request;
-  const webhookData = JSON.parse(req.body);
-
-  // Transform external data for your stream
-  routeRegistry.sendStreamMessage("/external-updates", {
-    type: "external_update",
-    source: "github",
-    event: webhookData.action,
-    repository: webhookData.repository.name,
-    timestamp: new Date().toISOString(),
-  });
-
-  return { status: 200, body: "Webhook processed" };
-}
-
-routeRegistry.registerRoute("/webhook/github", {
-  handler: "webhookHandler",
-  method: "POST",
-});
-```
+| Symptom                            | Check                                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| The browser gets 404               | Was the stream registered in `init()`, and did registration answer `ok: true`? `list_routes` shows `STREAM`. |
+| The browser gets 401/403           | Your `authorize` function refused; its `reason` is in the response.                                          |
+| Connected, but nothing arrives     | `sendStreamMessage`'s result: `connections: 0` means the path differs from the one the browser opened.       |
+| A filtered send delivers 0         | The filter must match the criteria `authorize` returned, as strings: `"42"` is not `42`.                     |
+| Messages stop from a scheduled job | The job's log (`read_logs` with `kind=scheduled`): a throw there is invisible from the browser.              |
 
 ## Next Steps
 
-- Check out the [Examples](../examples/index.md) for complete streaming applications
-- Review the [JavaScript APIs](../reference/javascript-apis.md) for detailed API documentation
-- Learn about the [Deployment Workflow](../getting-started/03-deployment-workflow.md) for testing streams
-- Explore the streaming examples in the [aiwebengine-examples](https://github.com/lpajunen/aiwebengine-examples/tree/main/src) repository
-
----
-
-**Note**: Streaming is a powerful feature that opens up many possibilities for interactive applications. Start simple with basic notifications and gradually build more complex real-time features as you become comfortable with the API.
+- **[Script Development](scripts.md)** - Handlers, state and routes
+- **[API Reference](../reference/javascript-apis.md)** - Every global
+- **[Examples](../examples/index.md)** - The chat and virtual-world examples use streams

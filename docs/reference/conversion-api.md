@@ -85,7 +85,7 @@ This is a **simple** example with *italic* text.
 <html>
 <head>
   <title>Markdown Page</title>
-  <link rel="stylesheet" href="/engine.css">
+  <link rel="stylesheet" href="/engine/engine.css">
 </head>
 <body>
   <div class="container">
@@ -140,7 +140,7 @@ function serveBlogPost(context) {
 <html>
 <head>
   <title>Blog - ${slug}</title>
-  <link rel="stylesheet" href="/engine.css">
+  <link rel="stylesheet" href="/engine/engine.css">
   <style>
     .blog-post {
       max-width: 800px;
@@ -229,7 +229,7 @@ Creates a new user.
 <html>
 <head>
   <title>API Documentation</title>
-  <link rel="stylesheet" href="/engine.css">
+  <link rel="stylesheet" href="/engine/engine.css">
 </head>
 <body>
   <nav>
@@ -362,7 +362,7 @@ function wrapInTemplate(content) {
 <html>
 <head>
   <title>Documentation</title>
-  <link rel="stylesheet" href="/engine.css">
+  <link rel="stylesheet" href="/engine/engine.css">
 </head>
 <body>${content}</body>
 </html>`;

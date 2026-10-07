@@ -36,7 +36,6 @@ script.
 | [JavaScript APIs](reference/javascript-apis.md) | Every global: routes, files, storage, secrets, database, scheduler, `fetch`, `ResponseBuilder` |
 | [Authentication API](reference/auth-api.md)     | The request's auth context, and user and role management                                       |
 | [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars and base64 helpers (`convert.*`)                                          |
-| [Web Editor](tools/editor.md)                   | The editor's features                                                                          |
 | [Example Scripts](examples/index.md)            | Working examples in `aiwebengine-examples`                                                     |
 
 The authoritative types are `aiwebengine.d.ts`, served by every engine at

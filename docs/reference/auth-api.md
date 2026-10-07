@@ -142,7 +142,7 @@ function myHandler(context) {
 
 Returns the current user object if authenticated, or **throws an error** if not authenticated.
 
-Use this in handlers that require authentication - it will automatically reject anonymous requests.
+Use this in handlers that require authentication. Uncaught, the throw answers the request with a 500; catch it (below) to answer 401 or redirect to `/auth/login`.
 
 **Returns:**
 
@@ -364,7 +364,7 @@ function secureHandler(context) {
       status: 401,
       body: JSON.stringify({
         error: error.message,
-        authorizeUrl: "/oauth2/authorize",
+        loginUrl: "/auth/login",
       }),
       contentType: "application/json",
     };
@@ -398,7 +398,7 @@ function customProtectedHandler(context) {
 The authentication context is automatically extracted from:
 
 1. `Authorization: Bearer <token>` header
-2. `session` cookie
+2. the session cookie the engine sets at sign-in
 
 The middleware handles authentication before your JavaScript handler runs, so the `req.auth` object is always available and up-to-date.
 
@@ -424,7 +424,7 @@ Returns the current authentication status for the caller.
 **Notes:**
 
 - `authenticated` is always present.
-- `user_id`, `username`, and `roles` may be `null` when the caller is anonymous.
+- `user_id`, `username`, and `roles` are omitted when the caller is anonymous.
 
 ### `GET /.well-known/oauth-authorization-server`
 
@@ -435,11 +435,11 @@ Returns OAuth 2.0 authorization server metadata as defined by RFC 8414.
 ```json
 {
   "issuer": "https://example.com",
-  "authorization_endpoint": "https://example.com/oauth2/authorize",
-  "token_endpoint": "https://example.com/oauth2/token",
+  "authorization_endpoint": "https://example.com/auth/oauth2/authorize",
+  "token_endpoint": "https://example.com/auth/oauth2/token",
   "response_types_supported": ["code"],
   "code_challenge_methods_supported": ["S256"],
-  "registration_endpoint": "https://example.com/oauth2/register"
+  "registration_endpoint": "https://example.com/auth/oauth2/register"
 }
 ```
 
@@ -457,7 +457,7 @@ Returns protected resource metadata for OAuth clients.
 }
 ```
 
-### `GET /oauth2/authorize`
+### `GET /auth/oauth2/authorize`
 
 Authorization endpoint for OAuth 2.0 authorization code flow.
 
@@ -474,7 +474,7 @@ Authorization endpoint for OAuth 2.0 authorization code flow.
 
 If the user is not already authenticated, the endpoint may redirect to the engine's login flow before continuing authorization.
 
-### `POST /oauth2/token`
+### `POST /auth/oauth2/token`
 
 Token endpoint for exchanging an authorization code for an access token.
 
@@ -498,7 +498,7 @@ Token endpoint for exchanging an authorization code for an access token.
 - `expires_in`, `refresh_token`, and `scope` are optional.
 - Clients should treat this shape as the contract exposed by the OpenAPI spec.
 
-### `POST /oauth2/register`
+### `POST /auth/oauth2/register`
 
 Dynamic client registration endpoint. Accepts a JSON request body and returns the registered client metadata.
 
@@ -657,33 +657,20 @@ if (!response.ok) {
 
 ### Calling from a handler
 
-A handler has to forward the caller's credentials, otherwise the request
-arrives unauthenticated and the engine answers `403`:
+A script calls the same operations with `engine.call`, which runs as the person
+making the request — so it succeeds for an administrator and is refused for
+everyone else, whichever script makes the call:
 
 ```javascript
 function listUsersHandler(context) {
-  const req = context.request;
-  const incoming = req.headers || {};
-
-  // Guard early so an unauthorized caller gets a clear message.
-  if (!req.auth || !req.auth.isAdmin) {
+  if (!context.request.auth.isAdmin) {
     return ResponseBuilder.error(403, "Administrator access required");
   }
-
-  const headers = {};
-  if (incoming.authorization) headers.Authorization = incoming.authorization;
-  if (incoming.cookie) headers.Cookie = incoming.cookie;
-
-  const response = JSON.parse(
-    fetch("https://" + incoming.host + "/engine/list_users", {
-      headers: headers,
-    }),
-  );
-  if (response.status !== 200) {
-    return ResponseBuilder.error(response.status, "Failed to list users");
+  try {
+    return ResponseBuilder.json(engine.call("list_users", {}));
+  } catch (error) {
+    return ResponseBuilder.error(403, error.message);
   }
-
-  return ResponseBuilder.json(JSON.parse(response.body));
 }
 ```
 
@@ -692,8 +679,3 @@ function listUsersHandler(context) {
 - [JavaScript APIs Reference](./javascript-apis.md) - General runtime APIs available to scripts
 - [Getting Started](../getting-started/01-first-script.md) - Building your first script with handler context
 - [Streaming Guide](../guides/streaming.md) - Using auth-aware stream metadata and filtered delivery
-
----
-
-**Version:** 2.0  
-**Last Updated:** November 2025

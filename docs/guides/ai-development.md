@@ -1,685 +1,139 @@
 # AI-Assisted Development Guide
 
-Learn how to use AI tools, especially the built-in AI assistant, to accelerate script development in aiwebengine.
+aiwebengine is built to be developed with AI. There are three ways to do it,
+from most to least capable:
 
-## Overview
+| Way                                      | Good for                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| An AI coding agent over MCP              | Real work: multi-file scripts, tests, debugging from logs        |
+| `aiwebengine-agent` (**Build a script**) | Small sites, tools and agents built from a prompt in the browser |
+| The editor's AI Assistant                | Explaining and changing the script open in `/editor`             |
 
-AI can help you:
+## An AI Coding Agent over MCP
 
-- **Generate scripts** from natural language descriptions
-- **Edit existing code** with targeted improvements
-- **Debug issues** by analyzing error logs
-- **Learn APIs** through examples and explanations
-- **Refactor code** for better quality
-- **Write documentation** and comments
+The engine's management host serves its operations as MCP tools at `/mcp`:
+`write_files`, `edit_file`, `read_file`, `search_files`, `check_script`,
+`run_tests`, `eval_script`, `read_logs`, revisions, deployments, secrets and
+git sync. An agent such as Claude Code connected there has the whole loop a
+developer has, with your permissions and no more.
 
-## Using the Built-in AI Assistant
-
-The aiwebengine editor includes an integrated AI assistant that understands your codebase and the platform APIs.
-
-### Accessing the AI Assistant
-
-1. Open `/editor` in your browser
-2. Look for the AI Assistant panel (usually at the bottom)
-3. Type your request
-4. Click "Ask AI" or press Enter
-
-### AI Assistant Features
-
-#### 1. Code Generation
-
-Create complete scripts from descriptions:
-
-**Example Prompt:**
-
-```text
-Create a REST API for managing blog posts with CRUD operations
+```bash
+claude mcp add --transport http my-engine https://manage.example.com/mcp
 ```
 
-**What the AI provides:**
-
-- Complete working script
-- All necessary handlers
-- Route registrations
-- Error handling
-- Input validation
-
-**Click "Preview & Create"** to review before applying.
-
-#### 2. Code Editing
-
-Modify existing scripts with surgical precision:
-
-**Example Prompts:**
+The first use opens a browser to sign in. Then point the agent at the short
+introduction it should read first:
 
 ```text
-Add error handling to all functions
-
-Add input validation for email fields
-
-Refactor this to use helper functions
-
-Add logging to track all API calls
-
-Convert this to return JSON instead of HTML
+Read https://manage.example.com/engine/types/v0.1.0/script-primer.md, then
+build a script "todo" with a JSON API at /todo/api/items backed by a database
+table, a page at /todo, and tests. Check it with check_script and run_tests
+before telling me it is done.
 ```
 
-**Features:**
+The loop that works:
 
-- Side-by-side diff preview
-- See exact changes before applying
-- Accept or reject modifications
+1. **Write as one change** with `write_files` — the answer carries a `check`
+   report, so mistakes surface immediately.
+2. **Test** with `*.test.ts` files and `run_tests`.
+3. **Debug from the log**: `read_logs` filtered by `request_id`, `kind` or
+   `route`; `eval_script` to inspect state in the script's sandbox without
+   changing anything.
+4. **Stage changes on a live script** by pinning it (`deploy_script` with the
+   serving revision), writing freely, and deploying head when it passes.
+   `revert_script` puts back an earlier revision.
 
-#### 3. Code Explanation
+The full API is `aiwebengine.d.ts`, served beside the primer.
 
-Understand how code works:
+## aiwebengine-agent: Build a Script
 
-**Example Prompts:**
+If the engine runs [`aiwebengine-agent`](https://github.com/lpajunen/aiwebengine-agent),
+its page (`/agent`) has a **Build a script** box. Describe a small site, MCP
+tool or single-purpose agent; it starts from a template, writes the files,
+checks and tests them, and asks you before anything is served. It needs your
+own Anthropic API key, the editor role, and a grant you give on the engine's
+consent page. When it cannot finish, it writes a handoff note to give to a
+developer.
+
+## The Editor's AI Assistant
+
+The panel at the bottom of `/editor` sends your prompt with the selected
+script or file. It answers with an explanation, or a proposed change shown as
+a diff to **Apply** or **Reject**. It needs an Anthropic API key stored as the
+secret `anthropic_api_key` on the `editor` script.
+
+## Writing Effective Prompts
+
+**Be specific about behaviour, paths and data.**
 
 ```text
-Explain what this script does
-
-How does the streaming work here?
-
-What is the purpose of the init function?
-
-Explain the error handling in this code
+Create a newsletter signup:
+- GET /news/signup shows a form with an email field
+- POST /news/signup validates the email, stores it in a database table
+  with a unique index, and answers 400 for a bad or duplicate address
+- Rate-limit signups to 5 per 10 minutes per caller
 ```
 
-#### 4. Debugging Help
-
-Get assistance fixing issues:
-
-**Example Prompts:**
+**Name the engine's idioms** when a model drifts toward Node.js or the browser:
 
 ```text
-This script returns 500 errors. Can you fix it?
-
-Why isn't this form handler working?
-
-Add better error messages to this script
-
-Help me debug the authentication logic
+Use routeRegistry.registerRoute in init(), ResponseBuilder for responses,
+database.ensureTable / insert / query for storage, and fetch with
+{{secret:API_KEY}} in a header for the external API. No npm packages.
 ```
 
-### Writing Effective Prompts
+**Break large requests into steps**, each checked and tested before the next:
+the product list, then the detail page, then the cart.
 
-#### Be Specific
+**Paste the error** from `read_logs` when asking for a fix.
 
-**Good:**
+## What the Engine Gives an App, and What It Does Not
+
+Tell a model this up front and it will not invent APIs:
+
+- **Has**: HTTP routes, file routes for `public/`, SSE streams, MCP tools,
+  prompts and resources, scheduled jobs and durable tasks, `database` tables
+  with transactions, key-value storage, per-person storage, secrets used by
+  `fetch`, outbound `fetch` and MCP clients, rate limits, an audit log, JSX on
+  the server, sign-in (OAuth or local accounts) handled by the engine at
+  `/auth/login`.
+- **Does not have**: npm packages (a script imports only its own files), an
+  event loop (`fetch` returns when the response is complete; no `setTimeout`),
+  sending email, password hashing — the engine signs people in, so a script
+  never stores passwords — or a way to hold state in variables between
+  requests.
+
+## Using a Chat Assistant Without MCP
+
+Give it the primer and the type definitions as context — both are served by
+the engine:
 
 ```text
-Create a contact form that validates email addresses, stores submissions,
-and sends a confirmation email
+I write scripts for aiwebengine. The rules are in this primer:
+<paste /engine/types/v0.1.0/script-primer.md>
+The full API is this TypeScript declaration file:
+<paste or attach /engine/types/v0.1.0/aiwebengine.d.ts>
+
+Write a script that ...
 ```
 
-**Bad:**
-
-```text
-Create a form
-```
-
-#### Provide Context
-
-**Good:**
-
-```text
-Add authentication to this API using the built-in auth functions.
-Require login for all endpoints except /api/public
-```
-
-**Bad:**
-
-```text
-Add authentication
-```
-
-#### Describe the Outcome
-
-**Good:**
-
-```text
-Refactor this script to:
-- Use async/await instead of callbacks
-- Add JSDoc comments to all functions
-- Extract validation into separate helper functions
-- Return consistent JSON error responses
-```
-
-**Bad:**
-
-```text
-Make this better
-```
-
-#### Include Requirements
-
-**Good:**
-
-```text
-Create a user registration API that:
-- Validates email format
-- Checks if email already exists
-- Hashes passwords
-- Returns JWT token
-- Logs all registration attempts
-```
-
-**Bad:**
-
-```text
-Create a registration API
-```
-
-## Understanding aiwebengine Scripts
-
-### Key Concept: Server-Side Handlers
-
-aiwebengine scripts are **server-side JavaScript** that handle HTTP requests:
-
-**Scripts ARE:**
-
-- ✅ Server-side request handlers
-- ✅ Functions that return HTML/JSON/text
-- ✅ API endpoints
-- ✅ Web page generators
-
-**Scripts are NOT:**
-
-- ❌ Client-side browser JavaScript
-- ❌ Static HTML files
-- ❌ Standalone web pages
-
-### Correct Prompts for Different Scenarios
-
-#### Web Pages
-
-```text
-Create a script that serves a welcome page at /welcome
-
-Create a homepage with navigation, hero section, and footer
-
-Create a contact page with a form
-```
-
-#### APIs
-
-```text
-Create a REST API for managing todo items
-
-Create an API endpoint that returns user data as JSON
-
-Create a search API that accepts a query parameter
-```
-
-#### Forms
-
-```text
-Create a feedback form with GET handler (show form) and POST handler (process submission)
-
-Create a file upload handler that stores images
-```
-
-#### Real-time Features
-
-```text
-Create a real-time chat system using Server-Sent Events
-
-Create a live notification feed using streaming
-
-Create a dashboard that updates every 5 seconds
-```
-
-## Prompt Examples by Use Case
-
-### 1. Simple Web Page
-
-**Prompt:**
-
-```text
-Create a script that serves an "About Us" page with company information,
-team members, and contact details
-```
-
-**Expected Result:**
-
-- Handler function returning HTML
-- Route registered at `/about`
-- Properly formatted HTML with CSS
-
-### 2. REST API
-
-**Prompt:**
-
-```text
-Create a REST API for a product catalog with:
-- GET /api/products - list all products
-- GET /api/products?id=X - get single product
-- POST /api/products - create new product
-- PUT /api/products - update product
-- DELETE /api/products - delete product
-Include input validation and error handling
-```
-
-**Expected Result:**
-
-- Multiple handler functions
-- All CRUD operations
-- Validation logic
-- Error responses
-
-### 3. Form Processing
-
-**Prompt:**
-
-```text
-Create a newsletter signup form that:
-- Shows form on GET /signup
-- Processes submission on POST /signup
-- Validates email format
-- Stores email in a list
-- Shows confirmation message
-```
-
-**Expected Result:**
-
-- GET handler with form HTML
-- POST handler with validation
-- Data storage
-- Success/error responses
-
-### 4. External API Integration
-
-**Prompt:**
-
-```text
-Create a weather API that:
-- Accepts city name as query parameter
-- Fetches data from OpenWeather API using the fetch() function
-- Formats and returns weather data as JSON
-- Handles API errors gracefully
-```
-
-**Expected Result:**
-
-- Handler with `fetch()` call
-- API key handling (using secrets)
-- Error handling
-- Data transformation
-
-### 5. Authentication
-
-**Prompt:**
-
-```text
-Create a login system that:
-- Shows login form on GET /login
-- Processes credentials on POST /login
-- Uses the built-in authentication functions
-- Returns session token on success
-- Redirects to dashboard after login
-```
-
-**Expected Result:**
-
-- GET and POST handlers
-- Auth API usage
-- Session management
-- Redirect logic
-
-## AI Development Workflows
-
-### Workflow 1: Rapid Prototyping
-
-1. **Describe feature** to AI
-
-   ```text
-   Create a blog homepage that lists recent posts with titles,
-   excerpts, and publish dates
-   ```
-
-2. **Review generated code**
-   - Check the diff preview
-   - Verify it matches requirements
-
-3. **Apply and test**
-   - Click "Apply Changes"
-   - Test the endpoint immediately
-
-4. **Iterate with AI**
-
-   ```text
-   Add pagination to the blog list
-
-   Add a search feature
-
-   Style the blog with modern CSS
-   ```
-
-### Workflow 2: Incremental Enhancement
-
-1. **Start with working code**
-   - Have a basic script running
-
-2. **Ask AI for specific improvements**
-
-   ```text
-   Add error handling to all database operations
-
-   Add logging to track API usage
-
-   Add input validation for all form fields
-   ```
-
-3. **Review changes**
-   - See side-by-side diff
-   - Verify only intended changes
-
-4. **Apply iteratively**
-   - Accept changes one at a time
-   - Test after each change
-
-### Workflow 3: Learning and Exploration
-
-1. **Ask AI to explain concepts**
-
-   ```text
-   How do I implement real-time updates using streams?
-
-   Show me an example of file upload handling
-
-   How do I call external APIs securely?
-   ```
-
-2. **Request examples**
-
-   ```text
-   Create a simple example of Server-Sent Events
-
-   Show me how to use the fetch() function with API keys
-   ```
-
-3. **Build on examples**
-
-   ```text
-   Expand this SSE example to broadcast chat messages
-
-   Add error handling to this fetch example
-   ```
-
-### Workflow 4: Debugging and Fixing
-
-1. **Identify the issue**
-   - Script returns errors
-   - Unexpected behavior
-   - Check logs for error messages
-
-2. **Ask AI for help**
-
-   ```text
-   This script is throwing "undefined is not a function" errors.
-   Here's the error from logs: [paste error]
-
-   This form handler isn't receiving POST data correctly
-
-   The streaming endpoint disconnects after 30 seconds
-   ```
-
-3. **Review proposed fixes**
-   - AI shows what changes would fix the issue
-
-4. **Apply and verify**
-   - Test the fix
-   - Check logs to confirm resolution
-
-## AI Prompt Templates
-
-### Creation Templates
-
-```text
-Create a [type] that [functionality]
-
-Create a script for [feature] with [specific requirements]
-
-Build a [component] that handles [use case]
-```
-
-### Enhancement Templates
-
-```text
-Add [feature] to this script
-
-Improve [aspect] in this code
-
-Refactor [section] to use [pattern]
-
-Optimize [operation] for better performance
-```
-
-### Debugging Templates
-
-```text
-Fix the [error type] error in this script
-
-Debug why [expected behavior] isn't working
-
-Add error handling for [scenario]
-
-Improve error messages in this code
-```
-
-### Learning Templates
-
-```text
-Explain how [concept] works in aiwebengine
-
-Show me an example of [feature]
-
-What's the best way to [task]?
-
-How do I implement [functionality]?
-```
-
-## Best Practices with AI
-
-### 1. Iterate, Don't Expect Perfection
-
-Start with a basic request, then refine:
-
-```text
-Step 1: "Create a user registration API"
-Step 2: "Add email validation"
-Step 3: "Add duplicate email checking"
-Step 4: "Add password strength requirements"
-Step 5: "Add rate limiting for registration attempts"
-```
-
-### 2. Review All AI-Generated Code
-
-- **Always review** before applying
-- **Test thoroughly** after applying
-- **Understand** what the code does
-- **Customize** to your specific needs
-
-### 3. Be Specific About Technology
-
-```text
-Use the aiwebengine fetch() function to call the API
-
-Use Server-Sent Events (routeRegistry.registerRoute(path, { stream: true })) for real-time updates
-
-Use the built-in console.log() for logging
-
-Reference the /style.css asset for styling
-```
-
-### 4. Provide Examples When Possible
-
-```text
-Create a form handler similar to the feedback example,
-but for product reviews with a 1-5 star rating
-```
-
-### 5. Break Complex Requests into Steps
-
-Instead of:
-
-```text
-Create a full e-commerce site with products, cart, checkout, and payment
-```
-
-Do this:
-
-```text
-Step 1: Create a product listing API
-Step 2: Add product detail pages
-Step 3: Create shopping cart functionality
-Step 4: Add checkout form
-Step 5: Integrate payment processing
-```
-
-## Using AI Outside the Editor
-
-### ChatGPT / Claude / Other AI Assistants
-
-You can use external AI tools by providing context:
-
-**Context to provide:**
-
-```text
-I'm developing scripts for aiwebengine, which is a JavaScript-based
-web application engine. Scripts are server-side handlers that:
-
-- Receive a `req` object with method, path, query, form, headers
-- Must return an object with status, body, contentType
-- Use routeRegistry.registerRoute(path, { handler: "handlerName", method: "GET" }) to map routes
-- Can use console.log(message) for logging
-- Can use fetch(url, options) for external API calls
-- Can use routeRegistry.registerRoute(path, { stream: true }) and routeRegistry.sendStreamMessage(data) for SSE
-
-Available functions:
-- routeRegistry.registerRoute(), console.log(), GET /engine/read_logs to read logs back
-- fetch(), routeRegistry.registerRoute(path, { stream: true }), routeRegistry.sendStreamMessage()
-- files.list(), files.read(path), files.write(path, content), files.delete(path)
-
-Can you help me create a [your request]?
-```
-
-### GitHub Copilot / VS Code AI Tools
-
-If developing locally with VS Code:
-
-1. Create a `README.md` in your scripts directory explaining the aiwebengine APIs
-2. Use Copilot with inline comments:
-
-   ```javascript
-   // Create a handler that returns a list of users as JSON
-   function usersHandler(context) {
-     // Copilot will suggest implementation
-   }
-   ```
-
-### API-Specific AI Prompts
-
-For external API integrations:
-
-```text
-Create an aiwebengine script that calls the Stripe API to process payments.
-Use the fetch() function with {{secret:stripe_key}} for the API key.
-Return JSON responses.
-```
-
-## Troubleshooting AI Assistance
-
-### AI Generates Client-Side Code
-
-**Problem:** AI creates browser JavaScript instead of server handlers
-
-**Solution:** Be explicit:
-
-```text
-Create a SERVER-SIDE aiwebengine script that RETURNS HTML,
-not client-side JavaScript
-```
-
-### AI Suggests Unsupported Features
-
-**Problem:** AI uses Node.js/browser APIs not available in QuickJS
-
-**Solution:** Specify:
-
-```text
-Use only QuickJS-compatible code. Available functions are:
-routeRegistry.registerRoute(), console.log(), fetch(), JSON.parse(), JSON.stringify()
-```
-
-### AI Generates Too Much Code
-
-**Problem:** Response is overwhelming or too complex
-
-**Solution:** Ask for simpler version:
-
-```text
-Create a minimal working example of [feature]
-
-Simplify this to just the essential functionality
-
-Break this into smaller, focused functions
-```
-
-### AI Doesn't Understand Context
-
-**Problem:** AI doesn't know about your existing code
-
-**Solution:** Provide context:
-
-```text
-I have a script that manages users. Add a new endpoint to
-delete users. Here's my current code: [paste code]
-```
+Then check the result with `check_script` (or `make check-head`) before
+trusting it.
+
+## Troubleshooting AI Output
+
+| Problem                                   | Tell the model                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| It imports npm packages or uses Node APIs | "No packages or Node.js APIs; only the globals in aiwebengine.d.ts."                 |
+| It keeps state in a module variable       | "Variables do not survive between requests; use database or scriptStorage."          |
+| It registers routes at the top level      | "Register only inside init(); the engine calls init()."                              |
+| A handler 500s on the first request       | "Handlers must be global functions of main.*; check_script reports missing-handler." |
+| It uses `await fetch(...).then`           | "fetch returns the finished response; call .json() directly."                        |
+| It writes its own login                   | "Use context.request.auth and redirect to /auth/login."                              |
 
 ## Next Steps
 
-- **[Getting Started](../getting-started/01-first-script.md)** - Create your first script
-- **[Working with Editor](../getting-started/02-working-with-editor.md)** - Master the editor
-- **[Script Development](scripts.md)** - Deep dive into scripting
-- **[Examples](../examples/index.md)** - See AI-generated patterns
-- **[API Reference](../reference/javascript-apis.md)** - Complete API documentation
-
-## Quick Reference
-
-### Good AI Prompts
-
-```text
-✅ Create a script that serves a blog homepage with post listings
-
-✅ Create a REST API for managing inventory items with CRUD operations
-
-✅ Add authentication to this API using the built-in auth functions
-
-✅ Refactor this code to add error handling and logging
-
-✅ Create a real-time chat using Server-Sent Events
-```
-
-### Poor AI Prompts
-
-```text
-❌ Create a website
-
-❌ Make a form
-
-❌ Add features
-
-❌ Fix this
-
-❌ Make it better
-```
-
-### AI Assistant Commands
-
-- **Generate**: "Create a script that..."
-- **Edit**: "Add [feature] to this script"
-- **Explain**: "Explain how this works"
-- **Debug**: "Fix the error in..."
-- **Refactor**: "Improve [aspect] of this code"
+- **[Your First Script](../getting-started/01-first-script.md)**
+- **[Deployment Workflow](../getting-started/03-deployment-workflow.md)** - Checks, tests, pins
+- **[Script Development](scripts.md)** - How scripts are structured
+- **[API Reference](../reference/javascript-apis.md)**

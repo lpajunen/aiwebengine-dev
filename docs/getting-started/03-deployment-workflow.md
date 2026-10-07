@@ -18,11 +18,11 @@ operations with the same permission checks:
 
 ## The web editor
 
-Open `/editor`, create a script, write `main.ts`, and save. Saving writes the
-file and runs `init()`; the editor shows the result and the script's log.
+Open `/editor`, create a script, write its `main.js`, and save. Saving writes
+the file and runs `init()`; the Logs tab shows what it logged.
 
 ```javascript
-// main.ts
+// main.js
 function helloHandler(context) {
   return {
     status: 200,
