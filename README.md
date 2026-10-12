@@ -1,7 +1,7 @@
 # aiwebengine-dev
 
 ![Status](https://img.shields.io/badge/status-experimental-orange)
-![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
+![License](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue)
 
 > ⚠️ **This project is experimental and a work in progress.** APIs and features may change without notice.
 
@@ -119,7 +119,7 @@ If you discover a security vulnerability, please see [SECURITY.md](SECURITY.md) 
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
 
 ## Maintainer
 

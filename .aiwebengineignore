@@ -11,7 +11,8 @@
 /CLAUDE.md
 /CONTRIBUTING.md
 /jsconfig.json
-/LICENSE
+/LICENSE-APACHE
+/LICENSE-MIT
 /Makefile
 /node_modules
 /package-lock.json
