@@ -670,6 +670,22 @@ function init(context) {
 
 `type` is `integer`, `bigint`, `float`, `text`, `boolean`, `timestamp` or
 `reference` (an `id` in the table named by `references`, with a foreign key).
+Deleting a referenced row empties an optional reference and deletes a row
+whose required (`nullable: false`) reference points at it.
+
+A table whose rows belong to someone names the text column holding their
+account id as `person`. When the account is deleted, the engine deletes that
+person's rows from every table that names one:
+
+```javascript
+database.ensureTable("notes", {
+  columns: [
+    { name: "owner", type: "text" },
+    { name: "body", type: "text" },
+  ],
+  person: "owner",
+});
+```
 
 ### Querying and mutations
 
