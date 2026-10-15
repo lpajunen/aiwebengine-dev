@@ -23,10 +23,11 @@ cp .env.example .env              # then edit SERVER_HOST etc.
 make oauth-login                  # authenticate; writes schemas/token.json (required before uploads)
 make token-status                # how long the saved token has left
 make refresh-token               # renew by hand (--force to renew early)
-make fetch-types                 # refresh types/aiwebengine.d.ts from the server
+make types                       # types/aiwebengine.d.ts from the engine image (docker)
+make types TYPES_FROM=../aiwebengine  # ...or from an engine checkout (cargo)
 make fetch-openapi               # download OpenAPI to apis/openapi.json
-make format                      # prettier --write across js/ts/json/md
-make lint                        # markdownlint over **/*.md
+make format                      # prettier --write across js/mjs/jsx/ts/tsx/json/md
+make verify                      # format-check + markdownlint + typecheck: what CI runs
 ```
 
 Every `make` target is a thin wrapper over the matching `npm run` script; use either.
@@ -97,8 +98,8 @@ directory (`mapPathToAssetName` in `docs/main.js`), so the deployed name equals 
 
 ## Shared tooling
 
-`scripts/` and the two TypeScript configs are a verbatim copy of the same files in
-`../aiwebengine-examples`, which is the source of truth.
+`scripts/` is a verbatim copy of the same directory in `../aiwebengine-examples`, which is the
+source of truth.
 
 ```bash
 make check-tooling    # diff against the source; fails on drift
@@ -111,6 +112,10 @@ files: per-script defaults live in `aiwebengine.config.json` (which script `make
 `Makefile`, which includes the shared `scripts/tooling.mk` for everything generic.
 
 Fix a tooling bug in `../aiwebengine-examples`, then `make sync-tooling` here.
+
+Formatting, linting and typechecking are a second shared copy: `.aiwebengine/` is the engine's
+`script-kit/` (`../aiwebengine`), taken with `make sync-kit` and checked by `make check-kit`, which
+CI runs. See `.aiwebengine/README.md`.
 
 ## Scripts and tooling, and how they differ
 
@@ -146,26 +151,26 @@ environment — not Node — so:
   returning a message.
 
 Every script starts with a `/// <reference path="../types/aiwebengine.d.ts" />`
-triple-slash directive. That file is **generated** by `make fetch-types` from
-`/engine/types/v0.1.0/` — edit the server, not it.
+triple-slash directive. That file is **generated** by `make types` (the engine's
+`aiwebengine --print-types`, which is what `/engine/types/v0.1.0/` serves) — edit the engine, not
+it.
 
 `scripts/` is the opposite: ordinary **Node.js** CLI tooling that runs locally (CommonJS `require`,
 `dotenv`, real filesystem and network access).
 
 ## Type checking
 
-`jsconfig.json` enables `checkJs` over the script directories (`*/**/*.js`) — the source scripts are
-plain JS type-checked via JSDoc against `types/aiwebengine.d.ts`. `tsconfig.json` covers
-`.ts/.tsx/.jsx` and configures JSX (`h`/`Fragment` pragma). Both exclude `node_modules` and
-`scripts`, so the Node tooling is **not** type-checked.
+`tsconfig.json` checks every script file outside `public/` strictly, plain JS included (via JSDoc),
+against `types/aiwebengine.d.ts`, and configures JSX (`h`/`Fragment` pragma).
+`tsconfig.public.json` checks browser code under `public/` against the DOM. Both exclude
+`node_modules` and `scripts`, so the Node tooling is **not** type-checked.
 
 ```bash
 make typecheck                   # tsc over both configs
 make verify                      # format-check + lint + typecheck
 ```
 
-`make verify` is the one to run before committing; every target wraps the matching `npm run`
-script.
+`make verify` is the one to run before committing, and the one CI runs.
 
 ## Documentation
 

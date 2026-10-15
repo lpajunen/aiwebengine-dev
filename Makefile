@@ -1,15 +1,18 @@
 # Repository-specific targets. Everything generic lives in scripts/tooling.mk,
 # which is a verbatim copy of the shared tooling: `make check-tooling` reports
 # drift against TOOLING_SOURCE, `make sync-tooling` takes its version.
-# Per-script defaults live in aiwebengine.config.json.
+# Formatting, linting and typechecking are the engine's script kit
+# (.aiwebengine/verify.mk, `make check-kit`). Per-script defaults live in
+# aiwebengine.config.json.
 
 .PHONY: all upload-editor upload-editor-dry-run upload-docs upload-docs-dry-run \
         upload-admin upload-admin-dry-run upload-all \
         set-script-hosts set-script-hosts-dry-run
 
 # Fetch types and OpenAPI, then format.
-all: fetch-types fetch-openapi format
+all: types fetch-openapi format
 
+include .aiwebengine/verify.mk
 include scripts/tooling.mk
 
 # admin, editor and docs are served from the management host, not from

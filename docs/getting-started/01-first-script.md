@@ -409,7 +409,7 @@ function init() {
 
 ## IDE Support with TypeScript Definitions
 
-For autocomplete and type checking in your IDE (VS Code, WebStorm, etc.), download the engine's type definitions into your checkout. A repository that includes `scripts/tooling.mk` does it with `make fetch-types`; otherwise:
+For autocomplete and type checking in your IDE (VS Code, WebStorm, etc.), download the engine's type definitions into your checkout. A repository that uses the engine's script kit (`.aiwebengine/`) does it with `make types`; otherwise:
 
 ```bash
 mkdir -p types
@@ -457,28 +457,8 @@ function init() {
 }
 ```
 
-### Optional: Configure jsconfig.json
+### Checking a whole repository
 
-For persistent type checking across all your scripts, create a `jsconfig.json` file in your scripts directory:
-
-```json
-{
-  "compilerOptions": {
-    "checkJs": true,
-    "target": "ES2020",
-    "lib": ["ES2020"]
-  },
-  "include": ["*.js"],
-  "exclude": ["node_modules"]
-}
-```
-
-Then configure VS Code to use the type definitions globally by adding to your workspace settings (`.vscode/settings.json`):
-
-```json
-{
-  "js/ts.implicitProjectConfig.checkJs": true
-}
-```
+The engine's script kit gives a repository of scripts one `tsconfig.json` for every script, plus formatting and Markdown checks, as `make verify`, the same command CI runs. To adopt it, copy `script-kit/` from the [aiwebengine repository](https://github.com/lpajunen/aiwebengine) to `.aiwebengine/` and follow its README. Your editor picks up the same `tsconfig.json`.
 
 Congratulations on creating your first script! 🎉

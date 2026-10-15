@@ -39,7 +39,7 @@ script.
 | [Example Scripts](examples/index.md)            | Working examples in `aiwebengine-examples`                                                     |
 
 The authoritative types are `aiwebengine.d.ts`, served by every engine at
-`/engine/types/v{version}/aiwebengine.d.ts` (`make fetch-types` saves it to
+`/engine/types/v{version}/aiwebengine.d.ts` (`make types` saves it to
 `types/`).
 
 ## A script in one screen

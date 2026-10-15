@@ -14,7 +14,8 @@ AI Web Engine ([aiwebengine](https://github.com/lpajunen/aiwebengine)) runs Java
 - `editor/`, `admin/` and `docs/` — the scripts serving `/editor`, `/admin` and `/docs` on an engine
 - `docs/*.md` — the solution developer documentation, which `/docs` serves
 - `scripts/` and `scripts/tooling.mk` — the shared deployment tooling (OAuth login, deploying changed files, revisions, tests, git sync)
-- `types/` — the engine's type definitions, fetched with `make fetch-types`
+- `types/` — the engine's type definitions, generated with `make types`
+- `.aiwebengine/` — the engine's script kit: `make verify` (formatting, Markdown, types), which CI runs
 
 ## Prerequisites
 
@@ -61,11 +62,15 @@ See [.env.example](.env.example) for all available configuration options.
 
 ## Usage
 
-### Fetch Type Definitions
+### Type Definitions and Checks
 
 ```bash
-make fetch-types
+make types     # types/aiwebengine.d.ts, from the engine image (needs docker)
+make types TYPES_FROM=../aiwebengine   # or from an engine checkout (cargo)
+make verify    # formatting, Markdown and types: what CI runs
 ```
+
+See [.aiwebengine/README.md](.aiwebengine/README.md).
 
 ### OAuth Login
 

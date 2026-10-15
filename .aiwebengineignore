@@ -5,12 +5,14 @@
 # same file when it collects a script's assets, so an upload and a push agree
 # on what belongs to the script.
 
+/.aiwebengine
+/.github
+/.markdownlint.json
 /aiwebengine.config.json
 /AGENTS.md
 /apis
 /CLAUDE.md
 /CONTRIBUTING.md
-/jsconfig.json
 /LICENSE-APACHE
 /LICENSE-MIT
 /Makefile
@@ -22,6 +24,7 @@
 /scripts
 /SECURITY.md
 /tsconfig.json
+/tsconfig.public.json
 /types
 
 .DS_Store
