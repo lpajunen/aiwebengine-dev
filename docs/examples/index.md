@@ -32,6 +32,7 @@ or deploy one from a checkout of that repository with its `make` targets.
 | `github`, `github_mcp_issues`                                    | `McpClient` against GitHub's MCP server                      |
 | `typescript`, `jsx`, `tsx`                                       | Entrypoints in TypeScript and JSX                            |
 | `import_example`                                                 | Importing a script's own modules                             |
+| `daily-note`                                                     | A personal schedule: a daily run acting as the person        |
 | `meeting-bingo`, `meetup-planner`, `joke-page`, `daily-aphorism` | Small complete apps                                          |
 | `virtual-world`                                                  | A large multi-module application (Three.js, streams, tables) |
 

@@ -24,6 +24,7 @@ script.
 | [Files and Assets](guides/assets.md)                        | A script's files, serving them, reading them from code  |
 | [Registering Files as Routes](guides/asset-registration.md) | File routes and the `public/` directory                 |
 | [Streaming](guides/streaming.md)                            | Server-Sent Events                                      |
+| [Personal Schedules](guides/personal-schedules.md)          | Work that runs for one person on their schedule         |
 | [MCP Tools](guides/mcp-tools.md)                            | Tools an AI client can call                             |
 | [MCP Prompts](guides/mcp-prompts.md)                        | Reusable prompt templates                               |
 | [Logging and Debugging](guides/logging.md)                  | Writing logs and reading them back                      |
