@@ -242,10 +242,10 @@ function init() {
     stream: true,
     authorize: "staffOnly",
   });
-  schedulerService.registerRecurring({
+  scriptTasks.schedule({
+    key: "publish-metrics",
     handler: "publishMetrics",
     intervalMilliseconds: 10000,
-    name: "publish-metrics",
   });
 }
 
@@ -258,7 +258,7 @@ function staffOnly(context) {
 }
 ```
 
-A recurring job runs whether anybody watches; `delivered: 0` from
+A schedule runs whether anybody watches; `delivered: 0` from
 `sendStreamMessage` is a cheap way to skip expensive work when nobody is
 connected.
 

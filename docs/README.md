@@ -4,7 +4,7 @@ How to build websites, APIs, MCP tools and agents on aiwebengine.
 
 A **script** is a tree of files stored in the engine, with an entrypoint
 `main.{ts,js,tsx,jsx}`. Its `init()` — which the engine calls — registers what
-it publishes: routes, streams, MCP tools and prompts, scheduled jobs. Handlers
+it publishes: routes, streams, MCP tools and prompts, schedules. Handlers
 are top-level functions named by string; each receives one `context` argument
 and returns a response. Files under `public/` may be served, files under
 `resources/` may be MCP resources, and everything else is private to the
@@ -32,12 +32,12 @@ script.
 
 ## Reference
 
-| Reference                                       | What it covers                                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| [JavaScript APIs](reference/javascript-apis.md) | Every global: routes, files, storage, secrets, database, scheduler, `fetch`, `ResponseBuilder` |
-| [Authentication API](reference/auth-api.md)     | The request's auth context, and user and role management                                       |
-| [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars and base64 helpers (`convert.*`)                                          |
-| [Example Scripts](examples/index.md)            | Working examples in `aiwebengine-examples`                                                     |
+| Reference                                       | What it covers                                                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [JavaScript APIs](reference/javascript-apis.md) | Every global: routes, files, storage, secrets, database, schedules and tasks, `fetch`, `ResponseBuilder` |
+| [Authentication API](reference/auth-api.md)     | The request's auth context, and user and role management                                                 |
+| [Conversion API](reference/conversion-api.md)   | Markdown, Handlebars and base64 helpers (`convert.*`)                                                    |
+| [Example Scripts](examples/index.md)            | Working examples in `aiwebengine-examples`                                                               |
 
 The authoritative types are `aiwebengine.d.ts`, served by every engine at
 `/engine/types/v{version}/aiwebengine.d.ts` (`make types` saves it to

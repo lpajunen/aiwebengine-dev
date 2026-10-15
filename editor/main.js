@@ -938,23 +938,21 @@ AVAILABLE JAVASCRIPT APIs:
    MCP clients reach the tools through the engine's /mcp endpoint (JSON-RPC
    tools/list and tools/call, with an OAuth bearer token).
 
-9. schedulerService - Background job scheduler
+9. scriptTasks - Background work: a durable queue, and schedules that feed it
 
-  schedulerService.registerOnce({ handler, runAt, name? }) - Schedule a single execution
-  - handler: string (function name)
-  - runAt: string (UTC ISO-8601 timestamp ending with Z)
-  - name: string (optional identifier used to overwrite existing jobs)
+  scriptTasks.enqueue({ handler, payload?, runAt?, maxAttempts?, lane? }) - Queue one piece of work, from anywhere
+  - runAt: string (optional UTC ISO-8601 timestamp ending with Z) - a one-off at a set time
+  - answers the stored task; context.meta.task.payload carries the payload
 
-  schedulerService.registerRecurring({ handler, intervalMinutes, startAt?, name? }) - Schedule recurring execution
-  - handler: string
-  - intervalMinutes: integer >= 1
-  - startAt: string (optional UTC timestamp for first run)
-  - name: string (optional identifier)
+  scriptTasks.schedule({ key, handler, intervalMinutes | intervalMilliseconds | cron, timeZone?, payload?, firstRunAfterMs?, lane? }) - Declare a recurring schedule, in init() only
+  - key: string (saying it again replaces it; what init() does not declare is removed)
+  - cron: five fields, e.g. "0 3 * * *", with timeZone (IANA name, e.g. "Europe/Helsinki")
+  - firstRunAfterMs: number (optional first run, e.g. soon after a deployment)
+  - answers { ok: true, nextRunAt }, or { ok: false, reason } outside init(); a malformed spec throws
 
-  schedulerService.clearAll() - Remove every scheduled job for the current script
-  - The register calls answer { ok: true, jobId, name, nextRun }, or { ok: false, reason } outside init(); a malformed call throws
+  scriptTasks.unschedule(key) - Remove one, in init() (rarely needed)
 
-  Scheduled handlers run without an HTTP caller and receive context.meta.schedule containing jobId, name, type (one-off/recurring), scheduledFor (UTC timestamp), and intervalSeconds (null for one-off jobs).
+  A scheduled run is a task with one attempt, no HTTP caller, context.meta.task, and context.meta.schedule = { key, scheduledFor (UTC) }.
 
 10. database - The script's own SQL tables (use for anything many people change)
   database.ensureTable(name, { columns: [{ name, type }], uniqueIndexes? }) - create or extend a table; call it at the top of init()

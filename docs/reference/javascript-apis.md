@@ -1386,107 +1386,106 @@ const hello = "world";
 
 **See Also:** [Conversion API Reference](conversion-api.md) for detailed documentation, examples, and best practices.
 
-## Scheduler Service
+## Schedules and Tasks
 
-Scripts can use `schedulerService` to register background jobs that run even when no HTTP requests are active. Jobs are stored in the database, so they survive a restart and run on one instance of a cluster; a script's jobs are cleared whenever it is reinitialized or deleted, and its `init()` registers them again. A one-off job whose handler throws is retried, up to five attempts.
+Background work runs as tasks in a durable queue. `scriptTasks.enqueue` queues
+one piece of work from anywhere; `scriptTasks.schedule` declares recurring
+work in `init()`, and each time it is due the engine queues a task for it. A
+person's own schedule is `personalTasks.schedule` — see
+[Personal Schedules](../guides/personal-schedules.md).
 
-> **Requirements:**
->
-> - All timestamps must be expressed in UTC (ISO-8601 strings ending with `Z`).
-> - Scheduled handlers run without an HTTP caller, so `context.request` carries no
->   authenticated user; anything they touch is scoped to the script itself.
+> Background handlers run without an HTTP caller: `context.request` is absent,
+> and a script's own task acts for nobody, so anything it touches is scoped to
+> the script itself. Timestamps are UTC ISO-8601 strings ending with `Z`.
 
-### schedulerService.registerOnce(options)
+### scriptTasks.schedule(spec)
 
-Schedule a single execution at an exact UTC timestamp.
+Declare one of the script's own schedules. **`init()` only**: what an `init()`
+does not declare is removed after it, and a schedule declared again with the
+same cadence keeps its next run, so a restart does not push it back.
 
-**Options:**
+**Spec:**
 
-- `handler` (string, required): Name of the handler function to invoke.
-- `runAt` (string, required): ISO-8601 timestamp in UTC, e.g. `"2025-03-01T12:00:00Z"`.
-- `name` (string, optional): Friendly identifier used for logging/overwriting. Defaults to the handler name.
+- `key` (string, required): Saying it again under the same key replaces it.
+- `handler` (string, required): Name of the function to call.
+- Exactly one of `intervalMinutes`, `intervalMilliseconds` (at least 100) or
+  `cron` — five fields (minute hour day month weekday) — with `timeZone`, an
+  IANA name such as `"Europe/Helsinki"`, required for `cron`.
+- `payload` (object, optional): Given to every run as `context.meta.task.payload`.
+- `firstRunAfterMs` (number, optional): The first run, when it should not wait
+  a whole interval — work wanted soon after a deployment.
+- `lane` (string, optional): Runs in the same lane never overlap.
 
-**Returns:** `{ ok: true, jobId, name, nextRun }`, or `{ ok: false, reason }`
-when called outside `init()`. A malformed call throws.
+**Returns:** `{ ok: true, nextRunAt }`, or `{ ok: false, reason }` outside
+`init()`. A malformed spec throws.
 
-### schedulerService.registerRecurring(options)
+### scriptTasks.unschedule(key)
 
-Register a handler that executes on a fixed interval.
+Remove one of the script's schedules, in `init()`. Rarely needed: not declaring
+it is enough.
 
-**Options:**
+### What a scheduled run gets
 
-- `handler` (string, required)
-- `intervalMinutes` (number, required, `>= 1`): Interval length in minutes.
-- `startAt` (string, optional): UTC timestamp for the first execution. When omitted the first run happens one interval from now.
-- `name` (string, optional): Friendly identifier used for logging/overwriting.
-
-**Returns:** as `registerOnce`. `intervalMilliseconds` (at least 100) may be
-given instead of `intervalMinutes`.
-
-### schedulerService.clearAll()
-
-Removes every scheduled job for the current script. This runs automatically before each `init()` execution but can be called manually if your script rebuilds schedules dynamically.
-
-### Scheduled Handler Context
-
-Scheduled invocations receive the unified `context` object with extra metadata:
+Each due slot becomes a task with one attempt: a slot that fails waits for the
+next one. A slot whose previous run has not finished is skipped, and after
+downtime a schedule runs once rather than once per missed slot.
 
 ```javascript
 function sendReport(context) {
-  const schedule = context.meta?.schedule;
-  console.log(
-    `Running job ${schedule.name} (${schedule.jobId}) at ${schedule.scheduledFor}`,
-  );
-  // ... generate report ...
-  return { status: 200, body: "OK" };
+  const { key, scheduledFor } = context.meta.schedule;
+  console.log(`Running ${key} for the ${scheduledFor} slot`);
 }
 ```
 
-`context.meta.schedule` contains:
+- `context.meta.schedule`: `key`, and `scheduledFor` — the slot, in UTC.
+- `context.meta.task`: `taskId`, `payload`, `attempt`, `maxAttempts`,
+  `fencingToken`.
 
-- `jobId`: UUID assigned by the scheduler
-- `name`: Job name (defaults to handler name)
-- `type`: `"one-off"` or `"recurring"`
-- `scheduledFor`: Current execution time in UTC
-- `intervalSeconds` / `intervalMilliseconds`: Interval length for recurring jobs (or `null`)
+### scriptTasks.enqueue(options)
+
+Queue one piece of work, from anywhere: `{ handler, payload?, runAt?,
+maxAttempts?, lane? }`. A one-off at a set time is `enqueue({ handler, runAt })`.
+It survives deployment, is retried with a widening delay, and keeps its row
+with the last error if it gives up.
 
 ### Complete Example
 
 ```javascript
 function sendDailyDigest(context) {
-  const info = context.meta?.schedule || {};
-  console.log(`Digest job ${info.name} running @ ${info.scheduledFor}`);
-  // Build and send email, push notification, etc.
-  return { status: 200, body: "sent" };
+  const { scheduledFor } = context.meta.schedule;
+  console.log(`Digest for ${scheduledFor}`);
+  // Build and send it.
 }
 
-function init(context) {
-  // Clear any stale definitions from previous deploys
-  schedulerService.clearAll();
+function warmCache(context) {
+  // Refresh one slice per run.
+}
 
-  // Run once at a fixed time tomorrow
-  schedulerService.registerOnce({
+function init() {
+  // Every morning at nine, Helsinki time, across daylight saving.
+  scriptTasks.schedule({
+    key: "daily-digest",
     handler: "sendDailyDigest",
-    runAt: "2025-01-01T09:00:00Z",
-    name: "digest-onboarding",
+    cron: "0 9 * * *",
+    timeZone: "Europe/Helsinki",
   });
 
-  // Run every 30 minutes starting immediately
-  schedulerService.registerRecurring({
-    handler: "sendDailyDigest",
+  // Every 30 minutes, first run 15 seconds after a deployment.
+  scriptTasks.schedule({
+    key: "cache-warm",
+    handler: "warmCache",
     intervalMinutes: 30,
-    name: "digest-heartbeat",
+    firstRunAfterMs: 15000,
   });
-
-  return { success: true };
 }
 ```
 
 Tips:
 
-1. Pick deterministic `name` values so re-registration overwrites the previous job instead of creating duplicates.
-2. Keep scheduled handlers idempotent—a retried or resumed job may run work that already partly happened.
-3. Log meaningful progress or failures. The engine also records `FATAL` log entries when a scheduled handler throws.
+1. Pick stable `key` values: the key is what makes a declaration replace the
+   previous one rather than add another.
+2. Keep scheduled handlers idempotent — a run can be retried or skipped.
+3. Log progress and failures. A handler that throws is logged as `FATAL`.
 
 ## Error Handling
 
