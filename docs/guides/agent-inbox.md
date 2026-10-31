@@ -17,34 +17,48 @@ and the shapes they take, so any script can be a producer, an inbox, or both,
 and a producer works alone when no inbox is there.
 
 ```javascript
+// Who is asking: the producer's stable name, and which of the person's
+// instances. The label is what the person sees.
+const producer = (instance) => ({
+  name: "news-digest",
+  instance: instance.id,
+  label: instance.label, // "Sports digest"
+});
+
 // The end of a producer's scheduled run, acting as the person
-function postToInbox(digest) {
+function postToInbox(instance, digest) {
   if (tools.list("inbox_post").length === 0) return; // standalone
 
   tools.call("inbox_post", {
-    externalId: `digest-${digest.date}`,
-    topic: `news:${digest.instance}`,
-    producer: { name: "Sports digest", instance: digest.instance },
-    title: `${digest.items.length} articles`,
-    items: digest.items.map((a) => ({
-      id: a.id,
-      title: a.title,
-      links: [{ label: "Read", url: a.url }],
-    })),
-    options: [
-      { id: "relevant", label: "Relevant", style: "primary" },
-      { id: "not-relevant", label: "Not relevant", style: "negative" },
-    ],
-    allowLater: true,
+    producer: producer(instance),
+    card: {
+      externalId: `digest-${digest.date}`,
+      topic: `news:${instance.id}`,
+      title: `${digest.items.length} articles`,
+      items: digest.items.map((a) => ({
+        id: a.id,
+        title: a.title,
+        links: [{ label: "Read", url: a.url }],
+      })),
+      options: [
+        { id: "relevant", label: "Relevant", style: "primary" },
+        { id: "not-relevant", label: "Not relevant", style: "negative" },
+      ],
+      allowLater: true,
+    },
   });
 }
 
 // The start of the next run: what the person did since last time
-function applyAnswers() {
-  const since = personalStorage.getItem("inbox-cursor") ?? undefined;
-  const { events, cursor } = tools.call("inbox_events", { since });
+function applyAnswers(instance) {
+  const key = `inbox-cursor:${instance.id}`;
+  const since = Number(personalStorage.getItem(key) ?? 0);
+  const { events, cursor } = tools.call("inbox_events", {
+    producer: producer(instance),
+    since,
+  });
   for (const event of events) applyEvent(event); // the producer's own meaning
-  personalStorage.setItem("inbox-cursor", cursor);
+  personalStorage.setItem(key, String(cursor));
 }
 ```
 
@@ -80,10 +94,11 @@ Both directions are `tools.call`, so the engine's rules for it apply:
 A card is not a feed item. Producers post what deserves a decision.
 
 ```text
+producer { name, instance, label?, settingsUrl? }
+
 card {
   externalId                     // idempotency: (producer, externalId)
   topic?                         // a newer card with the same topic supersedes
-  producer: { name, instance, settingsUrl? }
   title, summary?, facts[]?      // facts: [{ label, value }]
   links[]?: { label, url }
   options[]: { id, label, style: primary|neutral|negative,
@@ -96,6 +111,10 @@ card {
   priority?
 }
 ```
+
+Every call names its `producer`: `name` is the stable identity an inbox
+accepts or refuses (`news-digest`), `instance` is which of the person's
+copies (`sports`), and `label` is what the person sees ("Sports digest").
 
 Posting the same `externalId` again updates the card, so a retried task does
 not post twice. A card may hold items; items hold nothing. The convention has
@@ -173,14 +192,16 @@ open → decided ⇄ (changed | cleared) → acted
 
 ### An inbox publishes
 
-| Tool                             | Answers                                                  |
-| -------------------------------- | -------------------------------------------------------- |
-| `inbox_post(card)`               | `{ id }`. Idempotent; supersedes an open card by `topic` |
-| `inbox_withdraw({ externalId })` | Nothing. Removes a card that no longer matters           |
-| `inbox_events({ since? })`       | `{ events, cursor }`: what happened since the cursor     |
+| Tool                                       | Answers                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `inbox_post({ producer, card })`           | `{ id }`. Idempotent; supersedes an open card by `topic`                      |
+| `inbox_withdraw({ producer, externalId })` | `{ withdrawn }`. Removes a card that no longer matters                        |
+| `inbox_events({ producer, since? })`       | `{ events, cursor }`: what happened to this instance's cards since the cursor |
 
-An inbox may refuse a post (a person over their limit, a producer it does not
-accept) by throwing; the producer logs it and carries on.
+An inbox may refuse a call (a producer it does not accept, a post from a
+person over their limit or without a subscription) by throwing; the producer
+logs it and carries on. Collecting events should keep working when posting no
+longer does, so answers already given are not stranded.
 
 ### A producer publishes
 
