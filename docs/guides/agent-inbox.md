@@ -94,7 +94,7 @@ Both directions are `tools.call`, so the engine's rules for it apply:
 A card is not a feed item. Producers post what deserves a decision.
 
 ```text
-producer { name, instance, label?, settingsUrl? }
+producer { name, instance, label?, settingsUrl? }   // settingsUrl may be a path on a shared host
 
 card {
   externalId                     // idempotency: (producer, externalId)
@@ -194,9 +194,13 @@ open → decided ⇄ (changed | cleared) → acted
 
 | Tool                                       | Answers                                                                       |
 | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| `inbox_post({ producer, card })`           | `{ id }`. Idempotent; supersedes an open card by `topic`                      |
+| `inbox_post({ producer, card })`           | `{ id, status }`. Idempotent; supersedes an open card by `topic`              |
 | `inbox_withdraw({ producer, externalId })` | `{ withdrawn }`. Removes a card that no longer matters                        |
 | `inbox_events({ producer, since? })`       | `{ events, cursor }`: what happened to this instance's cards since the cursor |
+
+A `status` other than `open` means the person has finished that card: a
+producer adding to a rolling card starts a new one, with a new `externalId`,
+rather than adding to a card nobody will look at again.
 
 An inbox may refuse a call (a producer it does not accept, a post from a
 person over their limit or without a subscription) by throwing; the producer
