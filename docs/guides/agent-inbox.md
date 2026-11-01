@@ -209,20 +209,49 @@ longer does, so answers already given are not stranded.
 
 ### A producer publishes
 
-Tool names share a namespace per host, so a producer prefixes its own:
+Tool names share a namespace per host, so a producer prefixes its own: `<x>`
+is its `name` with `-` as `_` (`news-digest` → `news_digest_setup`). An inbox
+calls them as the person, so they act on that person's instances only.
 
-| Tool                                                           | Purpose                                                                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<x>_manifest()`                                               | Name, description, an example card, configuration JSON schema, scopes and secrets it needs, settings URL, `canAnswer`, `suggestedQuestions` |
-| `<x>_setup({ instance, config })`                              | Create or update an instance; answers with what is still missing (consent, a key)                                                           |
-| `<x>_status({ instance })`                                     | Running, paused or missing something; last run, next run, last problem                                                                      |
-| `<x>_pause`, `<x>_resume`, `<x>_remove`                        | Lifecycle, driven from the inbox                                                                                                            |
-| `<x>_ask({ instance, externalId, itemId?, question, thread })` | Optional. `{ answer, sources[], at }`                                                                                                       |
+| Tool                                                           | Answers                                                                                                   |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `<x>_manifest()`                                               | What it is and what it needs, for the inbox's catalog (below)                                             |
+| `<x>_setup({ instance?, config })`                             | Creates an instance, or with `instance` changes one; answers its status. Refuses a `config` it cannot use |
+| `<x>_status({ instance })`                                     | `{ instance, label, settingsUrl, state, pausedReason, missing[], lastRunAt, nextRunAt, problem }`         |
+| `<x>_pause`, `<x>_resume({ instance })`                        | Its status. Resume also starts an instance that is ready; it refuses while something is `missing`         |
+| `<x>_remove({ instance })`                                     | `{ removed }`. Stops the instance and forgets what it kept                                                |
+| `<x>_ask({ instance, externalId, itemId?, question, thread })` | Optional. `{ answer, sources[], at }`                                                                     |
+
+```text
+manifest { name, label, description,
+           config,                      // JSON schema: string, integer; "x-multiline": true for a text area
+           instances: one | many, maxInstances?,
+           scopes[], secrets[]: { name, label, required },
+           settingsUrl, canAnswer }
+
+state:   running | paused | ready | incomplete | gone
+missing: [{ kind: consent | secret | config, label, url }]
+```
+
+- **`ready`** is set up and allowed but not started: the inbox offers Start,
+  which is `<x>_resume`. **`gone`** is an instance the producer no longer has,
+  removed on its own page; the inbox offers to remove it there too.
+- **`missing`** is what the person still has to do, each with where to do it:
+  the consent page (`authorization().consentUrl`, to which the inbox adds
+  `&redirect=` back to itself) or the producer's own page for a key. The
+  inbox never takes a key or grants a permission for anybody.
+- **Setup saves without permission.** A producer keeps the configuration and
+  schedules nothing until the person has consented; its status says so, and
+  its page or Start schedules it afterwards.
+- **A refused setup leaves nothing behind.** Check the configuration before
+  creating the instance, and throw with a message the person can act on
+  ("Not a URL: …"); the inbox shows it as written.
 
 An **instance** is one person's configured copy of a producer ("Sports",
 "Finnish politics"), with its own configuration, schedule and identity in the
-inbox. Consent and secrets stay on the producer's own page: the inbox links to
-`authorization().consentUrl` and never handles the person's keys.
+inbox. The inbox decides which producers it offers (its allow-list) and how
+many instances a person may have; it refuses a new one past that before
+asking the producer.
 
 ## Asking questions
 
