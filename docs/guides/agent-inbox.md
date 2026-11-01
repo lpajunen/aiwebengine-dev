@@ -104,7 +104,8 @@ card {
   options[]: { id, label, style: primary|neutral|negative,
                weight?: feedback|instruction|consequential }
   boundTo?: { label, value }     // the state an answer depends on
-  allowLater?: bool
+  allowLater?: bool              // Later for the card, and for each item on its own
+  handledByOpening?: bool        // opening a link handles the item (an article)
   suggestedQuestions[]?
   items[]?                       // sub-items, each with its own answer
   expiresAt?
@@ -133,12 +134,12 @@ steps valid now: no Merge while the build is red.
 
 ### Four kinds of control
 
-| Kind     | Examples                         | Effect                                                     |
-| -------- | -------------------------------- | ---------------------------------------------------------- |
-| Links    | Read the article, open a preview | Opened through the inbox, reported as `opened`. Stays open |
-| Deferral | Read later, remind me tomorrow   | The inbox's own; reported as `later`                       |
-| Ask      | "What does this company make?"   | Answered by the producer; never resolves, never acts       |
-| Options  | Relevant / Not relevant, Merge   | Resolve the card or item; reported as `decided`            |
+| Kind     | Examples                         | Effect                                                                                |
+| -------- | -------------------------------- | ------------------------------------------------------------------------------------- |
+| Links    | Read the article, open a preview | Opened through the inbox, reported as `opened`. Stays open, unless `handledByOpening` |
+| Deferral | Read later, remind me tomorrow   | The inbox's own; reported as `later`, with `itemId` for one item                      |
+| Ask      | "What does this company make?"   | Answered by the producer; never resolves, never acts                                  |
+| Options  | Relevant / Not relevant, Merge   | Resolve the card or item; reported as `decided`                                       |
 
 ### Weights
 
@@ -155,6 +156,14 @@ The producer re-checks `boundTo` before it acts. A merge decided on head
 `abc123` is refused if the head has moved; a buy decided at "up to €42.50" is
 not made above it. Either way the producer posts a fresh card rather than act
 on a stale answer.
+
+An item is **handled** once it is answered, opened on a card with
+`handledByOpening`, or set aside for Later; a batch card closes when every
+item is handled. Opening is not an answer: it is reported as `opened` only,
+and the item can still be answered. An item set aside is moved to a card of
+its own on the inbox's Later shelf, but everything done to it there is
+reported under the original `externalId` and `itemId`, so the producer never
+sees the move.
 
 ## Events
 
