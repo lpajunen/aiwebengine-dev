@@ -211,13 +211,13 @@ longer does, so answers already given are not stranded.
 
 Tool names share a namespace per host, so a producer prefixes its own:
 
-| Tool                                                  | Purpose                                                                                                                                     |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<x>_manifest()`                                      | Name, description, an example card, configuration JSON schema, scopes and secrets it needs, settings URL, `canAnswer`, `suggestedQuestions` |
-| `<x>_setup({ instance, config })`                     | Create or update an instance; answers with what is still missing (consent, a key)                                                           |
-| `<x>_status({ instance })`                            | Running, paused or missing something; last run, next run, last problem                                                                      |
-| `<x>_pause`, `<x>_resume`, `<x>_remove`               | Lifecycle, driven from the inbox                                                                                                            |
-| `<x>_ask({ instance, externalId, question, thread })` | Optional. `{ answer, sources[], at }`                                                                                                       |
+| Tool                                                           | Purpose                                                                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<x>_manifest()`                                               | Name, description, an example card, configuration JSON schema, scopes and secrets it needs, settings URL, `canAnswer`, `suggestedQuestions` |
+| `<x>_setup({ instance, config })`                              | Create or update an instance; answers with what is still missing (consent, a key)                                                           |
+| `<x>_status({ instance })`                                     | Running, paused or missing something; last run, next run, last problem                                                                      |
+| `<x>_pause`, `<x>_resume`, `<x>_remove`                        | Lifecycle, driven from the inbox                                                                                                            |
+| `<x>_ask({ instance, externalId, itemId?, question, thread })` | Optional. `{ answer, sources[], at }`                                                                                                       |
 
 An **instance** is one person's configured copy of a producer ("Sports",
 "Finnish politics"), with its own configuration, schedule and identity in the
@@ -235,6 +235,25 @@ The person is waiting, so this is the one direct call: the inbox calls
 that tried to change anything would be refused. Asking never acts; a question
 that reads as an instruction ("merge it") gets an answer saying to use the
 card's options.
+
+`<x>` is the producer's `name` with `-` as `_`: `news-digest` answers as
+`news_digest_ask`. The call names the card by its `externalId`, and the item
+by `itemId` when the question is about one; `thread` is the earlier questions
+and answers on the card. A producer that cannot answer (no key stored, the
+data gone) throws, and the inbox shows that message and keeps nothing.
+
+```javascript
+// The inbox, in the request where the person asked
+const answer = tools.call(
+  "news_digest_ask",
+  { instance: "sports", externalId, itemId, question, thread },
+  { readOnly: true },
+);
+```
+
+A model call takes longer than the engine's default request budget, so an
+operator raises the timeout of the inbox and of each producer that answers
+(`set_script_limits`).
 
 - Answers show their `sources` and `at`. One from the model's own knowledge
   says so.
