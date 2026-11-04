@@ -69,7 +69,7 @@ events at the start of its next run and applies them then; what it learns
 only matters at that run anyway. An inbox that called producer tools when a
 button was pressed would make each button an action taken in the person's
 name by code they did not choose. The one exception is
-[asking a question](#asking-questions), which only answers.
+[asking a question](#asking-questions), whose calls only read.
 
 ## Reaching each other
 
@@ -138,7 +138,7 @@ steps valid now: no Merge while the build is red.
 | -------- | -------------------------------- | ------------------------------------------------------------------------------------- |
 | Links    | Read the article, open a preview | Opened through the inbox, reported as `opened`. Stays open, unless `handledByOpening` |
 | Deferral | Read later, remind me tomorrow   | The inbox's own; reported as `later`, with `itemId` for one item                      |
-| Ask      | "What does this company make?"   | Answered by the producer; never resolves, never acts                                  |
+| Ask      | "What does this company make?"   | Answered by the inbox from the producer's context; never resolves, never acts         |
 | Options  | Relevant / Not relevant, Merge   | Resolve the card or item; reported as `decided`                                       |
 
 ### Weights
@@ -222,21 +222,22 @@ Tool names share a namespace per host, so a producer prefixes its own: `<x>`
 is its `name` with `-` as `_` (`news-digest` → `news_digest_setup`). An inbox
 calls them as the person, so they act on that person's instances only.
 
-| Tool                                                           | Answers                                                                                                   |
-| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `<x>_manifest()`                                               | What it is and what it needs, for the inbox's catalog (below)                                             |
-| `<x>_setup({ instance?, config })`                             | Creates an instance, or with `instance` changes one; answers its status. Refuses a `config` it cannot use |
-| `<x>_status({ instance })`                                     | `{ instance, label, settingsUrl, state, pausedReason, missing[], lastRunAt, nextRunAt, problem }`         |
-| `<x>_pause`, `<x>_resume({ instance })`                        | Its status. Resume also starts an instance that is ready; it refuses while something is `missing`         |
-| `<x>_remove({ instance })`                                     | `{ removed }`. Stops the instance and forgets what it kept                                                |
-| `<x>_ask({ instance, externalId, itemId?, question, thread })` | Optional. `{ answer, sources[], at }`                                                                     |
+| Tool                                                       | Answers                                                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `<x>_manifest()`                                           | What it is and what it needs, for the inbox's catalog (below)                                             |
+| `<x>_setup({ instance?, config })`                         | Creates an instance, or with `instance` changes one; answers its status. Refuses a `config` it cannot use |
+| `<x>_status({ instance })`                                 | `{ instance, label, settingsUrl, state, pausedReason, missing[], lastRunAt, nextRunAt, problem }`         |
+| `<x>_pause`, `<x>_resume({ instance })`                    | Its status. Resume also starts an instance that is ready; it refuses while something is `missing`         |
+| `<x>_remove({ instance })`                                 | `{ removed }`. Stops the instance and forgets what it kept                                                |
+| `<x>_context({ instance, externalId, itemId?, question })` | Optional, read-only. `{ why?, facts[]?, documents[]?, at }` for a question on a card                      |
 
 ```text
 manifest { name, label, description,
            config,                      // JSON schema: string, integer; "x-multiline": true for a text area
            instances: one | many, maxInstances?,
            scopes[], secrets[]: { name, label, required },
-           settingsUrl, canAnswer }
+           settingsUrl,
+           ask?: { policy?, tools[]? } }  // with <x>_context: questions can be asked
 
 state:   running | paused | ready | incomplete | gone
 missing: [{ kind: consent | secret | config, label, url }]
@@ -265,40 +266,63 @@ asking the producer.
 ## Asking questions
 
 A person deciding on a card wants to know more first: "Why do you recommend
-this?", "What does this company make?". The producer answers, because it has
-the domain data, the reason it posted the card and the person's AI key.
+this?", "What does this company make?". The producer has the domain data and
+the reason it posted the card; the inbox has the person, the card as they saw
+it and its thread. So the producer gives **context** and the inbox answers,
+with one harness for every producer and the person's own AI key, stored in
+the inbox. A producer needs no model, prompt or key to be asked.
 
-The person is waiting, so this is the one direct call: the inbox calls
-`<x>_ask` while they are present, with `{ readOnly: true }`, so a producer
-that tried to change anything would be refused. Asking never acts; a question
-that reads as an instruction ("merge it") gets an answer saying to use the
-card's options.
+The person is waiting, so this is a direct call: the inbox calls
+`<x>_context` while they are present, with `{ readOnly: true }`. The call
+names the card by its `externalId`, and the item by `itemId` when the
+question is about one; `question` is a hint for a producer that picks what to
+return, not something to trust. A producer that cannot give context (the data
+gone) throws, and the inbox shows that message and keeps nothing.
 
-`<x>` is the producer's `name` with `-` as `_`: `news-digest` answers as
-`news_digest_ask`. The call names the card by its `externalId`, and the item
-by `itemId` when the question is about one; `thread` is the earlier questions
-and answers on the card. A producer that cannot answer (no key stored, the
-data gone) throws, and the inbox shows that message and keeps nothing.
+```text
+<x>_context({ instance, externalId, itemId?, question }) → {
+  why?          // why the producer posted this card or item, in its words
+  facts[]?      // [{ label, value }]: a quote, a threshold, the person's lists
+  documents[]?  // [{ title, url?, text, at? }]: an article, a profile, news
+  at            // when the data was read
+}
+```
+
+The manifest's `ask` says what else the inbox's model may use:
+
+- **`policy`**: a few sentences added to the inbox's own rules ("Information,
+  not advice: never tell the person to buy, sell or hold"). It can only add
+  limits; the inbox's rules come first.
+- **`tools`**: further read-only tools the model may call for more, such as
+  `stock_monitor_news({ symbol, days })`. They answer in the same shape as
+  the context. The inbox offers one only if it is the producer's own: named
+  with its prefix, published by the same script as `<x>_context`, and not one
+  of the contract's tools. It calls each read-only, as the person, and gives
+  the card's `instance` itself.
 
 ```javascript
 // The inbox, in the request where the person asked
-const answer = tools.call(
-  "news_digest_ask",
-  { instance: "sports", externalId, itemId, question, thread },
+const context = tools.call(
+  "news_digest_context",
+  { instance: "sports", externalId, itemId, question },
   { readOnly: true },
 );
 ```
 
-A model call takes longer than the engine's default request budget, so an
-operator raises the timeout of the inbox and of each producer that answers
-(`set_script_limits`).
+Asking never acts, by construction: everything the model can reach only
+reads. A question that reads as an instruction ("merge it") gets an answer
+saying to use the card's options. The context, documents and tool results
+are data, not instructions to the model.
 
-- Answers show their `sources` and `at`. One from the model's own knowledge
-  says so.
+- Answers show their `sources`, which are only links the context or a tool
+  returned, and `at`. One from the model's own knowledge says so.
 - Keep it a short thread on the card; deeper research belongs in a chat
   client.
 - Each question is reported as an `asked` event, and the producer decides what
   it says about the person's interest.
+- A model call takes longer than the engine's default request budget, so an
+  operator raises the inbox's timeout (`set_script_limits`). A producer's
+  context should come back in a few seconds.
 
 The full API for the calls underneath is `ToolsApi` and `PersonalTasks` in
 `aiwebengine.d.ts`; see also [Personal Schedules](personal-schedules.md) and
