@@ -560,6 +560,39 @@ Secrets live at two levels for a script:
 Write operations (`setSecret`, `removeSecret`, `clear`) require an authenticated
 user and operate on that user's secrets.
 
+**Asking a person for their key.** Prefer the engine's secret page to a form of
+your own: declare the key in `init()`, and link the person to
+`secretStorage.entryUrl(key)`. They enter, replace or remove it there, and the
+value goes straight to their account; your script never holds it.
+
+```javascript
+function init() {
+  secretStorage.declare("WEATHER_API_KEY", { label: "Weather API key" });
+}
+
+function settingsHandler(context) {
+  const url =
+    secretStorage.entryUrl("WEATHER_API_KEY") + "&redirect=/weather/settings";
+  return ResponseBuilder.html(`<a href="${url}">Your weather API key</a>`);
+}
+```
+
+### secretStorage.declare(key, { label })
+
+In `init()`: people may give this script a secret under `key`, and the engine's
+page asks for it under `label` (one line, at most 80 characters). The page takes
+only declared keys. Like the other registrations, outside `init()` it changes
+nothing and answers `{ ok: false, reason }`; a key that is not letters, digits,
+`_`, `-` and `.`, or a missing label, throws.
+
+### secretStorage.entryUrl(key)
+
+The path of the engine's page where the signed-in person enters, replaces or
+removes their secret under `key` for this script:
+`/auth/secret?script=…&name=…`. Append `&redirect=<path>` to bring them back to
+a page on this host afterwards. The page says whether one is stored and never
+shows it.
+
 ### secretStorage.exists(key)
 
 Returns `true` if the secret exists. Checks the authenticated user's secrets

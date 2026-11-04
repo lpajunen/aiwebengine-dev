@@ -248,8 +248,9 @@ missing: [{ kind: consent | secret | config, label, url }]
   removed on its own page; the inbox offers to remove it there too.
 - **`missing`** is what the person still has to do, each with where to do it:
   the consent page (`authorization().consentUrl`, to which the inbox adds
-  `&redirect=` back to itself) or the producer's own page for a key. The
-  inbox never takes a key or grants a permission for anybody.
+  `&redirect=` back to itself) or, for a key, the engine's secret page
+  (`secretStorage.entryUrl(name)` for a name the producer declared in
+  `init`). The inbox never takes a key or grants a permission for anybody.
 - **Setup saves without permission.** A producer keeps the configuration and
   schedules nothing until the person has consented; its status says so, and
   its page or Start schedules it afterwards.
