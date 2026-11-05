@@ -254,6 +254,10 @@ missing: [{ kind: consent | secret | config, label, url }]
 - **Setup saves without permission.** A producer keeps the configuration and
   schedules nothing until the person has consented; its status says so, and
   its page or Start schedules it afterwards.
+- **Welcome once.** On its first run that reaches the inbox, an instance
+  posts one card saying what will arrive and when, with a single "Got it"
+  option whose answer means nothing. An instance that reached the inbox
+  before is not welcomed again.
 - **A refused setup leaves nothing behind.** Check the configuration before
   creating the instance, and throw with a message the person can act on
   ("Not a URL: …"); the inbox shows it as written.
