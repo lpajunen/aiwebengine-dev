@@ -216,6 +216,18 @@ person over their limit or without a subscription) by throwing; the producer
 logs it and carries on. Collecting events should keep working when posting no
 longer does, so answers already given are not stranded.
 
+An inbox may also offer the person's own apps a way in:
+
+| Tool                                                        | Answers                                                                                            |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `inbox_list({ view?, limit? })`                             | `{ cards }`: open (default), later or answered, with options, items and the answers already given  |
+| `inbox_decide({ cardId, itemId?, optionId, instruction? })` | `{ cardId, status }`. The same as answering on the inbox's page; reported to the producer as usual |
+
+These answer only a client (`context.meta.mcp.via` is `"client"`), never
+another script: a producer acting for the same person must not read other
+producers' cards or answer them. An option of weight `consequential` is left
+to the inbox's page, where it is confirmed.
+
 ### A producer publishes
 
 Tool names share a namespace per host, so a producer prefixes its own: `<x>`

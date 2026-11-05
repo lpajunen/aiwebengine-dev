@@ -87,7 +87,10 @@ mcpRegistry.registerTool("calculate", {
 A tool handler receives the usual `context`: the arguments are in
 `context.args`, and the person calling is in `context.request.auth` (an MCP
 client calls `/mcp` with a bearer token, so a tool always knows who is
-calling).
+calling). `context.meta.mcp.via` says how the call arrived: `"client"` from
+an app over `/mcp`, or `"script"` from another script's `tools.call`, acting
+for the same person. A tool meant only for the person's own apps can refuse
+`"script"`.
 
 **Handler Requirements:**
 
