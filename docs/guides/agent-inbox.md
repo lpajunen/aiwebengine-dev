@@ -242,6 +242,7 @@ calls them as the person, so they act on that person's instances only.
 | `<x>_pause`, `<x>_resume({ instance })`                    | Its status. Resume also starts an instance that is ready; it refuses while something is `missing`         |
 | `<x>_remove({ instance })`                                 | `{ removed }`. Stops the instance and forgets what it kept                                                |
 | `<x>_context({ instance, externalId, itemId?, question })` | Optional, read-only. `{ why?, facts[]?, documents[]?, at }` for a question on a card                      |
+| `<x>_capture({ instance, externalId, itemId?, text })`     | Optional. `{ message, url? }`: what it did with something the person wrote on a card                      |
 
 ```text
 manifest { name, label, description,
@@ -249,7 +250,8 @@ manifest { name, label, description,
            instances: one | many, maxInstances?,
            scopes[], secrets[]: { name, label, required },
            settingsUrl,
-           ask?: { policy?, tools[]? } }  // with <x>_context: questions can be asked
+           ask?: { policy?, tools[]? },   // with <x>_context: questions can be asked
+           capture?: { label, placeholder? } }  // with <x>_capture: additions can be written
 
 state:   running | paused | ready | incomplete | gone
 missing: [{ kind: consent | secret | config, label, url }]
@@ -340,6 +342,34 @@ are data, not instructions to the model.
 - A model call takes longer than the engine's default request budget, so an
   operator raises the inbox's timeout (`set_script_limits`). A producer's
   context should come back in a few seconds.
+
+## Adding while deciding
+
+Going through an agent's cards is when the person thinks about what the agent
+works on, so that is when ideas come: an issue for the backlog, a topic for
+the digest. They write it on the card they are on rather than leaving for the
+agent's own page.
+
+A producer that takes additions says how the field reads in its manifest
+(`capture: { label: "New issue", placeholder: "Title on the first line" }`)
+and publishes `<x>_capture`. The inbox shows the field on its cards and calls
+the tool while the person is present, as them and not read-only: they wrote
+it, so the producer acts on it at once, with no card to approve.
+
+```text
+<x>_capture({ instance, externalId, itemId?, text }) → {
+  message   // what it did, as the person reads it: "Added #12 in acme/widgets"
+  url?      // what it made, when there is a page for it
+}
+```
+
+- The card it was written on is context: which repository, which digest. A
+  producer that cannot tell from it throws with a message the person can act
+  on, and the inbox shows that and keeps nothing.
+- `text` is the person's own words, at most 4000 characters. Keep them; a
+  producer that rewrites them says so in `message`.
+- The inbox keeps no copy and reports no event: what was added is the
+  producer's, where the person will find it.
 
 The full API for the calls underneath is `ToolsApi` and `PersonalTasks` in
 `aiwebengine.d.ts`; see also [Personal Schedules](personal-schedules.md) and
