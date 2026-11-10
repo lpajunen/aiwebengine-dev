@@ -71,6 +71,16 @@ button was pressed would make each button an action taken in the person's
 name by code they did not choose. The one exception is
 [asking a question](#asking-questions), whose calls only read.
 
+A producer whose next run is far off can ask to be woken instead. It
+publishes `<x>_wake({ instance })`, and the inbox calls it after an answer,
+as the person and in their request. The call carries no answer; it only
+lets the producer queue a run that pulls its events now. It cannot be
+read-only, because a read-only call cannot queue work, so a wake tool does
+nothing else. It is also called once per answer, so it coalesces: keep a
+"pending until" mark, and queue a run a short while ahead only when none is
+waiting, so answers given in a row are read in one run. The inbox ignores a
+wake that fails; the answer stands, and the next scheduled run reads it.
+
 ## Reaching each other
 
 Both directions are `tools.call`, so the engine's rules for it apply:
@@ -243,6 +253,7 @@ calls them as the person, so they act on that person's instances only.
 | `<x>_remove({ instance })`                                 | `{ removed }`. Stops the instance and forgets what it kept                                                |
 | `<x>_context({ instance, externalId, itemId?, question })` | Optional, read-only. `{ why?, facts[]?, documents[]?, at }` for a question on a card                      |
 | `<x>_capture({ instance, externalId, itemId?, text })`     | Optional. `{ message, url? }`: what it did with something the person wrote on a card                      |
+| `<x>_wake({ instance })`                                   | Optional. Queues a run that pulls the events; see [Answers are pulled](#answers-are-pulled)               |
 
 ```text
 manifest { name, label, description,
