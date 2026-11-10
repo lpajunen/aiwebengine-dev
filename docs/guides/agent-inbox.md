@@ -111,6 +111,7 @@ card {
   topic?                         // a newer card with the same topic supersedes
   title, summary?, facts[]?      // facts: [{ label, value }]
   links[]?: { label, url }
+  body?                          // Markdown, or two Markdown texts as a diff; see below
   options[]: { id, label, style: primary|neutral|negative,
                weight?: feedback|instruction|consequential }
   boundTo?: { label, value }     // the state an answer depends on
@@ -130,6 +131,33 @@ copies (`sports`), and `label` is what the person sees ("Sports digest").
 Posting the same `externalId` again updates the card, so a retried task does
 not post twice. A card may hold items; items hold nothing. The convention has
 two levels on purpose: it is for deciding on steps, not for managing a project.
+
+### A card's body
+
+What the person decides on is sometimes the content itself: a draft to
+approve, a position to answer, a lesson to read. A link to the producer's
+page would leave that out of `shownSnapshot`, so a card may carry it:
+
+```text
+body?:
+  | { kind: "markdown", text }                       // text ≤ 64 KB
+  | { kind: "diff", before?, after,                  // two Markdown texts, each ≤ 64 KB
+      beforeLabel?, afterLabel? }                    // "r6", "r7 (proposed)"
+```
+
+- **The body is data.** The inbox renders the Markdown safely: raw HTML is
+  text, and a link or image keeps its URL only when it is http(s),
+  `mailto:` or a path. An image should be a path on the shared host (a
+  board the producer draws), so showing a card loads nothing from a third
+  party.
+- **The inbox draws the diff.** The producer sends both texts, never a list
+  of changes, so what the person approves is exactly `after`. Name the
+  version it applies to in `boundTo`, and refuse an answer once the text
+  has moved on. An empty `before` is a first draft.
+- **`shownSnapshot` keeps the body** as posted: for a diff, both texts.
+- **Ask sees it**: the Markdown, or for a diff what changed, shortened.
+- The body has its own limit apart from the rest of the card, and belongs
+  to the card only; items stay short.
 
 ### Three shapes
 

@@ -10,6 +10,7 @@ Converts a markdown string to HTML using the same high-quality parser used by th
 
 ```javascript
 const html = convert.markdown_to_html(markdown);
+const trusted = convert.markdown_to_html(markdown, { html: true });
 ```
 
 ### Parameters
@@ -18,6 +19,20 @@ const html = convert.markdown_to_html(markdown);
   - Maximum size: 1MB (1,000,000 bytes)
   - Cannot be empty
   - Supports standard CommonMark syntax plus extensions
+- **options** (object, optional)
+  - **html** (boolean, default `false`): pass raw HTML, every link and image
+    URL, and heading attributes through as written. Only for Markdown you
+    trust as much as your own code. Unknown keys throw a `TypeError`.
+
+### Safe by default
+
+Without `html: true` the result can go into a page whoever wrote the Markdown:
+
+- Raw HTML (`<script>`, `<img onerror=…>`, `<div>`) comes out as text.
+- A link or image whose URL is not `http:`, `https:`, `mailto:` or relative
+  (a path, `#fragment`, `?query`) keeps only its text. `javascript:` and
+  `data:` URLs are dropped, however they are spelled.
+- Headings keep `{#id .class}`, but no other attributes.
 
 ### Return Value
 
@@ -281,11 +296,8 @@ function renderUserComment(context) {
     };
   }
 
-  // Note: The HTML output from markdown conversion is NOT sanitized for XSS
-  // For user-generated content, consider:
-  // 1. Limiting allowed markdown features
-  // 2. Post-processing the HTML to remove dangerous tags
-  // 3. Using Content-Security-Policy headers
+  // Safe to show: raw HTML is text and only safe links survive, because
+  // this call does not pass { html: true }.
 
   return {
     status: 200,
@@ -395,12 +407,12 @@ function updateDocument(context) {
 
 ### XSS Prevention
 
-The markdown converter generates HTML from markdown syntax. While markdown is generally safer than raw HTML, it can still produce potentially dangerous output:
+By default the converter's output is safe to put in a page, whoever wrote the Markdown (see [Safe by default](#safe-by-default)). Still:
 
-1. **User Input**: Never trust user-provided markdown without validation
+1. **`html: true` is for your own text only**: never pass it for Markdown a user, a feed or another script wrote
 2. **Size Limits**: The converter enforces a 1MB limit, but you should set lower limits for user content
-3. **Output Sanitization**: The converter does NOT sanitize HTML output. For user-generated content, consider additional sanitization
-4. **CSP Headers**: Use Content-Security-Policy headers to mitigate XSS risks
+3. **Links still lead elsewhere**: an `https:` link to any site survives; it is a link, not script, but it can point anywhere
+4. **CSP Headers**: Content-Security-Policy headers remain a good second layer
 
 ### Safe Usage Pattern
 

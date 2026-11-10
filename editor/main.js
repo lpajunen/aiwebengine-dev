@@ -882,9 +882,10 @@ AVAILABLE JAVASCRIPT APIs:
    - identifier: string (secret name)
 
 6. convert - Markdown to HTML conversion functions
-   - convert.markdown_to_html(markdown) - Convert markdown string to HTML
+   - convert.markdown_to_html(markdown, options?) - Convert markdown string to HTML
    - markdown: string (markdown content, max 1MB)
-   - Returns: string (HTML output); throws an Error when conversion fails
+   - options.html: boolean (default false) - pass raw HTML and any link URL through; only for trusted text
+   - Returns: string (HTML output, safe by default: raw HTML as text, only http(s)/mailto/relative links); throws an Error when conversion fails
    - Supports: headings, lists, code blocks, tables, bold, italic, links, strikethrough
    - Use for: rendering blog posts, documentation, user content in HTML responses
    - Example: const html = convert.markdown_to_html('# Hello\\n\\nThis is **bold**');
