@@ -260,10 +260,15 @@ An inbox may also offer the person's own apps a way in:
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `inbox_list({ view?, limit? })`                             | `{ cards }`: open (default), later or answered, with options, items and the answers already given  |
 | `inbox_decide({ cardId, itemId?, optionId, instruction? })` | `{ cardId, status }`. The same as answering on the inbox's page; reported to the producer as usual |
+| `inbox_ask({ cardId, itemId?, question })`                  | `{ cardId, answer, sources }`, answered from the producer's `<x>_context`; kept on the card        |
+| `inbox_later({ cardId, itemId? })`                          | `{ cardId, until }`; an item moves to a card of its own, whose id is answered                      |
+| `inbox_capture({ cardId, text })`                           | `{ cardId, message, url }`, from the producer's `<x>_capture`                                      |
 
 These answer only a client (`context.meta.mcp.via` is `"client"`), never
 another script: a producer acting for the same person must not read other
-producers' cards or answer them. An option of weight `consequential` is left
+producers' cards or answer them. In `inbox_list`, `questionsLeft`,
+`allowLater` and `capture` (its label) say which of the last three a card
+takes. With these, an assistant's voice mode can go through the inbox. An option of weight `consequential` is left
 to the inbox's page, where it is confirmed.
 
 ### A producer publishes
