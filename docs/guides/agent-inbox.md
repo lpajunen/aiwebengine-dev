@@ -249,6 +249,22 @@ A `status` other than `open` means the person has finished that card: a
 producer adding to a rolling card starts a new one, with a new `externalId`,
 rather than adding to a card nobody will look at again.
 
+An inbox may also make model calls for its producers:
+
+| Tool                                  | Answers                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `inbox_model({ producer, request })`  | The Anthropic Messages response to `request`, sent with the key the person's inbox provides |
+| `inbox_model({ producer, requests })` | `{ responses }`: the requests sent together, each `{ message }` or `{ error }` in its place |
+
+A producer that finds `inbox_model` calls it instead of Anthropic and needs no
+key of its own; without an inbox it uses its own key. The inbox decides whose
+key pays (the person's, or one their plan includes), may replace the model with
+one the plan allows, caps `max_tokens`, and records the usage. A refusal's
+message starts with its kind: `no-key` (ask the person to add one), `lapsed`,
+`bad-request`, `model`. A producer reaches it from its delegated run like the
+other tools; the person's key at the inbox is used only when the producer's
+grant includes `secrets`.
+
 An inbox may refuse a call (a producer it does not accept, a post from a
 person over their limit or without a subscription) by throwing; the producer
 logs it and carries on. Collecting events should keep working when posting no
