@@ -110,7 +110,7 @@ card {
   externalId                     // idempotency: (producer, externalId)
   topic?                         // a newer card with the same topic supersedes
   title, summary?, facts[]?      // facts: [{ label, value }]
-  links[]?: { label, url }
+  links[]?: { label, url, handles? }  // url: http(s), or a path on a shared host
   body?                          // Markdown, or two Markdown texts as a diff; see below
   options[]: { id, label, style: primary|neutral|negative,
                weight?: feedback|instruction|consequential }
@@ -178,6 +178,10 @@ steps valid now: no Merge while the build is red.
 | Deferral | Read later, remind me tomorrow   | The inbox's own; reported as `later`, with `itemId` for one item                      |
 | Ask      | "What does this company make?"   | Answered by the inbox from the producer's context; never resolves, never acts         |
 | Options  | Relevant / Not relevant, Merge   | Resolve the card or item; reported as `decided`                                       |
+
+A link with `handles: false` sits beside the item rather than being it,
+such as the text an article was summarised from: opening it neither handles
+the item nor is reported.
 
 ### Weights
 
