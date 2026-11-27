@@ -14,7 +14,9 @@ Two kinds of script take part:
 
 The engine knows nothing of either. The convention is a set of MCP tool names
 and the shapes they take, so any script can be a producer, an inbox, or both,
-and a producer works alone when no inbox is there.
+and a producer works alone when no inbox is there. An agent running outside
+the engine reaches an inbox over HTTP instead, with the same cards and
+events; see [Agents outside the engine](#agents-outside-the-engine).
 
 ```javascript
 // Who is asking: the producer's stable name, and which of the person's
@@ -108,12 +110,13 @@ producer { name, instance, label?, settingsUrl? }   // settingsUrl may be a path
 
 card {
   externalId                     // idempotency: (producer, externalId)
+  level?: know | may | must      // how much attention it asks for; see Levels
   topic?                         // a newer card with the same topic supersedes
   title, summary?, facts[]?      // facts: [{ label, value }]
   links[]?: { label, url, handles? }  // url: http(s), or a path on a shared host
   body?                          // Markdown, or two Markdown texts as a diff; see below
-  options[]: { id, label, style: primary|neutral|negative,
-               weight?: feedback|instruction|consequential }
+  options[]?: { id, label, style: primary|neutral|negative,
+                weight?: feedback|instruction|consequential }
   boundTo?: { label, value }     // the state an answer depends on
   allowLater?: bool              // Later for the card, and for each item on its own
   handledByOpening?: bool        // opening a link handles the item (an article)
@@ -131,6 +134,23 @@ copies (`sports`), and `label` is what the person sees ("Sports digest").
 Posting the same `externalId` again updates the card, so a retried task does
 not post twice. A card may hold items; items hold nothing. The convention has
 two levels on purpose: it is for deciding on steps, not for managing a project.
+
+### Levels
+
+Most of what an agent sees needs no answer: an article worth reading, a backup
+that finished. Asking Relevant / Not relevant on all of it turns the inbox into
+labelling work, so a card says how much of the person's attention it asks for:
+
+| Level  | Meaning                                      | Shown                              |
+| ------ | -------------------------------------------- | ---------------------------------- |
+| `know` | Status; nothing to decide                    | In a briefing, apart; never counts |
+| `may`  | An answer is welcome; no answer means go on  | With the cards to decide           |
+| `must` | Something waits on the person (merge, trade) | First, and notified where possible |
+
+Without `level`, a card with options is `may` and one without is `know`.
+Every other level needs at least one option. A `know` card may still carry
+options for feedback, but no answer is the expected outcome; the person
+clearing it reports nothing.
 
 ### A card's body
 
@@ -340,6 +360,107 @@ An **instance** is one person's configured copy of a producer ("Sports",
 inbox. The inbox decides which producers it offers (its allow-list) and how
 many instances a person may have; it refuses a new one past that before
 asking the producer.
+
+## Agents outside the engine
+
+Software running anywhere (a cron job, a CI step, an agent on someone's own
+machine) can post cards too. The inbox publishes the same calls as HTTP
+routes, and the person connects each such agent themselves:
+
+| Route                   | Body or query             | Answers                                 |
+| ----------------------- | ------------------------- | --------------------------------------- |
+| `POST /api/cards`       | `{ card }` or `{ cards }` | `{ cards: [{ id, status }], muted }`    |
+| `DELETE /api/cards/:id` |                           | `{ withdrawn }`                         |
+| `GET /api/events`       | `?since=<cursor>`         | `{ events, cursor }`, as `inbox_events` |
+| `POST /api/model`       | `{ request }`             | The Messages response, as `inbox_model` |
+
+A card is the one above, with `id` for `externalId`. A batch is checked
+whole before any card is stored, so it is all or none. The simplest agent is
+one request:
+
+```sh
+curl -X POST https://inbox.example.com/api/cards \
+  -H "Authorization: Bearer $INBOX_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"card": {"id": "backup-2026-11-27", "title": "Nightly backup finished"}}'
+```
+
+### Connecting
+
+The person names the agent on the inbox's page. The inbox mints a token,
+shows it once and stores only its digest, and has the person link that
+digest to themselves on the engine's consent page:
+
+```javascript
+const token = "tok_" + crypto.randomToken(32);
+const digest = crypto.hash(token); // the row's key; the token is not kept
+const { linkUrl } = personalTasks.inviteLink({
+  channel: "agents",
+  identity: digest,
+  label: name, // the consent page says "when <name> calls it"
+});
+// Show the token once, then send the person to linkUrl
+```
+
+The routes are registered as **sender routes**:
+
+```javascript
+routeRegistry.registerRoute("/api/cards", {
+  handler: "apiPostCards",
+  method: "POST",
+  sender: { channel: "agents" },
+});
+```
+
+Before the handler runs, the engine hashes the request's bearer token, looks
+for a link on that channel, checks the person's grant to the inbox, and runs
+the handler as them, with only what they granted: `context.request.auth.userId`
+is the person. A token nobody linked, or one whose grant lapsed, is answered
+401 without reaching the script, and each link has a request budget of its
+own (429 with `Retry-After`). Session cookies are ignored on these routes.
+
+The engine knows the person, not the connection. The handler finds which of
+their connections the token is by its digest, so one revoked in the inbox is
+refused at once even while the engine's link stands. Because the request
+writes as the person and `/api/model` may use their key, the grant needs
+`write`, and `secrets` for the key.
+
+### What the inbox does for it
+
+A connection is an instance of a producer the inbox names itself (say
+`connection`, with the connection's id as `instance` and the person's name
+for it as `label`), so it counts under the person's limits and its cards and
+events are ordinary ones. What the tools in [A producer publishes](#a-producer-publishes)
+would do, the inbox does on its own page:
+
+- **Muting** replaces pause: posts still answer 200, with `muted: true`, and
+  nothing is stored, so a polite agent backs off.
+- **Revoking** replaces remove: the token stops working, and the
+  connection's cards and events go with it.
+- **Status** comes from what the inbox sees: when it last posted, whether the
+  link and the grant are in place.
+
+Refusals are statuses with `{ error, message }`: 401 for a token that is not
+(or no longer) a connection, 402 when the person has no subscription, 403
+when their grant lacks a scope the call needs, 400 for a card that is wrong.
+
+### Answers
+
+An agent with no public address reads them with `GET /api/events`, keeping
+the cursor as a producer does. One given a webhook URL when connecting has
+them pushed: after an answer, once its undo has closed, the inbox queues a
+personal task (`personalTasks.enqueue`, in a lane per connection) that posts
+
+```text
+POST <webhook>
+Authorization: Bearer <webhook secret>
+
+{ connection, events, cursor }
+```
+
+and retries until the webhook answers 2xx. The secret is shown once with the
+token; the agent checks it on every push. Events are the ones above, so a
+simple agent ignores `revision` and one that cares applies corrections.
 
 ## Asking questions
 
