@@ -271,7 +271,9 @@ open → decided ⇄ (changed | cleared) → acted
 
 A `status` other than `open` means the person has finished that card: a
 producer adding to a rolling card starts a new one, with a new `externalId`,
-rather than adding to a card nobody will look at again.
+rather than adding to a card nobody will look at again. `muted` (with `id`
+null) means the person has muted this instance in the inbox: nothing was
+stored, and a polite producer posts less until it is unmuted.
 
 An inbox may also make model calls for its producers:
 
@@ -550,6 +552,12 @@ it, so the producer acts on it at once, with no card to approve.
   producer that rewrites them says so in `message`.
 - The inbox keeps no copy and reports no event: what was added is the
   producer's, where the person will find it.
+
+In `aiwebengine-examples`, the producers share these calls as a small kit
+(`inbox-kit/inbox_kit.ts`): posting, withdrawing, model calls, reading
+events round by round with the cursor saved after each, and the coalesced
+wake. Copy it into a producer of your own rather than writing the loop
+again.
 
 The full API for the calls underneath is `ToolsApi` and `PersonalTasks` in
 `aiwebengine.d.ts`; see also [Personal Schedules](personal-schedules.md) and
