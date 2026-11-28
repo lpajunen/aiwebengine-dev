@@ -121,7 +121,8 @@ card {
   links[]?: { label, url, handles? }  // url: http(s), or a path on a shared host
   body?                          // Markdown, or two Markdown texts as a diff; see below
   options[]?: { id, label, style: primary|neutral|negative,
-                weight?: feedback|instruction|consequential }
+                weight?: feedback|instruction|consequential,
+                placeholder? }   // what an instruction's field shows empty
   boundTo?: { label, value }     // the state an answer depends on
   allowLater?: bool              // Later for the card, and for each item on its own
   handledByOpening?: bool        // opening a link handles the item (an article)
@@ -238,7 +239,9 @@ An option's `weight` tells the inbox how carefully to take it:
 
 - **feedback** (the default): one tap.
 - **instruction**: one tap and optional free text, reported as `instruction`
-  ("tests for the timeout case").
+  ("tests for the timeout case"). `placeholder` (up to 80 characters) says
+  what to write when the text is the answer itself: "Your move, such as
+  Nf3".
 - **consequential**: something that cannot be taken back, such as a merge or
   a trade. The card must carry `boundTo`, and expires within a day. The inbox
   asks for confirmation, showing `boundTo`, and holds the answer for a
