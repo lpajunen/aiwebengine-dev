@@ -83,6 +83,11 @@ nothing else. It is also called once per answer, so it coalesces: keep a
 waiting, so answers given in a row are read in one run. The inbox ignores a
 wake that fails; the answer stands, and the next scheduled run reads it.
 
+After a consequential answer, the wake carries `notBefore`, an ISO time: the
+inbox holds the answer until then, and a run before it reads nothing from
+that answer on. Queue the run after it (the kit's `queueWake` takes
+`notBefore`).
+
 ## Reaching each other
 
 Both directions are `tools.call`, so the engine's rules for it apply:
@@ -121,6 +126,7 @@ card {
   allowLater?: bool              // Later for the card, and for each item on its own
   handledByOpening?: bool        // opening a link handles the item (an article)
   suggestedQuestions[]?
+  standing?: bool                // a list the agent keeps; see Standing cards
   context?                       // what Ask answers from; see Asking questions
   capture?: { label, placeholder? }  // a field; see Adding while deciding
   items[]?                       // sub-items, each with its own answer, and context?
@@ -160,6 +166,20 @@ open `know` cards (title, summary, facts, items, a Markdown body and
 `know` card's title and summary should say what happened, not only that
 something did. The summary is written only when asked, and seeing it reports
 nothing either.
+
+### Standing cards
+
+Some of what an agent has is state, not a decision waiting: the stocks it
+recommends buying, the articles it filtered out. A card with
+`standing: true` is such a list. It is answered with the same options, but
+it is not in the person's queue and is never counted there; it is on the
+agent's own page in the inbox, and stays there until withdrawn.
+
+- It never expires and is not history. It takes up to 100 items, no Later,
+  and no consequential option. An agent instance keeps at most 5.
+- An answer is an ordinary event. The inbox shows it as waiting for the
+  agent's next check until the agent posts the card again with that item
+  changed or removed. Post the list as it now is after applying answers.
 
 ### A card's body
 
@@ -220,8 +240,10 @@ An option's `weight` tells the inbox how carefully to take it:
 - **instruction**: one tap and optional free text, reported as `instruction`
   ("tests for the timeout case").
 - **consequential**: something that cannot be taken back, such as a merge or
-  a trade. The inbox asks for confirmation, shows `boundTo`, and holds the
-  answer before releasing it.
+  a trade. The card must carry `boundTo`, and expires within a day. The inbox
+  asks for confirmation, showing `boundTo`, and holds the answer for a
+  minute before the producer can read it; until then the person can still
+  change it. Assistants cannot give one.
 
 The producer re-checks `boundTo` before it acts. A merge decided on head
 `abc123` is refused if the head has moved; a buy decided at "up to €42.50" is
