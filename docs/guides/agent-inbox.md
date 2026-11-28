@@ -121,7 +121,8 @@ card {
   allowLater?: bool              // Later for the card, and for each item on its own
   handledByOpening?: bool        // opening a link handles the item (an article)
   suggestedQuestions[]?
-  items[]?                       // sub-items, each with its own answer
+  context?                       // what Ask answers from; see Asking questions
+  items[]?                       // sub-items, each with its own answer, and context?
   expiresAt?
   priority?
 }
@@ -478,8 +479,17 @@ it and its thread. So the producer gives **context** and the inbox answers,
 with one harness for every producer and the person's own AI key, stored in
 the inbox. A producer needs no model, prompt or key to be asked.
 
-The person is waiting, so this is a direct call: the inbox calls
-`<x>_context` while they are present, with `{ readOnly: true }`. The call
+The simplest way is to send the context with the card: `context` on the card,
+and on an item for what is particular to it, in the shape below (without
+`at`). The inbox keeps it apart from the card, never shows it, and answers
+from it without calling the producer; a question about an item reads the
+item's context and the card's. It is the only way for an agent outside the
+engine, and is limited (32 KB for the card and its items together), so a
+producer whose data is too big to send gives it on demand instead.
+
+On demand, the person is waiting, so this is a direct call: for a card that
+carries no context the inbox calls `<x>_context` while they are present,
+with `{ readOnly: true }`. The call
 names the card by its `externalId`, and the item by `itemId` when the
 question is about one; `question` is a hint for a producer that picks what to
 return, not something to trust. A producer that cannot give context (the data
