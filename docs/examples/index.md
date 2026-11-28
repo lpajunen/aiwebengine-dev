@@ -35,6 +35,7 @@ or deploy one from a checkout of that repository with its `make` targets.
 | `daily-note`                                                     | A personal schedule: a daily run acting as the person        |
 | `meeting-bingo`, `meetup-planner`, `joke-page`, `daily-aphorism` | Small complete apps                                          |
 | `virtual-world`                                                  | A large multi-module application (Three.js, streams, tables) |
+| `chess`, `document-writer`, `news-digest`, `stock-monitor`       | Producers for an [agent inbox](../guides/agent-inbox.md)     |
 
 The API every example uses is in [JavaScript APIs](../reference/javascript-apis.md).
 A minimal script and the request/response shapes are in
