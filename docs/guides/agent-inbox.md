@@ -154,6 +154,13 @@ Every other level needs at least one option. A `know` card may still carry
 options for feedback, but no answer is the expected outcome; the person
 clearing it reports nothing.
 
+The person may have the inbox summarise the briefing: a model reads the
+open `know` cards (title, summary, facts, items, a Markdown body and
+`context.why`) and writes a few points per agent, linking the cards. So a
+`know` card's title and summary should say what happened, not only that
+something did. The summary is written only when asked, and seeing it reports
+nothing either.
+
 ### A card's body
 
 What the person decides on is sometimes the content itself: a draft to
@@ -304,11 +311,12 @@ An inbox may also offer the person's own apps a way in:
 
 | Tool                                                        | Answers                                                                                            |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `inbox_list({ view?, limit? })`                             | `{ cards }`: open (default), later or answered, with options, items and the answers already given  |
+| `inbox_list({ view?, limit? })`                             | `{ cards }`: open (default), briefing, later or answered, with options, items and answers given    |
 | `inbox_decide({ cardId, itemId?, optionId, instruction? })` | `{ cardId, status }`. The same as answering on the inbox's page; reported to the producer as usual |
 | `inbox_ask({ cardId, itemId?, question })`                  | `{ cardId, answer, sources }`, answered from the producer's `<x>_context`; kept on the card        |
 | `inbox_later({ cardId, itemId? })`                          | `{ cardId, until }`; an item moves to a card of its own, whose id is answered                      |
 | `inbox_capture({ cardId, text })`                           | `{ cardId, message, url }`: a `captured` event, or the producer's `<x>_capture` answer             |
+| `inbox_briefing({ summarize? })`                            | `{ summary, uncovered }`: the latest summary of the `know` cards; `summarize` writes a new one     |
 
 These answer only a client (`context.meta.mcp.via` is `"client"`), never
 another script: a producer acting for the same person must not read other
