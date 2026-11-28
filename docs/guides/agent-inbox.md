@@ -122,6 +122,7 @@ card {
   handledByOpening?: bool        // opening a link handles the item (an article)
   suggestedQuestions[]?
   context?                       // what Ask answers from; see Asking questions
+  capture?: { label, placeholder? }  // a field; see Adding while deciding
   items[]?                       // sub-items, each with its own answer, and context?
   expiresAt?
   priority?
@@ -233,8 +234,8 @@ sees the move.
 ```text
 event { cardId, externalId, itemId?,
         type: decided | changed | cleared | opened | later | asked
-            | expired | withdrawn | acted,
-        optionId?, instruction?, question?, boundTo?,
+            | captured | expired | withdrawn | acted,
+        optionId?, instruction?, question?, text?, boundTo?,
         revision, decidedBy, at, shownSnapshot? }
 ```
 
@@ -247,6 +248,8 @@ event { cardId, externalId, itemId?,
   event with a higher `revision` replaces the earlier answer on that card or
   item; the producer undoes what the earlier one did. Apply events by
   revision so a repeated one changes nothing.
+- **`captured` carries what the person wrote** in the card's capture field,
+  in `text`. It is an addition, not an answer, and is never corrected.
 - **`acted` ends undo.** A producer that has carried out a consequential
   answer reports `acted`, and the inbox shows that it can no longer be taken
   back. Reversing it is a new decision, not an undo.
@@ -305,7 +308,7 @@ An inbox may also offer the person's own apps a way in:
 | `inbox_decide({ cardId, itemId?, optionId, instruction? })` | `{ cardId, status }`. The same as answering on the inbox's page; reported to the producer as usual |
 | `inbox_ask({ cardId, itemId?, question })`                  | `{ cardId, answer, sources }`, answered from the producer's `<x>_context`; kept on the card        |
 | `inbox_later({ cardId, itemId? })`                          | `{ cardId, until }`; an item moves to a card of its own, whose id is answered                      |
-| `inbox_capture({ cardId, text })`                           | `{ cardId, message, url }`, from the producer's `<x>_capture`                                      |
+| `inbox_capture({ cardId, text })`                           | `{ cardId, message, url }`: a `captured` event, or the producer's `<x>_capture` answer             |
 
 These answer only a client (`context.meta.mcp.via` is `"client"`), never
 another script: a producer acting for the same person must not read other
@@ -547,11 +550,21 @@ works on, so that is when ideas come: an issue for the backlog, a topic for
 the digest. They write it on the card they are on rather than leaving for the
 agent's own page.
 
-A producer that takes additions says how the field reads in its manifest
-(`capture: { label: "New issue", placeholder: "Title on the first line" }`)
-and publishes `<x>_capture`. The inbox shows the field on its cards and calls
-the tool while the person is present, as them and not read-only: they wrote
-it, so the producer acts on it at once, with no card to approve.
+A card offers the field with `capture: { label, placeholder? }` (`label`
+up to 40 characters, `placeholder` up to 120):
+`capture: { label: "New issue", placeholder: "Title on the first line" }`.
+What the person writes reaches the agent as a `captured` event carrying
+`text`, read like an answer: from `inbox_events`, `GET /api/events` or the
+webhook, after the wake. The event names the card it was written on, which
+is the context: which repository, which digest. Any agent can offer it, one
+outside the engine too. An item moved to Later keeps its card's field.
+
+A producer that must act while the person is present, and say what it did,
+offers the field for all its cards in its manifest instead, with the same
+`capture` shape, and publishes `<x>_capture`. The inbox calls the tool as
+the person and not read-only: they wrote it, so the producer acts on it at
+once, with no card to approve. A card's own `capture` wins over the
+manifest's.
 
 ```text
 <x>_capture({ instance, externalId, itemId?, text }) → {
@@ -560,13 +573,13 @@ it, so the producer acts on it at once, with no card to approve.
 }
 ```
 
-- The card it was written on is context: which repository, which digest. A
+- The card it was written on is passed along. A
   producer that cannot tell from it throws with a message the person can act
   on, and the inbox shows that and keeps nothing.
 - `text` is the person's own words, at most 4000 characters. Keep them; a
   producer that rewrites them says so in `message`.
-- The inbox keeps no copy and reports no event: what was added is the
-  producer's, where the person will find it.
+- Through the tool, the inbox keeps no copy and reports no event: what was
+  added is the producer's, where the person will find it.
 
 In `aiwebengine-examples`, the producers share these calls as a small kit
 (`inbox-kit/inbox_kit.ts`): posting, withdrawing, model calls, reading
